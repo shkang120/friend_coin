@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>친구 코인 거래소</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        
+        <div class="news-ticker"><div class="ticker-text" id="ticker-text">[속보] 코인 데이터 불러오는 중...</div></div>
+
+        <div id="home-view" class="view"><div class="header-top"><div>📊 친구 코인 목록</div></div><div id="friend-list" style="padding: 10px;"></div></div>
+        <div id="detail-view" class="view"><div class="header-top"><div style="cursor: pointer; font-size: 20px;" onclick="goBackToHome()">←</div><div style="font-weight: bold;">코인 상세</div><div style="width: 20px;"></div></div><div style="padding: 20px; text-align: center;"><div id="detail-avatar" style="margin-bottom: 10px;"></div><h1 id="detail-name" style="margin: 0; font-size: 20px;">이름</h1><div id="detail-price" style="font-size: 2.5rem; font-weight: bold; color: #333d4b;">0 p</div></div><div style="width: 100%; height: 250px; padding: 10px; box-sizing: border-box;"><canvas id="coinChart"></canvas></div><div style="display: flex; gap: 10px; padding: 20px;"><button class="btn-vote-disagree" style="flex: 1;" onclick="openModal('good')">👍 호평하기</button><button class="btn-vote-agree" style="flex: 1;" onclick="openModal('bad')">👎 악평하기</button></div></div>
+        <div id="meeting-view" class="view"><div class="header-top"><div>⚖️ 주주총회</div></div><div id="meeting-list" style="padding: 10px;"></div></div>
+        <div id="ranking-view" class="view"><div class="header-top"><div>🏆 실시간 랭킹</div></div><div id="ranking-content" style="padding: 15px;"></div></div>
+        <div id="noti-view" class="view"><div class="header-top"><div>🔔 알림함</div></div><div id="noti-list" style="padding: 10px;"></div></div>
+        <div id="profile-view" class="view"><div class="header-top"><div>👤 내 프로필</div></div><div id="my-profile-info" style="padding: 20px; text-align: center;"></div></div>
+        
+        <nav class="bottom-nav">
+            <div class="nav-item active" onclick="switchTab('home')">📊<br>목록</div>
+            <div class="nav-item" onclick="switchTab('meeting')">⚖️<br>총회</div>
+            <div class="nav-item" onclick="switchTab('ranking')">🏆<br>랭킹</div>
+            <div class="nav-item" onclick="switchTab('noti')">🔔<br>알림</div>
+            <div class="nav-item" onclick="switchTab('profile')">👤<br>내정보</div>
+        </nav>
+
+        <!-- 평가 모달창 -->
+        <div class="modal-overlay" id="eval-modal">
+            <div class="modal-content">
+                <h3 id="modal-title" style="margin-top:0;">평가하기</h3>
+                <input type="text" id="eval-reason" placeholder="사유를 적어주세요" style="width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box;">
+                <select id="eval-percent" style="width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 8px;">
+                    <option value="1">1%</option><option value="2">2%</option><option value="3">3%</option>
+                </select>
+                <div style="display: flex; gap: 10px;">
+                    <button style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: #e5e8eb;" onclick="closeModal()">취소</button>
+                    <button id="modal-submit-btn" style="flex: 1; padding: 10px; border-radius: 8px; border: none; color: white;" onclick="submitEval()">반영</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 프로필 사진 설정 모달창 -->
+        <div class="modal-overlay" id="profile-modal">
+            <div class="modal-content" style="max-height: 80vh; overflow-y: auto;">
+                <h3 style="margin-top:0;">프로필 사진 변경</h3>
+                <input type="file" id="custom-image-upload" accept="image/*" style="display:none;">
+                <button style="width: 100%; padding: 15px; border-radius: 12px; background: #333d4b; color: white; font-weight: bold; border: none; cursor: pointer; margin-bottom: 15px;" onclick="document.getElementById('custom-image-upload').click()">
+                    📸 앨범에서 내 사진 올리기
+                </button>
+                <div style="font-size: 13px; color: #8b95a1; margin-bottom: 10px; text-align: left;">또는 기본 프로필 10종 선택</div>
+                <div id="default-profiles-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px;"></div>
+                <button style="width: 100%; padding: 10px; border-radius: 8px; border: none; background: #e5e8eb; cursor: pointer;" onclick="closeProfileModal()">취소</button>
+            </div>
+        </div>
+
+        <!-- 광고 시청 모달창 -->
+        <div class="modal-overlay" id="ad-modal" style="z-index: 300;">
+            <div class="modal-content" style="text-align: center;">
+                <h3 style="margin-top:0;">📺 스폰서 광고</h3>
+                <div id="ad-video-area" style="background: #1c1c1e; color: #32d74b; height: 150px; display: flex; align-items: center; justify-content: center; border-radius: 8px; margin-bottom: 15px; font-weight: bold;">
+                    <span id="ad-timer">광고 준비 중...</span>
+                </div>
+                <button id="ad-close-btn" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: #e5e8eb; color: #8b95a1; cursor: not-allowed; font-weight: bold;" disabled>광고를 끝까지 시청해주세요</button>
+            </div>
+        </div>
+
+        <!-- ★ 추가: VIP 멤버십 모달창 -->
+        <div class="modal-overlay" id="vip-modal" style="z-index: 300;">
+            <div class="modal-content" style="text-align: center;">
+                <h3 style="margin-top:0; color: #d4af37;">💎 프리미엄 멤버십</h3>
+                
+                <div id="vip-buy-section">
+                    <p style="font-size: 14px; color: #8b95a1; margin-bottom: 20px; line-height: 1.5;">광고 3초 대기 <b>영구 삭제!</b><br>내 이름 색상 <b>자유 커스텀!</b><br>전용 <b>👑VIP 칭호</b> 즉시 지급!</p>
+                    <button style="width: 100%; padding: 15px; border-radius: 12px; border: none; background: linear-gradient(135deg, #d4af37, #f3e5f5); color: #333d4b; font-weight: bold; cursor: pointer; margin-bottom: 10px; font-size: 16px;" onclick="buyVIP()">결제하고 VIP 되기 (월 1,900원)</button>
+                </div>
+                
+                <div id="vip-manage-section" style="display: none;">
+                    <p style="font-size: 14px; font-weight: bold; margin-bottom: 10px;">🎨 내 이름 색상 선택</p>
+                    <input type="color" id="vip-color-picker" style="width: 100%; height: 50px; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 20px;">
+                    <button style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: #333d4b; color: white; font-weight: bold; cursor: pointer; margin-bottom: 10px;" onclick="applyVIPColor()">색상 적용하기</button>
+                </div>
+                
+                <button style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: #e5e8eb; color: #8b95a1; font-weight: bold; cursor: pointer;" onclick="closeVIPModal()">닫기</button>
+            </div>
+        </div>
+
+        <!-- 토스트 알림창 -->
+        <div id="toast">알림 메시지</div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

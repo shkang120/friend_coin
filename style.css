@@ -1,0 +1,28 @@
+body { font-family: -apple-system, sans-serif; background-color: #f2f4f6; margin: 0; display: flex; justify-content: center; }
+.app-container { width: 100%; max-width: 400px; background-color: #ffffff; min-height: 100vh; position: relative; overflow: hidden; }
+
+.news-ticker { width: 100%; height: 34px; background-color: #1c1c1e; color: #32d74b; font-size: 13px; font-weight: bold; display: flex; align-items: center; overflow: hidden; white-space: nowrap; position: absolute; top: 0; left: 0; z-index: 200; }
+.ticker-text { display: inline-block; padding-left: 100%; animation: ticker 25s linear infinite; }
+@keyframes ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+
+.view { width: 100%; height: calc(100% - 34px); position: absolute; top: 34px; left: 0; background: white; transition: transform 0.3s ease-in-out; overflow-y: auto; padding-bottom: 70px; display: none; }
+.view-active { display: block; z-index: 10; transform: translateX(0); }
+.view-hidden-right { display: block; transform: translateX(100%); }
+.view-hidden-left { display: block; transform: translateX(-100%); }
+
+.header-top { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f2f4f6; }
+
+.bottom-nav { position: fixed; bottom: 0; width: 100%; max-width: 400px; background: white; border-top: 1px solid #ddd; display: flex; justify-content: space-around; padding: 10px 0; z-index: 100; }
+.nav-item { cursor: pointer; text-align: center; font-size: 11px; font-weight: 600; color: #8b95a1; }
+.nav-item.active { color: #333d4b; }
+
+.info-card { background: white; border-radius: 16px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #eee; transition: background 0.2s; }
+.info-card:active { background: #f9fafb; }
+.btn-vote-agree { background: #3182f6; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+.btn-vote-disagree { background: #ff3b30; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+
+.modal-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 200; justify-content: center; align-items: center; }
+.modal-content { background: white; padding: 20px; border-radius: 16px; width: 80%; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; }
+
+#toast { visibility: hidden; min-width: 250px; background-color: #333d4b; color: #fff; text-align: center; border-radius: 8px; padding: 16px; position: fixed; z-index: 1000; left: 50%; bottom: 80px; transform: translateX(-50%); font-size: 14px; font-weight: bold; opacity: 0; transition: opacity 0.3s, visibility 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+#toast.show { visibility: visible; opacity: 1; }
