@@ -24,6 +24,7 @@ let globalRanking = [];
 let currentRoomCode = null; 
 let currentAdRewardType = null;
 let adInterval = null;
+let currentSelectedFriend = null; 
 
 const DEFAULT_AVATARS = [
     'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aneka&backgroundColor=c0aede',
@@ -83,10 +84,8 @@ function checkBadges() {
 function updateTicker() {
     const tickerEl = document.getElementById('ticker-text'); let newsItems = [];
     if(!myProfile || globalRanking.length === 0) return; 
-    
     newsItems.push(`[글로벌 시황] 👑 전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p)`);
-    newsItems.push(`[공지] 프라이빗 단톡방 시스템이 새롭게 업데이트 되었습니다!`);
-    
+    newsItems.push(`[공지] 강도별(1%,2%,3%) 단톡방 평가 시스템이 활성화되었습니다!`);
     tickerEl.innerHTML = newsItems.join(' &nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; ');
 }
 
@@ -132,13 +131,10 @@ function switchTab(tabName) {
     if (tabName === 'profile') renderProfile();
 }
 
-// ==========================================
-// ★ 단톡방 로비 & 내부 화면
-// ==========================================
 function renderHome() {
     const list = document.getElementById('friend-list');
     
-    if (!currentRoomCode) { // 로비
+    if (!currentRoomCode) { 
         let html = `
             <div style="display:flex; gap:10px; margin-bottom:20px;">
                 <button onclick="createNewRoom()" style="flex:1; padding:15px; background:#333d4b; color:white; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1);">+ 새 방 만들기</button>
@@ -162,7 +158,7 @@ function renderHome() {
         }
         list.innerHTML = html;
     } 
-    else { // 방 내부
+    else { 
         const room = myRooms.find(r => r.room_code === currentRoomCode);
         if (!room) { currentRoomCode = null; renderHome(); return; }
 
@@ -180,10 +176,11 @@ function renderHome() {
         html += room.members.map(f => {
             const isMe = f.email === myEmail;
             const isDelisted = f.status === 'delisted';
-            const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer;");
+            const clickEvent = (!isMe && !isDelisted) ? `onclick="openFriendDetail('${f.email}')"` : "";
+            const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer; transition: 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.05);");
             
             return `
-                <div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}">
+                <div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}>
                     <div style="display: flex; align-items: center; gap: 15px;">
                         ${getAvatarHtml(f, 'small')}
                         <div>
@@ -207,6 +204,96 @@ function renderHome() {
 
 function enterRoom(code) { currentRoomCode = code; renderHome(); }
 function exitRoomView() { currentRoomCode = null; renderHome(); }
+
+// ==========================================
+// ★ 1%, 2%, 3% 강도 조절형 평가 모달창 복구!
+// ==========================================
+function openFriendDetail(friendEmail) {
+    const room = myRooms.find(r => r.room_code === currentRoomCode);
+    const friend = room.members.find(m => m.email === friendEmail);
+    if (!friend) return;
+    
+    currentSelectedFriend = friend;
+    
+    let modal = document.getElementById('eval-modal');
+    if(!modal) {
+        modal = document.createElement('div'); modal.id = 'eval-modal';
+        modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;";
+        document.body.appendChild(modal);
+    }
+
+    // 각 퍼센트별 실시간 예상 변동 수치 계산
+    const p1 = Math.floor(friend.price * 0.01).toLocaleString();
+    const p2 = Math.floor(friend.price * 0.02).toLocaleString();
+    const p3 = Math.floor(friend.price * 0.03).toLocaleString();
+
+    modal.innerHTML = `
+        <div style="background:white; padding:30px 25px; border-radius:20px; width:85%; max-width:340px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+            <div style="margin-bottom:15px;">${getAvatarHtml(friend, 'large')}</div>
+            <h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${friend.name}</h2>
+            <div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:15px;">${Math.floor(friend.price).toLocaleString()} p</div>
+            
+            <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px; line-height:1.4;">
+                어떤 강도로 평가하든 <b>티켓은 무조건 1장</b> 소모됩니다.<br>내 티켓 상황: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b>
+            </div>
+            
+            <!-- 호평 섹션 -->
+            <div style="text-align:left; margin-bottom:15px;">
+                <div style="font-size:13px; font-weight:bold; color:#ff3b30; margin-bottom:8px;">👍 호평하기 (티켓 1장 소모)</div>
+                <div style="display:flex; gap:8px;">
+                    <button onclick="submitEvaluation('good', 1)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+1%<br><span style="font-size:10px; font-weight:normal;">+${p1}p</span></button>
+                    <button onclick="submitEvaluation('good', 2)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+2%<br><span style="font-size:10px; font-weight:normal;">+${p2}p</span></button>
+                    <button onclick="submitEvaluation('good', 3)" style="flex:1; padding:10px 5px; background:#ff3b30; border:1px solid #ff3b30; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">+3%<br><span style="font-size:10px; font-weight:normal;">+${p3}p</span></button>
+                </div>
+            </div>
+            
+            <!-- 악평 섹션 -->
+            <div style="text-align:left; margin-bottom:25px;">
+                <div style="font-size:13px; font-weight:bold; color:#3182f6; margin-bottom:8px;">👎 악평하기 (티켓 1장 소모)</div>
+                <div style="display:flex; gap:8px;">
+                    <button onclick="submitEvaluation('bad', 1)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-1%<br><span style="font-size:10px; font-weight:normal;">-${p1}p</span></button>
+                    <button onclick="submitEvaluation('bad', 2)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-2%<br><span style="font-size:10px; font-weight:normal;">-${p2}p</span></button>
+                    <button onclick="submitEvaluation('bad', 3)" style="flex:1; padding:10px 5px; background:#3182f6; border:1px solid #3182f6; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">-3%<br><span style="font-size:10px; font-weight:normal;">-${p3}p</span></button>
+                </div>
+            </div>
+            
+            <button onclick="document.getElementById('eval-modal').style.display='none'" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">취소하고 나가기</button>
+        </div>
+    `;
+    modal.style.display = 'flex';
+}
+
+async function submitEvaluation(evalType, intensity) {
+    if (!currentSelectedFriend) return;
+    
+    if (evalType === 'good' && myProfile.goodTickets <= 0) { alert("남은 호평권이 없습니다!"); return; }
+    if (evalType === 'bad' && myProfile.badTickets <= 0) { alert("남은 악평권이 없습니다!"); return; }
+    
+    document.getElementById('eval-modal').style.display = 'none';
+    showToast(`⏳ ${intensity}% 강도로 평가를 전송하는 중...`);
+    
+    try {
+        const payload = {
+            evaluator_email: myEmail,
+            target_email: currentSelectedFriend.email,
+            eval_type: evalType,
+            intensity: intensity // 1, 2, 3% 값 전송
+        };
+        
+        const response = await fetch(`${BACKEND_URL}/api/evaluate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        
+        const data = await response.json();
+        if (data.status === 'success') {
+            showToast(`✅ 반영 완료! 최신 주가를 불러옵니다.`);
+            await initializeApp(); 
+        } else {
+            alert("평가 실패: " + data.message);
+        }
+    } catch(err) { alert("네트워크 오류가 발생했습니다."); }
+}
+
 
 async function createNewRoom() {
     const name = prompt("새로 만들 방의 이름을 입력하세요 (예: 동네 친구방):");
@@ -239,9 +326,6 @@ async function joinExistingRoom() {
     } catch(err) { alert("서버 오류가 발생했습니다."); }
 }
 
-// ==========================================
-// ★ 전국구 랭킹 & 주주총회 복구
-// ==========================================
 function renderRanking() {
     const container = document.getElementById('ranking-content');
     if (!myProfile || globalRanking.length === 0) return;
@@ -271,14 +355,12 @@ function renderRanking() {
     `;
 }
 
-// ⚠️ 재판(주주총회) UI 완벽 복구
 function renderMeeting() {
     const list = document.getElementById('meeting-list');
     if (!currentRoomCode) {
         list.innerHTML = '<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">로비에서는 재판이 열리지 않습니다.<br>홈 탭에서 방에 먼저 입장해 주세요!</div>';
         return;
     }
-    
     const room = myRooms.find(r => r.room_code === currentRoomCode);
     if (!room || !room.agendas || room.agendas.length === 0) { 
         list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">🕊️ [${room.room_name}] 방은 현재 평온합니다.<br>진행 중인 재판이 없습니다.</div>`; 
@@ -303,14 +385,7 @@ function renderMeeting() {
     }).join('');
 }
 
-function voteMock() {
-    showToast("방별 주주총회 투표 시스템은 서버 연동을 위해 공사 중입니다!");
-}
-
-
-// ==========================================
-// ★ 프로필 (광고, VIP 등 100% 완전 복구)
-// ==========================================
+function voteMock() { showToast("방별 주주총회 투표 시스템은 다음 단계에서 개설됩니다!"); }
 
 function watchAd(type) {
     const todayStr = new Date().toDateString();
@@ -370,9 +445,7 @@ function renderProfile() {
     const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${isAdTicketMax ? '#e5e8eb' : '#f3e5f5'}; color: ${isAdTicketMax ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${isAdTicketMax ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="watchAd('extra_ticket')" ${isAdTicketMax ? 'disabled' : ''}>🎬 광고 보고 평가권 +1장 (오늘 ${adTicketCount}/1회)</button>`;
 
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
-    if (isDelisted) {
-        actionBtn = `<button style="width: 100%; padding: 15px; border-radius: 12px; background: #333d4b; color: white; font-weight: bold; border: none; cursor: pointer;" onclick="showToast('회생 투표 기능은 단톡방 연동 공사 중입니다!')">🙏 주주총회에 회생 투표 신청하기 (준비 중)</button>`;
-    }
+    if (isDelisted) { actionBtn = `<button style="width: 100%; padding: 15px; border-radius: 12px; background: #333d4b; color: white; font-weight: bold; border: none; cursor: pointer;" onclick="showToast('회생 기능 공사 중!')">🙏 주주총회에 회생 신청하기</button>`; }
 
     container.innerHTML = `
         ${vipBanner}
@@ -381,18 +454,16 @@ function renderProfile() {
             <button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✏️</button>
         </div>
         <h2 style="margin: 10px 0; color: ${myProfile.nameColor || '#333d4b'}; display:flex; justify-content:center; align-items:center; gap:8px;">
-            ${myProfile.name} 코인
-            <span onclick="changeNickname()" style="font-size:14px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
+            ${myProfile.name} 코인 <span onclick="changeNickname()" style="font-size:14px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
         </h2>
         <div style="font-size:12px; color:#8b95a1; margin-bottom:10px;">내 주가는 모든 방에 동일하게 적용됩니다.</div>
         ${getBadgeHtml(myProfile)}
         <div style="display: flex; justify-content: space-around; margin: 20px 0;">
-            <div style="background: #f9fafb; padding: 15px; border-radius: 12px; width: 40%; box-shadow: 0 2px 4px rgba(0,0,0,0.02);"><div style="font-size: 13px; color: #8b95a1;">남은 호평권 👍</div><div style="font-size: 20px; font-weight: bold; color: #ff3b30;">${myProfile.goodTickets} 장</div></div>
-            <div style="background: #f9fafb; padding: 15px; border-radius: 12px; width: 40%; box-shadow: 0 2px 4px rgba(0,0,0,0.02);"><div style="font-size: 13px; color: #8b95a1;">남은 악평권 👎</div><div style="font-size: 20px; font-weight: bold; color: #3182f6;">${myProfile.badTickets} 장</div></div>
+            <div style="background: #f9fafb; padding: 15px; border-radius: 12px; width: 40%;"><div style="font-size: 13px; color: #8b95a1;">남은 호평권 👍</div><div style="font-size: 20px; font-weight: bold; color: #ff3b30;">${myProfile.goodTickets} 장</div></div>
+            <div style="background: #f9fafb; padding: 15px; border-radius: 12px; width: 40%;"><div style="font-size: 13px; color: #8b95a1;">남은 악평권 👎</div><div style="font-size: 20px; font-weight: bold; color: #3182f6;">${myProfile.badTickets} 장</div></div>
         </div>
         <div style="font-size: 32px; font-weight: bold; color: #333d4b; margin-top: 20px;">${isDelisted ? '-' : Math.floor(myProfile.price).toLocaleString()} p</div>
         <div style="font-weight: bold; color: ${colorClass}; margin-bottom: 30px;">${isDelisted ? '' : sign + Math.floor(changeAmount).toLocaleString() + ' p (' + sign + changeRate + '%)'}</div>
-        
         ${actionBtn}
         <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px;" onclick="handleLogout()">🚪 로그아웃</button>
     `;
@@ -412,12 +483,10 @@ async function changeNickname() {
     const isOnlyEnglish = /^[a-zA-Z0-9]+$/.test(newName.trim()); 
     if (isOnlyEnglish) { if (newName.trim().length < 2 || newName.trim().length > 10) { alert("영어/숫자 닉네임은 2~10자로 정해주세요."); return; } } 
     else { if (newName.trim().length < 2 || newName.trim().length > 8) { alert("한글 닉네임은 2~8자로 정해주세요."); return; } }
-
     try {
         const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName.trim())}`);
         const data = await res.json();
         if(!data.available) { alert(data.message); return; }
-        
         myProfile.name = newName.trim(); myUsername = myProfile.name;
         localStorage.setItem('fc_username', myUsername);
         saveData(); showToast("닉네임 변경 완료! ✏️"); renderProfile();
@@ -430,15 +499,12 @@ document.getElementById('custom-image-upload').addEventListener('change', async 
     const formData = new FormData(); formData.append("image", file);
     try {
         const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData });
-        const data = await response.json();
+        const data = response.json();
         if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 프로필 사진이 저장되었습니다!"); closeProfileModal(); renderProfile(); } 
         else { showToast("🚨 서버 업로드 실패!"); }
     } catch(err) { console.error(err); showToast("🚨 네트워크 오류가 발생했습니다."); }
 });
 
-// ==========================================
-// ★ 로그인 & 앱 초기화 라우팅
-// ==========================================
 function decodeJwtResponse(token) {
     let base64Url = token.split('.')[1];
     let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -460,10 +526,8 @@ function showLoginScreen() {
             <div style="font-size:50px; margin-bottom:15px;">🪙</div>
             <h1 style="margin:0 0 10px 0; color:#333d4b; font-size:24px;">친구 코인 접속</h1>
             <p style="color:#8b95a1; margin-bottom:30px; font-size:14px;">원하는 접속 방식을 선택해주세요.</p>
-            
             <button onclick="triggerGoogleIntent('login')" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; margin-bottom:10px;">기존 계정으로 로그인</button>
             <button onclick="triggerGoogleIntent('signup')" style="width:100%; padding:15px; background:#e8f5e9; color:#2e7d32; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; margin-bottom:25px;">새로 시작하기 (회원가입)</button>
-            
             <div id="google-btn-container" style="display:none; justify-content:center;"></div>
         </div>
     `;
@@ -481,38 +545,21 @@ function showLoginScreen() {
     }
 }
 
-function triggerGoogleIntent(intent) {
-    loginIntent = intent; 
-    document.getElementById('google-btn-container').style.display = 'flex'; 
-}
+function triggerGoogleIntent(intent) { loginIntent = intent; document.getElementById('google-btn-container').style.display = 'flex'; }
 
 async function handleCredentialResponse(response) {
-    const responsePayload = decodeJwtResponse(response.credential); 
-    const tempEmail = responsePayload.email;
-    const overlay = document.getElementById('login-overlay');
-    if(overlay) overlay.innerHTML = `<div style="font-size:20px; font-weight:bold; color:#333d4b;">서버 확인 중... ⏳</div>`; 
-    
+    const responsePayload = decodeJwtResponse(response.credential); const tempEmail = responsePayload.email;
+    const overlay = document.getElementById('login-overlay'); if(overlay) overlay.innerHTML = `<div style="font-size:20px; font-weight:bold; color:#333d4b;">서버 확인 중... ⏳</div>`; 
     try {
         const serverResponse = await fetch(`${BACKEND_URL}/api/data/${encodeURIComponent(tempEmail)}`);
         const serverData = await serverResponse.json();
-        
-        if (loginIntent === 'login') {
-            if (serverData.isNewUser) { alert("가입된 정보가 없습니다. 새로 시작하기(회원가입)를 진행해 주세요."); localStorage.clear(); location.reload(); return; }
-        } else if (loginIntent === 'signup') {
-            if (!serverData.isNewUser) { alert("이미 가입된 계정입니다. 안전하게 로그인으로 연결합니다."); }
-        }
-        
+        if (loginIntent === 'login') { if (serverData.isNewUser) { alert("가입된 정보가 없습니다. 회원가입을 해주세요."); localStorage.clear(); location.reload(); return; } }
         myEmail = tempEmail; localStorage.setItem('fc_email', myEmail); 
-        
         if (serverData.isNewUser) { showNicknameSetupScreen(responsePayload.picture); } 
         else {
             myProfile = serverData.profile; myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername);
-            myNotifications = serverData.noti || [];
-            myRooms = serverData.my_rooms || [];
-            globalRanking = serverData.global_ranking || [];
-            
-            if(overlay) overlay.remove();
-            finishSetup();
+            myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || [];
+            if(overlay) overlay.remove(); finishSetup();
         }
     } catch(err) { alert("서버 연결에 실패했습니다."); localStorage.clear(); location.reload(); }
 }
@@ -525,54 +572,34 @@ function showNicknameSetupScreen(googlePicture) {
         <div style="background:white; padding:40px 30px; border-radius:20px; box-shadow:0 10px 20px rgba(0,0,0,0.1); text-align:center; width:80%; max-width:350px;">
             <div style="font-size:40px; margin-bottom:15px;">👋</div>
             <h1 style="margin:0 0 10px 0; color:#333d4b; font-size:22px;">환영합니다!</h1>
-            <p style="color:#8b95a1; margin-bottom:20px; font-size:14px;">앱에서 사용할 닉네임을 정해주세요.</p>
-            <input type="text" id="new-nickname-input" placeholder="닉네임 입력 (특수문자/공백 불가)" style="width:100%; padding:15px; border:1px solid #e5e8eb; border-radius:12px; font-size:16px; margin-bottom:10px; box-sizing:border-box; text-align:center; outline:none;">
+            <p style="color:#8b95a1; margin-bottom:20px; font-size:14px;">닉네임을 정해주세요.</p>
+            <input type="text" id="new-nickname-input" placeholder="닉네임 입력" style="width:100%; padding:15px; border:1px solid #e5e8eb; border-radius:12px; text-align:center; outline:none;">
             <p id="nickname-error" style="color:#ff3b30; font-size:12px; margin-bottom:20px; height:15px;"></p>
-            <button onclick="submitNewNickname('${googlePicture || ''}')" id="nickname-submit-btn" style="width:100%; padding:15px; background:#3182f6; color:white; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer;">시작하기 🚀</button>
+            <button onclick="submitNewNickname('${googlePicture || ''}')" style="width:100%; padding:15px; background:#3182f6; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">시작하기 🚀</button>
         </div>
     `;
 }
 
 async function submitNewNickname(googlePicture) {
-    const inputEl = document.getElementById('new-nickname-input'); const errorEl = document.getElementById('nickname-error');
-    const newName = inputEl.value.trim();
+    const inputEl = document.getElementById('new-nickname-input'); const errorEl = document.getElementById('nickname-error'); const newName = inputEl.value.trim();
     if(!newName) { errorEl.textContent = "닉네임을 입력해주세요!"; return; }
-    if (/[^a-zA-Z0-9가-힣]/.test(newName)) { errorEl.textContent = "특수문자나 공백은 사용할 수 없습니다."; return; }
-    if (/^[a-zA-Z0-9]+$/.test(newName)) { if (newName.length < 2 || newName.length > 10) { errorEl.textContent = "영어/숫자 닉네임은 2~10자로 정해주세요."; return; } } 
-    else { if (newName.length < 2 || newName.length > 8) { errorEl.textContent = "한글 닉네임은 2~8자로 정해주세요."; return; } }
-
+    if (/[^a-zA-Z0-9가-힣]/.test(newName)) { errorEl.textContent = "특수문자나 공백은 불가합니다."; return; }
     try {
         const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName)}`);
-        const data = await res.json();
-        if(!data.available) { errorEl.textContent = data.message; return; }
-        
-        myProfile = JSON.parse(JSON.stringify(defaultProfile));
-        myProfile.name = newName; if (googlePicture) myProfile.profileImage = googlePicture;
+        const data = await res.json(); if(!data.available) { errorEl.textContent = data.message; return; }
+        myProfile = JSON.parse(JSON.stringify(defaultProfile)); myProfile.name = newName; if (googlePicture) myProfile.profileImage = googlePicture;
         myUsername = newName; localStorage.setItem('fc_username', myUsername);
-        myNotifications = []; myRooms = []; globalRanking = [];
-        
-        saveData(); 
-        
-        const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove();
-        finishSetup();
+        saveData(); const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup();
     } catch(err) { errorEl.textContent = "서버 연결에 실패했습니다."; }
 }
 
 async function initializeApp() {
     try {
-        const serverResponse = await fetch(`${BACKEND_URL}/api/data/${encodeURIComponent(myEmail)}`);
-        const serverData = await serverResponse.json();
-        
+        const serverResponse = await fetch(`${BACKEND_URL}/api/data/${encodeURIComponent(myEmail)}`); const serverData = await serverResponse.json();
         if (serverData.isNewUser) { showLoginScreen(); return; }
-        
-        myProfile = serverData.profile; myUsername = myProfile.name;
-        myNotifications = serverData.noti || [];
-        myRooms = serverData.my_rooms || [];
-        globalRanking = serverData.global_ranking || [];
-        
-        const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove();
-        finishSetup();
-    } catch(err) { console.error(err); alert("서버 통신 오류가 발생했습니다."); finishSetup(); }
+        myProfile = serverData.profile; myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || [];
+        const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup();
+    } catch(err) { alert("서버 통신 오류가 발생했습니다."); finishSetup(); }
 }
 
 function finishSetup() {
@@ -582,7 +609,4 @@ function finishSetup() {
     checkRefill(); checkBadges(); updateTicker(); switchTab('home'); 
 }
 
-window.onload = () => { 
-    if (!myEmail) { showLoginScreen(); } 
-    else { initializeApp(); }
-};
+window.onload = () => { if (!myEmail) { showLoginScreen(); } else { initializeApp(); } };
