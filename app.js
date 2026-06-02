@@ -1,4 +1,4 @@
-const BACKEND_URL = "https://effective-space-journey-xjqp4x6v4jv3vvv4-8000.app.github.dev";
+const BACKEND_URL = "https://friend-coin.onrender.com";
 
 let myEmail = localStorage.getItem('fc_email') || null; 
 let myUsername = localStorage.getItem('fc_username') || null;
