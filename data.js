@@ -1,5 +1,5 @@
 // ★ 주의: 본인의 Codespaces 8000번 포트 주소를 꼭 다시 넣어주세요!
-const BACKEND_URL = "https://glorious-funicular-976jpq456j9ph7jwx-8000.app.github.dev";
+const BACKEND_URL = "https://friend-coin.onrender.com";
 
 let myUsername = localStorage.getItem('fc_username') || null;
 
