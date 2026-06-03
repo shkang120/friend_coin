@@ -252,11 +252,16 @@ async function submitCreateAgenda() {
 function renderMeeting() {
     const list = document.getElementById('meeting-list'); if(!list) return;
     if (!currentRoomCode) { list.innerHTML = '<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">로비에서는 재판이 열리지 않습니다.</div>'; return; }
+    
     const room = myRooms.find(r => r.room_code === currentRoomCode);
     const activeAgendas = room.agendas ? room.agendas.filter(a => a.status === 'active') : [];
+    
     if (activeAgendas.length === 0) { list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">🕊️ [${room.room_name}] 방은 현재 평온합니다.<br>진행 중인 재판이 없습니다.</div>`; return; }
     
-    const totalMembers = room.members.length; const requiredVotes = (totalMembers // 2) + 1;
+    // ★ 에러 수정된 부분: 파이썬 문법(//) 대신 자바스크립트 문법(Math.floor) 사용
+    const totalMembers = room.members.length; 
+    const requiredVotes = Math.floor(totalMembers / 2) + 1;
+    
     list.innerHTML = activeAgendas.map(a => {
         let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; }
         const targetPerson = room.members.find(f => f.email === a.target_email); const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; const hasVoted = a.votedUsers && a.votedUsers.includes(myEmail);
