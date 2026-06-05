@@ -1,4 +1,4 @@
-const BACKEND_URL = "https://friend-coin-backend.onrender.com"; 
+const BACKEND_URL = "https://friend-coin.onrender.com"; 
 
 let myEmail = localStorage.getItem('fc_email') || null; 
 let myUsername = localStorage.getItem('fc_username') || null;
