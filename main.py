@@ -87,6 +87,7 @@ def check_nickname(nickname: str):
     if existing: return {"available": False, "message": "이미 사용 중인 닉네임입니다."}
     return {"available": True, "message": "사용 가능한 닉네임입니다!"}
 
+@app.get("/api/data/{email:path}") 
 @app.get("/api/data/{email}")
 def get_user_data(email: str):
     user_data = db["users"].find_one({"_id": email})
