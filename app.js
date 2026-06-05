@@ -80,9 +80,6 @@ function switchTab(tabName) {
     if (tabName === 'home') renderHome(); if (tabName === 'meeting') renderMeeting(); if (tabName === 'ranking') renderRanking(); if (tabName === 'noti') renderNoti(); if (tabName === 'profile') renderProfile();
 }
 
-// ==========================================
-// ★ 메인 렌더링: 투자 클럽(방) 목록 및 채팅창 구현
-// ==========================================
 function renderHome() {
     const list = document.getElementById('friend-list'); if(!list) return;
     
@@ -117,6 +114,7 @@ function renderHome() {
                 </div>
             </div>
             
+            <!-- 채팅방 영역 -->
             <div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div>
@@ -153,12 +151,11 @@ function renderHome() {
                             ${getBadgeHtml(f)}
                         </div>
                     </div>
-                    <div style="font-size: 16px; font-weight: bold; color: #333d4b;">${isDelisted ? '-' : Math.floor(f.price || 0).toLocaleString() + ' p'}</div>
+                    <div style="font-size: 16px; font-weight: bold; color: #333d4b;">${isDelisted ? '-' : Math.floor(f.price || 0).toLocaleString()} p</div>
                 </div>
             `;
         }).join('');
         
-        // ★ 자진 클럽 퇴장 버튼 추가
         html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer;">🚪 이 클럽에서 나가기</button>`;
         
         list.innerHTML = html;
@@ -258,7 +255,6 @@ function renderMeeting() {
     
     if (activeAgendas.length === 0) { list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">🕊️ [${room.room_name}] 방은 현재 평온합니다.<br>진행 중인 재판이 없습니다.</div>`; return; }
     
-    // ★ 에러 수정된 부분: 파이썬 문법(//) 대신 자바스크립트 문법(Math.floor) 사용
     const totalMembers = room.members.length; 
     const requiredVotes = Math.floor(totalMembers / 2) + 1;
     
@@ -301,7 +297,7 @@ function watchAd(type) {
 }
 function claimAdReward(isVipPass = false) { document.getElementById('ad-modal').style.display = 'none'; const todayStr = new Date().toDateString(); if (currentAdRewardType === 'double_attendance') { myProfile.price += 50; if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; myProfile.lastDailyAdBonus = todayStr; if (isVipPass) showToast("👑 VIP 프리패스! 50p 상승."); else showToast("🎁 50p가 추가 상승했습니다."); } else if (currentAdRewardType === 'extra_ticket') { myProfile.goodTickets += 1; myProfile.badTickets += 1; myProfile.dailyAdTicketsCount++; myProfile.dailyAdTicketsDate = todayStr; if (isVipPass) showToast(`👑 VIP 프리패스! 평가권 +1장!`); else showToast(`🎁 평가권 각 +1장 획득!`); } saveData(); renderProfile(); }
 
-function openVIPModal() { document.getElementById('vip-modal').style.display = 'flex'; if (myProfile.isVIP) { document.getElementById('vip-buy-section').style.display = 'none'; document.getElementById('vip-manage-section').style.display = 'block'; document.getElementById('vip-color-picker').value = myProfile.nameColor || '#333d4b'; } else { document.getElementById('vip-buy-section').style.display = 'block'; document.getElementById('vip-manage-section').style.display = 'none'; } }
+function openVIPModal() { document.getElementById('vip-modal').style.display = 'flex'; if (myProfile.isVIP) { document.getElementById('vip-buy-section').style.display = 'none'; document.getElementById('vip-manage-section').style.display = 'block'; document.getElementById('vip-color-picker').value = myProfile.nameColor || '#333d4b'; } else { document.getElementById('vip-buy-section').style.display = 'block'; document.getElementById('vip-manage-section').style.none; } }
 function closeVIPModal() { document.getElementById('vip-modal').style.display = 'none'; }
 function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("💎 VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); }
 function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
@@ -344,7 +340,15 @@ function openProfileModal() { document.getElementById('profile-modal').style.dis
 function closeProfileModal() { document.getElementById('profile-modal').style.display = 'none'; }
 function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); showToast("프로필 이미지 변경!"); closeProfileModal(); renderProfile(); }
 async function changeNickname() { const newName = prompt("변경할 닉네임 (최대 8자):"); if(!newName || newName.trim() === "" || newName.trim() === myProfile.name) return; if (/[^a-zA-Z0-9가-힣]/.test(newName.trim())) { alert("특수문자 불가"); return; } try { const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName.trim())}`); const data = await res.json(); if(!data.available) { alert(data.message); return; } myProfile.name = newName.trim(); myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); saveData(); showToast("변경 완료!"); renderProfile(); } catch(err) { alert("오류 발생"); } }
-document.getElementById('custom-image-upload').addEventListener('change', async function(e) { const file = e.target.files[0]; if(!file) return; formData = new FormData(); formData.append("image", file); try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 업로드 완료!"); closeProfileModal(); renderProfile(); } else { showToast("🚨 업로드 실패"); } } catch(err) { showToast("🚨 네트워크 오류"); } });
+
+let fileInput = document.getElementById('custom-image-upload');
+if(fileInput) {
+    fileInput.addEventListener('change', async function(e) { 
+        const file = e.target.files[0]; if(!file) return; 
+        const formData = new FormData(); formData.append("image", file); 
+        try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 업로드 완료!"); closeProfileModal(); renderProfile(); } else { showToast("🚨 업로드 실패"); } } catch(err) { showToast("🚨 네트워크 오류"); } 
+    });
+}
 
 function decodeJwtResponse(token) { let base64Url = token.split('.')[1]; let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) { return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''))); }
 function showLoginScreen() {
@@ -367,6 +371,26 @@ async function handleCredentialResponse(response) {
 function handleLogout() { localStorage.clear(); location.reload(); }
 function showNicknameSetupScreen(googlePicture) { let overlay = document.getElementById('login-overlay'); overlay.innerHTML = `<div style="background:white; padding:40px 30px; border-radius:20px; text-align:center; width:80%; max-width:350px;"><div style="font-size:40px; margin-bottom:15px;">👋</div><h1 style="margin:0; font-size:22px;">닉네임 설정</h1><input type="text" id="new-nickname-input" placeholder="닉네임" style="width:100%; padding:15px; border:1px solid #e5e8eb; border-radius:12px; text-align:center; margin:15px 0 10px 0;"><p id="nickname-error" style="color:#ff3b30; font-size:12px; margin-bottom:20px; height:15px;"></p><button onclick="submitNewNickname('${googlePicture || ''}')" style="width:100%; padding:15px; background:#3182f6; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">시작하기 🚀</button></div>`; }
 async function submitNewNickname(googlePicture) { const inputEl = document.getElementById('new-nickname-input'); const errorEl = document.getElementById('nickname-error'); const newName = inputEl.value.trim(); if(!newName) { errorEl.textContent = "닉네임을 입력하세요."; return; } if (/[^a-zA-Z0-9가-힣]/.test(newName)) { errorEl.textContent = "특수문자 금지"; return; } try { const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName)}`); const data = await res.json(); if(!data.available) { errorEl.textContent = data.message; return; } myProfile = JSON.parse(JSON.stringify(defaultProfile)); myProfile.name = newName; if (googlePicture) myProfile.profileImage = googlePicture; myUsername = newName; localStorage.setItem('fc_username', myUsername); saveData(); const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup(); } catch(err) { errorEl.textContent = "서버 오류"; } }
-async function initializeApp() { try { if(!myEmail) return; const serverResponse = await fetch(`${BACKEND_URL}/api/data/${encodeURIComponent(myEmail)}`); const serverData = await serverResponse.json(); if (serverData.isNewUser) { showLoginScreen(); return; } myProfile = serverData.profile; myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup(); } catch(err) { console.error(err); } }
+
+async function initializeApp() { 
+    try { 
+        if(!myEmail) return; 
+        const homeView = document.getElementById('friend-list');
+        if(homeView && (!myProfile)) {
+            homeView.innerHTML = `<div style="text-align:center; padding:60px 20px; color:#3182f6; font-weight:bold; font-size:16px;">💤 서버 데이터 불러오는 중...</div>`;
+        }
+        const serverResponse = await fetch(`${BACKEND_URL}/api/data/${encodeURIComponent(myEmail)}`); 
+        const serverData = await serverResponse.json(); 
+        if (serverData.isNewUser) { showLoginScreen(); return; } 
+        myProfile = serverData.profile; myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; 
+        const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); 
+        finishSetup(); 
+    } catch(err) { 
+        console.error(err); 
+        alert("서버 연결에 실패했습니다. 백엔드가 작동 중인지 확인해 주세요.");
+    } 
+}
+
 function finishSetup() { if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; } if (myProfile && !myProfile.badges) myProfile.badges = []; if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; checkRefill(); checkBadges(); updateTicker(); switchTab('home'); }
+
 window.onload = () => { if (!myEmail) { showLoginScreen(); } else { initializeApp(); } };
