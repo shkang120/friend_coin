@@ -14,7 +14,8 @@ const defaultProfile = {
     goodTickets: 2, badTickets: 2, lastRefillTime: null, lastDailyAttendance: null, weeklyTicketsClaimed: false,
     lastDailyAdBonus: null, dailyAdTicketsDate: null, dailyAdTicketsCount: 0, 
     badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 },
-    isVIP: false, nameColor: "#333d4b" 
+    isVIP: false, nameColor: "#333d4b",
+    priceHistory: []
 };
 
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = [];   
@@ -330,9 +331,12 @@ function renderProfile() {
         </div>
         <div style="font-size: 32px; font-weight: bold; color: #333d4b; margin-top: 20px;">${isDelisted ? '💀' : Math.floor(myProfile.price).toLocaleString()} p</div>
         <div style="font-weight: bold; color: ${colorClass}; margin-bottom: 30px;">${isDelisted ? '' : sign + Math.floor(changeAmount).toLocaleString() + ' p (' + sign + changeRate + '%)'}</div>
+        <div style="background: white; padding: 15px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); border: 1px solid #f2f4f6;">
+            <canvas id="priceChart" style="width:100%; height:150px;"></canvas>
+        </div>
         ${actionBtn}
-        <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px;" onclick="handleLogout()">🚪 로그아웃</button>
-    `;
+        <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px;" onclick="handleLogout()">🚪 로그아웃</button>`;
+        setTimeout(drawPriceChart, 50);
 }
 
 function doDailyAttendance() { const today = new Date().toDateString(); if (myProfile.lastDailyAttendance === today) { showToast("이미 완료하셨습니다!"); return; } myProfile.price += 50; if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; myProfile.lastDailyAttendance = today; showToast("💵 일일 출석 완료!"); saveData(); renderProfile(); }
@@ -391,6 +395,63 @@ async function initializeApp() {
     } 
 }
 
-function finishSetup() { if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; } if (myProfile && !myProfile.badges) myProfile.badges = []; if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; checkRefill(); checkBadges(); updateTicker(); switchTab('home'); }
+function finishSetup() { if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; }
+                         if (myProfile && !myProfile.badges) myProfile.badges = [];
+                         if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 };
+                         if (myProfile && !myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice, myProfile.price];
+                         checkRefill(); checkBadges(); updateTicker(); switchTab('home');
+                        }
 
 window.onload = () => { if (!myEmail) { showLoginScreen(); } else { initializeApp(); } };
+
+let myChartInstance = null; // 기존 그래프를 기억할 변수
+
+function drawPriceChart() {
+    const ctx = document.getElementById('priceChart');
+    if (!ctx || !myProfile || !myProfile.priceHistory) return;
+
+    // 만약 예전에 그려둔 그래프가 있다면 지우고 새로 그림 (겹침 방지)
+    if (myChartInstance) { myChartInstance.destroy(); }
+
+    // 그래프 선 색상 결정 (떡상이면 빨간색, 떡락이면 파란색)
+    const history = myProfile.priceHistory;
+    const isUp = history[history.length - 1] >= history[0];
+    const lineColor = isUp ? '#ff3b30' : '#3182f6';
+    const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
+
+    // 점 개수에 맞춰서 가로축(X축) 라벨 생성 (빈 칸으로 둬서 선만 깔끔하게 보이게)
+    const labels = history.map(() => ''); 
+
+    myChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '내 주가 흐름',
+                data: history,
+                borderColor: lineColor,
+                backgroundColor: bgColor,
+                borderWidth: 3,          // 선 굵기
+                pointRadius: 0,          // 평소엔 점 숨기기 (깔끔하게)
+                pointHoverRadius: 6,     // 마우스 올리면 점 커짐
+                fill: true,              // 선 아래쪽 색상 채우기
+                tension: 0.4             // 선을 부드러운 곡선으로 만들기
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }, // 위쪽 범례 숨기기
+            scales: {
+                x: { display: false }, // X축 선 숨기기
+                y: { 
+                    display: true, 
+                    position: 'right', // 가격을 오른쪽에 표시
+                    grid: { color: '#f2f4f6', drawBorder: false }, // 가로줄 연하게
+                    ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' }
+                }
+            },
+            interaction: { intersect: false, mode: 'index' }
+        }
+    });
+}
