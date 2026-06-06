@@ -206,6 +206,7 @@ function openFriendDetail(friendEmail) {
         </div>
     `;
     modal.style.display = 'flex';
+    setTimeout(() => drawFriendPriceChart(friend), 50);
 }
 
 async function submitEvaluation(evalType, intensity) {
@@ -465,6 +466,59 @@ function drawPriceChart() {
                     position: 'right', // 가격을 오른쪽에 표시
                     grid: { color: '#f2f4f6', drawBorder: false }, // 가로줄 연하게
                     ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' }
+                }
+            },
+            interaction: { intersect: false, mode: 'index' }
+        }
+    });
+}
+
+let friendChartInstance = null; // 친구 그래프용 변수
+
+function drawFriendPriceChart(friend) {
+    const ctx = document.getElementById('friendPriceChart');
+    if (!ctx) return;
+
+    // 이전에 열어본 친구의 그래프가 남아있다면 지움
+    if (friendChartInstance) { friendChartInstance.destroy(); }
+
+    // 친구의 기록이 없으면 기본가와 현재가로 임시 선을 만들어줌
+    const history = (friend.priceHistory && friend.priceHistory.length > 0) 
+                    ? friend.priceHistory 
+                    : [friend.basePrice || 20000, friend.price];
+
+    const isUp = history[history.length - 1] >= history[0];
+    const lineColor = isUp ? '#ff3b30' : '#3182f6';
+    const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
+    const labels = history.map(() => '');
+
+    friendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '주가 흐름',
+                data: history,
+                borderColor: lineColor,
+                backgroundColor: bgColor,
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { display: false },
+                y: { 
+                    display: true, 
+                    position: 'right',
+                    grid: { color: '#f2f4f6', drawBorder: false },
+                    ticks: { font: { size: 9 }, color: '#8b95a1' }
                 }
             },
             interaction: { intersect: false, mode: 'index' }
