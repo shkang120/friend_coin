@@ -296,7 +296,11 @@ function watchAd(type) {
     const btn = document.getElementById('ad-close-btn'); btn.textContent = "광고를 끝까지 시청해주세요"; btn.style.background = "#e5e8eb"; btn.style.color = "#8b95a1"; btn.disabled = true; btn.onclick = null;
     adInterval = setInterval(() => { timeLeft--; if (timeLeft > 0) { document.getElementById('ad-timer').textContent = `광고 시청 중... (${timeLeft}초)`; } else { clearInterval(adInterval); document.getElementById('ad-timer').textContent = "✅ 시청 완료!"; btn.textContent = "보상 받기 🎁"; btn.style.background = "#3182f6"; btn.style.color = "white"; btn.disabled = false; btn.onclick = () => claimAdReward(false); } }, 1000);
 }
-function claimAdReward(isVipPass = false) { document.getElementById('ad-modal').style.display = 'none'; const todayStr = new Date().toDateString(); if (currentAdRewardType === 'double_attendance') { myProfile.price += 50; if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; myProfile.lastDailyAdBonus = todayStr; if (isVipPass) showToast("👑 VIP 프리패스! 50p 상승."); else showToast("🎁 50p가 추가 상승했습니다."); } else if (currentAdRewardType === 'extra_ticket') { myProfile.goodTickets += 1; myProfile.badTickets += 1; myProfile.dailyAdTicketsCount++; myProfile.dailyAdTicketsDate = todayStr; if (isVipPass) showToast(`👑 VIP 프리패스! 평가권 +1장!`); else showToast(`🎁 평가권 각 +1장 획득!`); } saveData(); renderProfile(); }
+function claimAdReward(isVipPass = false) { document.getElementById('ad-modal').style.display = 'none';
+    const todayStr = new Date().toDateString();
+    if (currentAdRewardType === 'double_attendance') { myProfile.price += 50; if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price;
+        if (!myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice]; myProfile.priceHistory.push(myProfile.price);
+        myProfile.lastDailyAdBonus = todayStr; if (isVipPass) showToast("👑 VIP 프리패스! 50p 상승."); else showToast("🎁 50p가 추가 상승했습니다."); } else if (currentAdRewardType === 'extra_ticket') { myProfile.goodTickets += 1; myProfile.badTickets += 1; myProfile.dailyAdTicketsCount++; myProfile.dailyAdTicketsDate = todayStr; if (isVipPass) showToast(`👑 VIP 프리패스! 평가권 +1장!`); else showToast(`🎁 평가권 각 +1장 획득!`); } saveData(); renderProfile(); }
 
 function openVIPModal() { document.getElementById('vip-modal').style.display = 'flex'; if (myProfile.isVIP) { document.getElementById('vip-buy-section').style.display = 'none'; document.getElementById('vip-manage-section').style.display = 'block'; document.getElementById('vip-color-picker').value = myProfile.nameColor || '#333d4b'; } else { document.getElementById('vip-buy-section').style.display = 'block'; document.getElementById('vip-manage-section').style.none; } }
 function closeVIPModal() { document.getElementById('vip-modal').style.display = 'none'; }
@@ -339,7 +343,19 @@ function renderProfile() {
         setTimeout(drawPriceChart, 50);
 }
 
-function doDailyAttendance() { const today = new Date().toDateString(); if (myProfile.lastDailyAttendance === today) { showToast("이미 완료하셨습니다!"); return; } myProfile.price += 50; if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; myProfile.lastDailyAttendance = today; showToast("💵 일일 출석 완료!"); saveData(); renderProfile(); }
+function doDailyAttendance() { 
+    const today = new Date().toDateString(); 
+    if (myProfile.lastDailyAttendance === today) { showToast("이미 완료하셨습니다!"); return; } 
+    myProfile.price += 50; 
+    if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; 
+    
+    // ★ 주가가 올랐으니 차트 기록에 현재 가격을 새로운 점으로 추가!
+    if (!myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice];
+    myProfile.priceHistory.push(myProfile.price); 
+    
+    myProfile.lastDailyAttendance = today; 
+    showToast("💵 일일 출석 완료!"); saveData(); renderProfile(); 
+}
 function openProfileModal() { document.getElementById('profile-modal').style.display = 'flex'; const grid = document.getElementById('default-profiles-grid'); grid.innerHTML = DEFAULT_AVATARS.map(url => `<div onclick="selectDefaultProfile('${url}')" style="cursor: pointer; border-radius: 12px; overflow: hidden; background: #f2f4f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.1s;"><img src="${url}" style="width: 100%; height: 100%; display: block; object-fit: cover;"></div>`).join(''); }
 function closeProfileModal() { document.getElementById('profile-modal').style.display = 'none'; }
 function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); showToast("프로필 이미지 변경!"); closeProfileModal(); renderProfile(); }
