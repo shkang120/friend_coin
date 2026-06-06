@@ -490,10 +490,19 @@ function drawFriendPriceChart(friend) {
     // 이전에 열어본 친구의 그래프가 남아있다면 지움
     if (friendChartInstance) { friendChartInstance.destroy(); }
 
-    // 친구의 기록이 없으면 기본가와 현재가로 임시 선을 만들어줌
-    const history = (friend.priceHistory && friend.priceHistory.length > 0) 
-                    ? friend.priceHistory 
-                    : [friend.basePrice || 20000, friend.price];
+    // ★ 1. 데이터 불일치 완벽 해결 (원본 훼손 없이 복사해서 사용)
+    let history = [];
+    if (friend.priceHistory && friend.priceHistory.length > 0) {
+        history = [...friend.priceHistory]; 
+        
+        // 그래프의 마지막 값이 현재 주가(friend.price)와 다르면, 현재 주가를 끝에 강제로 콕 찍어줌!
+        if (history[history.length - 1] !== friend.price) {
+            history.push(friend.price);
+        }
+    } else {
+        // 기록이 아예 없으면 기본가와 현재가로 시작
+        history = [friend.basePrice || 20000, friend.price];
+    }
 
     const isUp = history[history.length - 1] >= history[0];
     const lineColor = isUp ? '#ff3b30' : '#3182f6';
@@ -509,16 +518,20 @@ function drawFriendPriceChart(friend) {
                 data: history,
                 borderColor: lineColor,
                 backgroundColor: bgColor,
-                borderWidth: 2,
-                pointRadius: 0,
-                pointHoverRadius: 4,
+                borderWidth: 3,          // ★ 내 그래프처럼 선을 더 굵고 선명하게 (2 -> 3)
+                pointRadius: 0,          // 평소엔 점 숨기기
+                pointHoverRadius: 6,     // 마우스 올리면 점이 확 커짐
                 fill: true,
-                tension: 0.4
+                tension: 0.4             // 꿀렁거리는 부드러운 곡선 유지
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: {                 // ★ 모달이 열릴 때 쫙 그려지는 생동감 애니메이션!
+                duration: 1200,
+                easing: 'easeOutQuart'
+            },
             plugins: { legend: { display: false } },
             scales: {
                 x: { display: false },
@@ -526,7 +539,7 @@ function drawFriendPriceChart(friend) {
                     display: true, 
                     position: 'right',
                     grid: { color: '#f2f4f6', drawBorder: false },
-                    ticks: { font: { size: 9 }, color: '#8b95a1' }
+                    ticks: { font: { size: 10 }, color: '#8b95a1' } // 글씨도 살짝 키움
                 }
             },
             interaction: { intersect: false, mode: 'index' }
