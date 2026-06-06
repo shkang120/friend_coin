@@ -136,6 +136,11 @@ def evaluate_user(data: EvalData):
     evaluator = db["users"].find_one({"_id": data.evaluator_email})
     target = db["users"].find_one({"_id": data.target_email})
     if not evaluator or not target: return {"status": "error", "message": "유저 정보를 찾을 수 없습니다."}
+    if "priceHistory" not in target["profile"] or not target["profile"]["priceHistory"]:
+        # 기록이 아예 없으면 기본가(basePrice)로 첫 점을 찍어줌
+        target["profile"]["priceHistory"] = [target["profile"].get("basePrice", 20000)]
+    # 방금 변동된 최신 주가를 차트 기록 맨 끝에 점으로 추가!
+    target["profile"]["priceHistory"].append(target["profile"]["price"])
 
     e_prof = evaluator.get("profile", {})
     t_prof = target.get("profile", {})
