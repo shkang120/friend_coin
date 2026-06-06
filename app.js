@@ -194,11 +194,17 @@ function openFriendDetail(friendEmail) {
     let modal = document.getElementById('eval-modal');
     if(!modal) { modal = document.createElement('div'); modal.id = 'eval-modal'; modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;"; document.body.appendChild(modal); }
     const p1 = Math.floor(friend.price * 0.01).toLocaleString(); const p2 = Math.floor(friend.price * 0.02).toLocaleString(); const p3 = Math.floor(friend.price * 0.03).toLocaleString();
+    
     modal.innerHTML = `
         <div style="background:white; padding:30px 25px; border-radius:20px; width:85%; max-width:340px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
             <div style="margin-bottom:15px;">${getAvatarHtml(friend, 'large')}</div>
             <h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${friend.name}</h2>
             <div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:15px;">${Math.floor(friend.price).toLocaleString()} p</div>
+            
+            <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;">
+                <canvas id="friendPriceChart" style="width:100%; height:100px;"></canvas>
+            </div>
+
             <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
             <div style="text-align:left; margin-bottom:15px;"><div style="font-size:13px; font-weight:bold; color:#ff3b30; margin-bottom:8px;">👍 호평하기 (티켓 1장)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('good', 1)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+1%<br><span style="font-size:10px;">+${p1}p</span></button><button onclick="submitEvaluation('good', 2)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+2%<br><span style="font-size:10px;">+${p2}p</span></button><button onclick="submitEvaluation('good', 3)" style="flex:1; padding:10px 5px; background:#ff3b30; border:1px solid #ff3b30; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">+3%<br><span style="font-size:10px;">+${p3}p</span></button></div></div>
             <div style="text-align:left; margin-bottom:25px;"><div style="font-size:13px; font-weight:bold; color:#3182f6; margin-bottom:8px;">👎 악평하기 (티켓 1장)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('bad', 1)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-1%<br><span style="font-size:10px;">-${p1}p</span></button><button onclick="submitEvaluation('bad', 2)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-2%<br><span style="font-size:10px;">-${p2}p</span></button><button onclick="submitEvaluation('bad', 3)" style="flex:1; padding:10px 5px; background:#3182f6; border:1px solid #3182f6; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">-3%<br><span style="font-size:10px;">-${p3}p</span></button></div></div>
@@ -206,6 +212,8 @@ function openFriendDetail(friendEmail) {
         </div>
     `;
     modal.style.display = 'flex';
+
+    // ★ 이 줄이 반드시 있어야 그래프가 나타납니다!
     setTimeout(() => drawFriendPriceChart(friend), 50);
 }
 
