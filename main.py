@@ -1,64 +1,51 @@
-import os
-import random
-import string
-import requests
-import base64
-import time
-from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from pymongo import MongoClient
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from pymongo import MongoClient
+import os
+import httpx
+from dotenv import load_dotenv
 
 load_dotenv()
+
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 MONGO_URL = os.getenv("MONGO_URL")
-IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
-
 client = MongoClient(MONGO_URL)
-db = client["friend_coin_db"]
+db = client["friend_coin_db"] 
 
-class ProfileData(BaseModel):
-    profile: Dict[str, Any]
-    noti: List[Any]
+# ★ 평가 데이터 모델 (사유 포함)
+class EvalData(BaseModel):
+    evaluator_email: str
+    target_email: str
+    eval_type: str
+    intensity: int
+    reason: str = ""
 
-class RoomCreate(BaseModel):
+class UserData(BaseModel):
+    profile: dict
+    noti: list
+
+class RoomData(BaseModel):
     email: str
-    room_name: str
+    room_name: str = ""
+    room_code: str = ""
 
-class RoomJoin(BaseModel):
-    email: str
-    room_code: str
-
-# ★ 방 나가기 데이터 구조
-class RoomLeave(BaseModel):
-    email: str
-    room_code: str
-
-# ★ 채팅 데이터 구조
 class ChatData(BaseModel):
     room_code: str
     sender_email: str
     sender_name: str
     message: str
 
-class EvalData(BaseModel):
-    evaluator_email: str
-    target_email: str
-    eval_type: str 
-    intensity: int 
-
-class AgendaCreateData(BaseModel):
+class AgendaData(BaseModel):
     room_code: str
     creator_email: str
     target_email: str
@@ -69,31 +56,25 @@ class VoteData(BaseModel):
     room_code: str
     agenda_id: str
     voter_email: str
-    vote_type: str 
+    vote_type: str
 
-def generate_room_code():
-    while True:
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        if not db["rooms"].find_one({"_id": code}):
-            return code
-
-@app.get("/")
-def read_root():
-    return {"message": "친구 코인 서버 정상 작동 중 🚀"}
-
-@app.get("/api/check-nickname")
-def check_nickname(nickname: str):
-    existing = db["users"].find_one({"profile.name": nickname})
-    if existing: return {"available": False, "message": "이미 사용 중인 닉네임입니다."}
-    return {"available": True, "message": "사용 가능한 닉네임입니다!"}
-
+# ★ 1. 경로 인코딩 호환성을 위한 2중 라우터
 @app.get("/api/data/{email:path}")
 @app.get("/api/data/{email}")
 def get_user_data(email: str):
-    user_data = db["users"].find_one({"_id": email})
-    if not user_data: return {"isNewUser": True}
+    search_email = email.strip().lower()
+    user_data = db["users"].find_one({"_id": search_email})
+    
+    if not user_data: 
+        return {
+            "isNewUser": True,
+            "profile": {},
+            "noti": [],
+            "my_rooms": [],
+            "global_ranking": []
+        }
 
-    my_rooms_cursor = db["rooms"].find({"members": email})
+    my_rooms_cursor = db["rooms"].find({"members": search_email})
     my_rooms = []
     
     for room in my_rooms_cursor:
@@ -110,7 +91,7 @@ def get_user_data(email: str):
             "room_name": room["name"],
             "members": members_profiles,
             "agendas": room.get("agendas", []),
-            "messages": room.get("messages", []) # ★ 채팅 내용 불러오기
+            "messages": room.get("messages", []) 
         })
 
     all_users = list(db["users"].find({}, {"profile": 1}))
@@ -125,166 +106,187 @@ def get_user_data(email: str):
         "global_ranking": global_ranking 
     }
 
-@app.post("/api/save/{email}")
-def save_user_data(email: str, data: ProfileData):
-    if data.profile and data.profile.get("name"):
-        db["users"].update_one({"_id": email}, {"$set": {"profile": data.profile, "noti": data.noti}}, upsert=True)
+@app.post("/api/save/{email:path}")
+def save_user_data(email: str, data: UserData):
+    search_email = email.strip().lower()
+    db["users"].update_one(
+        {"_id": search_email}, 
+        {"$set": {"profile": data.profile, "noti": data.noti}}, 
+        upsert=True
+    )
     return {"status": "success"}
 
+# ★ 2. 평가 시스템 (차트 연동 및 사유 알림 포함)
 @app.post("/api/evaluate")
 def evaluate_user(data: EvalData):
     evaluator = db["users"].find_one({"_id": data.evaluator_email})
     target = db["users"].find_one({"_id": data.target_email})
-    if not evaluator or not target: return {"status": "error", "message": "유저 정보를 찾을 수 없습니다."}
+    if not evaluator or not target: return {"status": "error", "message": "유저를 찾을 수 없습니다."}
+
+    # 티켓 차감
+    if data.eval_type == 'good':
+        if evaluator["profile"].get("goodTickets", 0) <= 0: return {"status": "error", "message": "호평권 부족"}
+        evaluator["profile"]["goodTickets"] -= 1
+        evaluator["profile"]["stats"]["goodGiven"] = evaluator["profile"]["stats"].get("goodGiven", 0) + 1
+    else:
+        if evaluator["profile"].get("badTickets", 0) <= 0: return {"status": "error", "message": "악평권 부족"}
+        evaluator["profile"]["badTickets"] -= 1
+        evaluator["profile"]["stats"]["badGiven"] = evaluator["profile"]["stats"].get("badGiven", 0) + 1
+
+    db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": evaluator["profile"]}})
+
+    # 주가 변동 로직
+    base_price = target["profile"].get("basePrice", 20000)
+    change_rate = data.intensity * 0.01
+    change_amount = base_price * change_rate
+    
+    if data.eval_type == 'good':
+        target["profile"]["price"] += change_amount
+    else:
+        target["profile"]["price"] -= change_amount
+
+    # ★ 차트 기록용 (priceHistory) 배열 업데이트
     if "priceHistory" not in target["profile"] or not target["profile"]["priceHistory"]:
-        # 기록이 아예 없으면 기본가(basePrice)로 첫 점을 찍어줌
         target["profile"]["priceHistory"] = [target["profile"].get("basePrice", 20000)]
-    # 방금 변동된 최신 주가를 차트 기록 맨 끝에 점으로 추가!
     target["profile"]["priceHistory"].append(target["profile"]["price"])
 
-    e_prof = evaluator.get("profile", {})
-    t_prof = target.get("profile", {})
-    t_noti = target.get("noti", [])
-    e_name = e_prof.get("name", "누군가")
-
-    current_price = t_prof.get("price", 20000)
-    intensity_pct = data.intensity if data.intensity in [1, 2, 3] else 1
-    delta_price = int(current_price * (intensity_pct / 100.0))
-
-    if data.eval_type == "good":
-        if e_prof.get("goodTickets", 0) <= 0: return {"status": "error", "message": "남은 호평권이 없습니다!"}
-        e_prof["goodTickets"] -= 1
-        e_prof.setdefault("stats", {})["goodGiven"] = e_prof["stats"].get("goodGiven", 0) + 1
-        t_prof["price"] = current_price + delta_price
-        if t_prof["price"] > t_prof.get("maxPrice", 20000): t_prof["maxPrice"] = t_prof["price"]
-        t_noti.append(f"👍 {e_name}님이 {intensity_pct}% 호평을 남겨 주가가 {delta_price}p 상승했습니다!")
-
-    elif data.eval_type == "bad":
-        if e_prof.get("badTickets", 0) <= 0: return {"status": "error", "message": "남은 악평권이 없습니다!"}
-        e_prof["badTickets"] -= 1
-        e_prof.setdefault("stats", {})["badGiven"] = e_prof["stats"].get("badGiven", 0) + 1
-        t_prof["price"] = current_price - delta_price
-        t_noti.append(f"👎 {e_name}님이 {intensity_pct}% 악평을 남겨 주가가 {delta_price}p 하락했습니다!")
-
-    db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": e_prof}})
-    db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": t_prof, "noti": t_noti}})
-    return {"status": "success", "message": "평가가 성공적으로 반영되었습니다!"}
-
-@app.post("/api/agenda/create")
-def create_agenda(data: AgendaCreateData):
-    room = db["rooms"].find_one({"_id": data.room_code})
-    target_user = db["users"].find_one({"_id": data.target_email})
-    if not room or not target_user: return {"status": "error", "message": "정보를 찾을 수 없습니다."}
+    # ★ 알림(noti) 업데이트: 사유 전송
+    eval_icon = "👍호평" if data.eval_type == "good" else "👎악평"
+    evaluator_name = evaluator.get("profile", {}).get("name", "익명")
+    noti_msg = f"[{eval_icon}] {evaluator_name}님의 평가: {data.reason}"
     
-    agendas = room.get("agendas", [])
-    for a in agendas:
-        if a["target_email"] == data.target_email and a["status"] == "active":
-            return {"status": "error", "message": "이미 이 유저에 대한 재판이 진행 중입니다."}
-
-    agenda_id = str(random.randint(100000, 999999))
-    new_agenda = {
-        "id": agenda_id, "type": data.agenda_type, "target_email": data.target_email,
-        "target_name": target_user["profile"]["name"], "reason": data.reason,
-        "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active"
-    }
-    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"agendas": new_agenda}})
-    return {"status": "success", "message": "재판이 상정되었습니다!"}
-
-@app.post("/api/agenda/vote")
-def vote_agenda(data: VoteData):
-    room = db["rooms"].find_one({"_id": data.room_code})
-    if not room: return {"status": "error", "message": "방을 찾을 수 없습니다."}
-    agendas = room.get("agendas", [])
-    target_agenda = None
-    agenda_idx = -1
-    for i, a in enumerate(agendas):
-        if a["id"] == data.agenda_id and a["status"] == "active":
-            target_agenda = a
-            agenda_idx = i
-            break
-    if not target_agenda: return {"status": "error", "message": "종료되었거나 존재하지 않는 안건입니다."}
-    if data.voter_email in target_agenda["votedUsers"]: return {"status": "error", "message": "이미 투표하셨습니다!"}
-
-    db["rooms"].update_one(
-        {"_id": data.room_code, "agendas.id": data.agenda_id},
-        {"$inc": {"agendas.$.agreeVotes" if data.vote_type == "agree" else "agendas.$.disagreeVotes": 1},
-         "$push": {"agendas.$.votedUsers": data.voter_email}}
-    )
-
-    updated_room = db["rooms"].find_one({"_id": data.room_code})
-    agenda = updated_room["agendas"][agenda_idx]
-    total_members = len(updated_room["members"])
-    required_votes = (total_members // 2) + 1
+    if "noti" not in target:
+        target["noti"] = []
     
-    if agenda["agreeVotes"] >= required_votes:
-        t_user = db["users"].find_one({"_id": agenda["target_email"]})
-        t_prof = t_user["profile"]
-        t_noti = t_user.get("noti", [])
-        if agenda["type"] == "delist":
-            t_prof["status"] = "delisted"
-            t_noti.append(f"🚨 주주총회 결과, 코인이 [상장폐지] 되었습니다.")
-        elif agenda["type"] == "revival":
-            t_prof["status"] = "active"
-            t_prof["price"] = 20000 
-            t_noti.append(f"🌱 코인이 [재상장] 되었습니다!")
-        db["users"].update_one({"_id": agenda["target_email"]}, {"$set": {"profile": t_prof, "noti": t_noti}})
-        db["rooms"].update_one({"_id": data.room_code, "agendas.id": data.agenda_id}, {"$set": {"agendas.$.status": "passed"}})
-        return {"status": "resolved", "result": "passed", "message": "과반수 찬성으로 최종 가결되었습니다!"}
-    elif agenda["disagreeVotes"] >= required_votes or (agenda["agreeVotes"] + agenda["disagreeVotes"] == total_members):
-        if agenda["disagreeVotes"] >= agenda["agreeVotes"]:
-            db["rooms"].update_one({"_id": data.room_code, "agendas.id": data.agenda_id}, {"$set": {"agendas.$.status": "rejected"}})
-            return {"status": "resolved", "result": "rejected", "message": "최종 기각(부결)되었습니다."}
-    return {"status": "success", "message": "투표가 기록되었습니다."}
+    target["noti"].insert(0, noti_msg)
+    target["noti"] = target["noti"][:30] # 알림은 30개까지만 보관
 
-@app.post("/api/room/create")
-def create_room(data: RoomCreate):
-    code = generate_room_code()
-    new_room = {"_id": code, "name": data.room_name, "members": [data.email], "agendas": [], "messages": []}
-    db["rooms"].insert_one(new_room)
-    return {"status": "success", "room_code": code, "room_name": data.room_name}
-
-@app.post("/api/room/join")
-def join_room(data: RoomJoin):
-    room = db["rooms"].find_one({"_id": data.room_code.upper()})
-    if not room: return {"status": "error", "message": "존재하지 않는 초대 코드입니다."}
-    if data.email in room["members"]: return {"status": "error", "message": "이미 참여 중입니다."}
-    db["rooms"].update_one({"_id": data.room_code.upper()}, {"$push": {"members": data.email}})
-    return {"status": "success", "room_name": room["name"]}
-
-# ★ 신규 추가: 클럽(방) 나가기 API
-@app.post("/api/room/leave")
-def leave_room(data: RoomLeave):
-    db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"members": data.email}})
+    db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"], "noti": target["noti"]}})
+    
     return {"status": "success"}
 
-# ★ 신규 추가: 채팅 보내기 API
+# === 기타 기본 기능 엔드포인트 ===
+@app.get("/api/check-nickname")
+def check_nickname(nickname: str):
+    user = db["users"].find_one({"profile.name": nickname})
+    if user: return {"available": False, "message": "이미 사용 중인 닉네임입니다."}
+    return {"available": True}
+
+@app.post("/api/room/create")
+def create_room(data: RoomData):
+    import random, string
+    code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    db["rooms"].insert_one({
+        "_id": code, "name": data.room_name, "members": [data.email.strip().lower()],
+        "agendas": [], "messages": []
+    })
+    return {"status": "success", "room_code": code}
+
+@app.post("/api/room/join")
+def join_room(data: RoomData):
+    room = db["rooms"].find_one({"_id": data.room_code})
+    if not room: return {"status": "error", "message": "존재하지 않는 코드입니다."}
+    user_email = data.email.strip().lower()
+    if user_email not in room.get("members", []):
+        db["rooms"].update_one({"_id": data.room_code}, {"$push": {"members": user_email}})
+    return {"status": "success"}
+
+@app.post("/api/room/leave")
+def leave_room(data: RoomData):
+    user_email = data.email.strip().lower()
+    db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"members": user_email}})
+    return {"status": "success"}
+
 @app.post("/api/room/chat")
 def send_chat(data: ChatData):
     chat_msg = {
-        "sender_email": data.sender_email,
+        "sender_email": data.sender_email.strip().lower(),
         "sender_name": data.sender_name,
-        "message": data.message,
-        "timestamp": int(time.time())
+        "message": data.message
     }
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": chat_msg}})
     return {"status": "success"}
 
-@app.get("/api/reset/{email}")
-def reset_user(email: str):
-    db["users"].delete_one({"_id": email})
-    db["rooms"].update_many({"members": email}, {"$pull": {"members": email}})
-    return {"message": "계정 삭제 완료"}
+@app.post("/api/agenda/create")
+def create_agenda(data: AgendaData):
+    import uuid
+    agenda_id = str(uuid.uuid4())
+    target = db["users"].find_one({"_id": data.target_email})
+    target_name = target.get("profile", {}).get("name", "알 수 없음") if target else "알 수 없음"
+    
+    agenda = {
+        "id": agenda_id, "creator_email": data.creator_email, "target_email": data.target_email,
+        "target_name": target_name, "type": data.agenda_type, "reason": data.reason,
+        "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active"
+    }
+    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"agendas": agenda}})
+    return {"status": "success", "message": "주주총회 안건이 상정되었습니다!"}
+
+@app.post("/api/agenda/vote")
+def vote_agenda(data: VoteData):
+    room = db["rooms"].find_one({"_id": data.room_code})
+    if not room: return {"status": "error", "message": "방이 없습니다."}
+    
+    agendas = room.get("agendas", [])
+    target_agenda = None
+    for a in agendas:
+        if a["id"] == data.agenda_id:
+            target_agenda = a
+            break
+            
+    if not target_agenda: return {"status": "error", "message": "안건을 찾을 수 없습니다."}
+    if data.voter_email in target_agenda.get("votedUsers", []): return {"status": "error", "message": "이미 투표하셨습니다."}
+    
+    target_agenda["votedUsers"].append(data.voter_email)
+    if data.vote_type == "agree": target_agenda["agreeVotes"] += 1
+    else: target_agenda["disagreeVotes"] += 1
+    
+    total_members = len(room.get("members", []))
+    required_votes = (total_members // 2) + 1
+    
+    status_msg = "success"
+    message = "투표 완료"
+    
+    # 정족수 달성 시 판결 로직
+    if target_agenda["agreeVotes"] >= required_votes:
+        target_agenda["status"] = "resolved"
+        target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
+        
+        if target_user:
+            if target_agenda["type"] == "delist":
+                target_user["profile"]["status"] = "delisted"
+                target_user["profile"]["price"] = 0
+                message = f"🚨 {target_agenda['target_name']}님이 상장폐지 처리되었습니다."
+            elif target_agenda["type"] == "revival":
+                target_user["profile"]["status"] = "active"
+                target_user["profile"]["price"] = 10000
+                message = f"🌱 {target_agenda['target_name']}님이 기적적으로 회생(재상장) 되었습니다!"
+                
+            db["users"].update_one({"_id": target_agenda["target_email"]}, {"$set": {"profile": target_user["profile"]}})
+        
+        status_msg = "resolved"
+        
+    elif target_agenda["disagreeVotes"] >= required_votes:
+        target_agenda["status"] = "rejected"
+        status_msg = "resolved"
+        message = f"⚖️ 반대표가 많아 안건이 기각되었습니다."
+
+    db["rooms"].update_one({"_id": data.room_code}, {"$set": {"agendas": agendas}})
+    return {"status": status_msg, "message": message}
 
 @app.post("/api/upload")
-def upload_image(image: UploadFile = File(...)):
-    try:
-        if not IMGBB_API_KEY: return {"error": "API key missing"}
-        file_bytes = image.file.read()
-        encoded_image = base64.b64encode(file_bytes).decode("utf-8")
-        url = "https://api.imgbb.com/1/upload"
-        payload = {"key": IMGBB_API_KEY, "image": encoded_image}
-        response = requests.post(url, data=payload)
-        data = response.json()
-        if data.get("success"): return {"url": data["data"]["url"]}
-        return {"error": "Upload failed"}
-    except Exception as e: return {"error": str(e)}
+async def upload_image(image: UploadFile = File(...)):
+    import base64
+    contents = await image.read()
+    img_b64 = base64.b64encode(contents).decode("utf-8")
+    api_key = os.getenv("IMGBB_API_KEY")
+    
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            f"https://api.imgbb.com/1/upload?key={api_key}",
+            data={"image": img_b64}
+        )
+    data = res.json()
+    if data.get("success"):
+        return {"url": data["data"]["url"]}
+    return {"error": "업로드 실패"}

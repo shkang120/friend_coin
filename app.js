@@ -1,4 +1,4 @@
-const BACKEND_URL = "https://friend-coin.onrender.com"; 
+const BACKEND_URL = "https://friend-coin-backend.onrender.com"; // ★ 본인의 진짜 주소 확인
 
 let myEmail = localStorage.getItem('fc_email') || null; 
 let myUsername = localStorage.getItem('fc_username') || null;
@@ -15,7 +15,7 @@ const defaultProfile = {
     lastDailyAdBonus: null, dailyAdTicketsDate: null, dailyAdTicketsCount: 0, 
     badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 },
     isVIP: false, nameColor: "#333d4b",
-    priceHistory: []
+    priceHistory: [] // ★ 차트 기록 배열 추가
 };
 
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = [];   
@@ -115,7 +115,6 @@ function renderHome() {
                 </div>
             </div>
             
-            <!-- 채팅방 영역 -->
             <div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div>
@@ -186,6 +185,7 @@ async function sendChat() {
 }
 async function refreshChat() { await initializeApp(); }
 
+// ★ 친구 상세 프로필 모달 (차트 및 사유 입력칸 포함)
 function openFriendDetail(friendEmail) {
     const room = myRooms.find(r => r.room_code === currentRoomCode); const friend = room.members.find(m => m.email === friendEmail); if (!friend) return;
     currentSelectedFriend = friend;
@@ -206,6 +206,9 @@ function openFriendDetail(friendEmail) {
             </div>
 
             <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
+            
+            <textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; margin-bottom:15px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea>
+            
             <div style="text-align:left; margin-bottom:15px;"><div style="font-size:13px; font-weight:bold; color:#ff3b30; margin-bottom:8px;">👍 호평하기 (티켓 1장)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('good', 1)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+1%<br><span style="font-size:10px;">+${p1}p</span></button><button onclick="submitEvaluation('good', 2)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+2%<br><span style="font-size:10px;">+${p2}p</span></button><button onclick="submitEvaluation('good', 3)" style="flex:1; padding:10px 5px; background:#ff3b30; border:1px solid #ff3b30; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">+3%<br><span style="font-size:10px;">+${p3}p</span></button></div></div>
             <div style="text-align:left; margin-bottom:25px;"><div style="font-size:13px; font-weight:bold; color:#3182f6; margin-bottom:8px;">👎 악평하기 (티켓 1장)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('bad', 1)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-1%<br><span style="font-size:10px;">-${p1}p</span></button><button onclick="submitEvaluation('bad', 2)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-2%<br><span style="font-size:10px;">-${p2}p</span></button><button onclick="submitEvaluation('bad', 3)" style="flex:1; padding:10px 5px; background:#3182f6; border:1px solid #3182f6; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">-3%<br><span style="font-size:10px;">-${p3}p</span></button></div></div>
             <button onclick="document.getElementById('eval-modal').style.display='none'" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">취소</button>
@@ -213,18 +216,39 @@ function openFriendDetail(friendEmail) {
     `;
     modal.style.display = 'flex';
 
-    // ★ 이 줄이 반드시 있어야 그래프가 나타납니다!
     setTimeout(() => drawFriendPriceChart(friend), 50);
 }
 
+// ★ 사유 검증 및 전송 로직 포함
 async function submitEvaluation(evalType, intensity) {
     if (!currentSelectedFriend) return;
     if (evalType === 'good' && myProfile.goodTickets <= 0) { alert("남은 호평권이 없습니다!"); return; }
     if (evalType === 'bad' && myProfile.badTickets <= 0) { alert("남은 악평권이 없습니다!"); return; }
+
+    const reasonInput = document.getElementById('eval-reason-input');
+    const reasonText = reasonInput ? reasonInput.value.trim() : "";
+    if (!reasonText) { 
+        alert("평가 사유를 반드시 작성해 주세요!"); 
+        if(reasonInput) reasonInput.focus();
+        return; 
+    }
+
     document.getElementById('eval-modal').style.display = 'none'; showToast(`⏳ 반영 중...`);
     try {
-        const res = await fetch(`${BACKEND_URL}/api/evaluate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity }) });
-        const data = await res.json(); if (data.status === 'success') { showToast(`✅ 주가 조정 완료!`); await initializeApp(); } else { alert(data.message); }
+        const res = await fetch(`${BACKEND_URL}/api/evaluate`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ 
+                evaluator_email: myEmail, 
+                target_email: currentSelectedFriend.email, 
+                eval_type: evalType, 
+                intensity: intensity,
+                reason: reasonText 
+            }) 
+        });
+        const data = await res.json(); 
+        if (data.status === 'success') { showToast(`✅ 주가 조정 완료!`); await initializeApp(); } 
+        else { alert(data.message); }
     } catch(err) { alert("네트워크 오류 발생"); }
 }
 
@@ -305,11 +329,21 @@ function watchAd(type) {
     const btn = document.getElementById('ad-close-btn'); btn.textContent = "광고를 끝까지 시청해주세요"; btn.style.background = "#e5e8eb"; btn.style.color = "#8b95a1"; btn.disabled = true; btn.onclick = null;
     adInterval = setInterval(() => { timeLeft--; if (timeLeft > 0) { document.getElementById('ad-timer').textContent = `광고 시청 중... (${timeLeft}초)`; } else { clearInterval(adInterval); document.getElementById('ad-timer').textContent = "✅ 시청 완료!"; btn.textContent = "보상 받기 🎁"; btn.style.background = "#3182f6"; btn.style.color = "white"; btn.disabled = false; btn.onclick = () => claimAdReward(false); } }, 1000);
 }
-function claimAdReward(isVipPass = false) { document.getElementById('ad-modal').style.display = 'none';
-    const todayStr = new Date().toDateString();
-    if (currentAdRewardType === 'double_attendance') { myProfile.price += 50; if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price;
-        if (!myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice]; myProfile.priceHistory.push(myProfile.price);
-        myProfile.lastDailyAdBonus = todayStr; if (isVipPass) showToast("👑 VIP 프리패스! 50p 상승."); else showToast("🎁 50p가 추가 상승했습니다."); } else if (currentAdRewardType === 'extra_ticket') { myProfile.goodTickets += 1; myProfile.badTickets += 1; myProfile.dailyAdTicketsCount++; myProfile.dailyAdTicketsDate = todayStr; if (isVipPass) showToast(`👑 VIP 프리패스! 평가권 +1장!`); else showToast(`🎁 평가권 각 +1장 획득!`); } saveData(); renderProfile(); }
+function claimAdReward(isVipPass = false) { 
+    document.getElementById('ad-modal').style.display = 'none'; const todayStr = new Date().toDateString(); 
+    if (currentAdRewardType === 'double_attendance') { 
+        myProfile.price += 50; 
+        if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; 
+        if (!myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice];
+        myProfile.priceHistory.push(myProfile.price);
+        myProfile.lastDailyAdBonus = todayStr; 
+        if (isVipPass) showToast("👑 VIP 프리패스! 50p 상승."); else showToast("🎁 50p가 추가 상승했습니다."); 
+    } else if (currentAdRewardType === 'extra_ticket') { 
+        myProfile.goodTickets += 1; myProfile.badTickets += 1; myProfile.dailyAdTicketsCount++; myProfile.dailyAdTicketsDate = todayStr; 
+        if (isVipPass) showToast(`👑 VIP 프리패스! 평가권 +1장!`); else showToast(`🎁 평가권 각 +1장 획득!`); 
+    } 
+    saveData(); renderProfile(); 
+}
 
 function openVIPModal() { document.getElementById('vip-modal').style.display = 'flex'; if (myProfile.isVIP) { document.getElementById('vip-buy-section').style.display = 'none'; document.getElementById('vip-manage-section').style.display = 'block'; document.getElementById('vip-color-picker').value = myProfile.nameColor || '#333d4b'; } else { document.getElementById('vip-buy-section').style.display = 'block'; document.getElementById('vip-manage-section').style.none; } }
 function closeVIPModal() { document.getElementById('vip-modal').style.display = 'none'; }
@@ -317,6 +351,7 @@ function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; sav
 function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
 function claimWeeklyTickets() { if (myProfile.weeklyTicketsClaimed) { showToast("이미 획득하셨습니다!"); return; } myProfile.goodTickets += 1; myProfile.badTickets += 1; myProfile.weeklyTicketsClaimed = true; showToast("🎫 평가권 추가!"); saveData(); renderProfile(); }
 
+// ★ 내 정보 탭 렌더링 (차트 포함)
 function renderProfile() {
     const container = document.getElementById('my-profile-info'); if(!container || !myProfile) return;
     const isDelisted = myProfile.status === 'delisted'; const changeAmount = myProfile.price - myProfile.basePrice; const changeRate = ((changeAmount / myProfile.basePrice) * 100).toFixed(1);
@@ -343,13 +378,16 @@ function renderProfile() {
             <div style="background: #f9fafb; padding: 15px; border-radius: 12px; width: 40%;"><div style="font-size: 13px; color: #8b95a1;">남은 악평권 👎</div><div style="font-size: 20px; font-weight: bold; color: #3182f6;">${myProfile.badTickets} 장</div></div>
         </div>
         <div style="font-size: 32px; font-weight: bold; color: #333d4b; margin-top: 20px;">${isDelisted ? '💀' : Math.floor(myProfile.price).toLocaleString()} p</div>
-        <div style="font-weight: bold; color: ${colorClass}; margin-bottom: 30px;">${isDelisted ? '' : sign + Math.floor(changeAmount).toLocaleString() + ' p (' + sign + changeRate + '%)'}</div>
+        <div style="font-weight: bold; color: ${colorClass}; margin-bottom: 20px;">${isDelisted ? '' : sign + Math.floor(changeAmount).toLocaleString() + ' p (' + sign + changeRate + '%)'}</div>
+        
         <div style="background: white; padding: 15px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); border: 1px solid #f2f4f6;">
             <canvas id="priceChart" style="width:100%; height:150px;"></canvas>
         </div>
+        
         ${actionBtn}
-        <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px;" onclick="handleLogout()">🚪 로그아웃</button>`;
-        setTimeout(drawPriceChart, 50);
+        <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px;" onclick="handleLogout()">🚪 로그아웃</button>
+    `;
+    setTimeout(drawPriceChart, 50); 
 }
 
 function doDailyAttendance() { 
@@ -357,14 +395,12 @@ function doDailyAttendance() {
     if (myProfile.lastDailyAttendance === today) { showToast("이미 완료하셨습니다!"); return; } 
     myProfile.price += 50; 
     if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; 
-    
-    // ★ 주가가 올랐으니 차트 기록에 현재 가격을 새로운 점으로 추가!
     if (!myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice];
     myProfile.priceHistory.push(myProfile.price); 
-    
     myProfile.lastDailyAttendance = today; 
     showToast("💵 일일 출석 완료!"); saveData(); renderProfile(); 
 }
+
 function openProfileModal() { document.getElementById('profile-modal').style.display = 'flex'; const grid = document.getElementById('default-profiles-grid'); grid.innerHTML = DEFAULT_AVATARS.map(url => `<div onclick="selectDefaultProfile('${url}')" style="cursor: pointer; border-radius: 12px; overflow: hidden; background: #f2f4f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.1s;"><img src="${url}" style="width: 100%; height: 100%; display: block; object-fit: cover;"></div>`).join(''); }
 function closeProfileModal() { document.getElementById('profile-modal').style.display = 'none'; }
 function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); showToast("프로필 이미지 변경!"); closeProfileModal(); renderProfile(); }
@@ -420,129 +456,52 @@ async function initializeApp() {
     } 
 }
 
-function finishSetup() { if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; }
-                         if (myProfile && !myProfile.badges) myProfile.badges = [];
-                         if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 };
-                         if (myProfile && !myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice, myProfile.price];
-                         checkRefill(); checkBadges(); updateTicker(); switchTab('home');
-                        }
+function finishSetup() { 
+    if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; } 
+    if (myProfile && !myProfile.badges) myProfile.badges = []; 
+    if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
+    if (myProfile && !myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice, myProfile.price];
+    checkRefill(); checkBadges(); updateTicker(); switchTab('home'); 
+}
 
 window.onload = () => { if (!myEmail) { showLoginScreen(); } else { initializeApp(); } };
 
-let myChartInstance = null; // 기존 그래프를 기억할 변수
-
+// ★ 내 주가 차트 그리기 함수
+let myChartInstance = null; 
 function drawPriceChart() {
     const ctx = document.getElementById('priceChart');
     if (!ctx || !myProfile || !myProfile.priceHistory) return;
-
-    // 만약 예전에 그려둔 그래프가 있다면 지우고 새로 그림 (겹침 방지)
     if (myChartInstance) { myChartInstance.destroy(); }
-
-    // 그래프 선 색상 결정 (떡상이면 빨간색, 떡락이면 파란색)
     const history = myProfile.priceHistory;
     const isUp = history[history.length - 1] >= history[0];
     const lineColor = isUp ? '#ff3b30' : '#3182f6';
     const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
-
-    // 점 개수에 맞춰서 가로축(X축) 라벨 생성 (빈 칸으로 둬서 선만 깔끔하게 보이게)
     const labels = history.map(() => ''); 
-
     myChartInstance = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: '내 주가 흐름',
-                data: history,
-                borderColor: lineColor,
-                backgroundColor: bgColor,
-                borderWidth: 3,          // 선 굵기
-                pointRadius: 0,          // 평소엔 점 숨기기 (깔끔하게)
-                pointHoverRadius: 6,     // 마우스 올리면 점 커짐
-                fill: true,              // 선 아래쪽 색상 채우기
-                tension: 0.4             // 선을 부드러운 곡선으로 만들기
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } }, // 위쪽 범례 숨기기
-            scales: {
-                x: { display: false }, // X축 선 숨기기
-                y: { 
-                    display: true, 
-                    position: 'right', // 가격을 오른쪽에 표시
-                    grid: { color: '#f2f4f6', drawBorder: false }, // 가로줄 연하게
-                    ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' }
-                }
-            },
-            interaction: { intersect: false, mode: 'index' }
-        }
+        data: { labels: labels, datasets: [{ label: '내 주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] },
+        options: { responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } }
     });
 }
 
-let friendChartInstance = null; // 친구 그래프용 변수
-
+// ★ 친구 주가 차트 그리기 함수 (데이터 동기화 및 애니메이션 적용)
+let friendChartInstance = null; 
 function drawFriendPriceChart(friend) {
     const ctx = document.getElementById('friendPriceChart');
     if (!ctx) return;
-
-    // 이전에 열어본 친구의 그래프가 남아있다면 지움
     if (friendChartInstance) { friendChartInstance.destroy(); }
-
-    // ★ 1. 데이터 불일치 완벽 해결 (원본 훼손 없이 복사해서 사용)
     let history = [];
     if (friend.priceHistory && friend.priceHistory.length > 0) {
         history = [...friend.priceHistory]; 
-        
-        // 그래프의 마지막 값이 현재 주가(friend.price)와 다르면, 현재 주가를 끝에 강제로 콕 찍어줌!
-        if (history[history.length - 1] !== friend.price) {
-            history.push(friend.price);
-        }
-    } else {
-        // 기록이 아예 없으면 기본가와 현재가로 시작
-        history = [friend.basePrice || 20000, friend.price];
-    }
-
+        if (history[history.length - 1] !== friend.price) { history.push(friend.price); }
+    } else { history = [friend.basePrice || 20000, friend.price]; }
     const isUp = history[history.length - 1] >= history[0];
     const lineColor = isUp ? '#ff3b30' : '#3182f6';
     const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
     const labels = history.map(() => '');
-
     friendChartInstance = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: '주가 흐름',
-                data: history,
-                borderColor: lineColor,
-                backgroundColor: bgColor,
-                borderWidth: 3,          // ★ 내 그래프처럼 선을 더 굵고 선명하게 (2 -> 3)
-                pointRadius: 0,          // 평소엔 점 숨기기
-                pointHoverRadius: 6,     // 마우스 올리면 점이 확 커짐
-                fill: true,
-                tension: 0.4             // 꿀렁거리는 부드러운 곡선 유지
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: {                 // ★ 모달이 열릴 때 쫙 그려지는 생동감 애니메이션!
-                duration: 1200,
-                easing: 'easeOutQuart'
-            },
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { display: false },
-                y: { 
-                    display: true, 
-                    position: 'right',
-                    grid: { color: '#f2f4f6', drawBorder: false },
-                    ticks: { font: { size: 10 }, color: '#8b95a1' } // 글씨도 살짝 키움
-                }
-            },
-            interaction: { intersect: false, mode: 'index' }
-        }
+        data: { labels: labels, datasets: [{ label: '주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] },
+        options: { responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } }
     });
 }
