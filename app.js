@@ -1,4 +1,4 @@
-const BACKEND_URL = "https://friend-coin-backend.onrender.com"; // ★ 본인의 진짜 주소 확인
+const BACKEND_URL = "https://friend-coin.onrender.com"; // ★ 본인의 진짜 주소 확인
 
 let myEmail = localStorage.getItem('fc_email') || null; 
 let myUsername = localStorage.getItem('fc_username') || null;
