@@ -385,7 +385,8 @@ function renderProfile() {
         </div>
         
         ${actionBtn}
-        <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px;" onclick="handleLogout()">🚪 로그아웃</button>
+        <!-- ★ margin-bottom: 100px; 를 추가해서 밑에 빈 공간을 넉넉하게 뚫어줍니다 -->
+        <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px; margin-bottom: 100px;" onclick="handleLogout()">🚪 로그아웃</button>
     `;
     setTimeout(drawPriceChart, 50); 
 }
