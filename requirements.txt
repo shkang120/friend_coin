@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 pymongo
-python-dotenv
-requests
+pydantic
 python-multipart
-#pip install -r requirements.txt
+httpx
+python-dotenv
