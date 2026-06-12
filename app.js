@@ -60,9 +60,17 @@ function updateTicker() {
     tickerEl.innerHTML = `[글로벌 시황] 👑 전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p) &nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; [공지] 프라이빗 투자 클럽 내부 채팅방 기능 업데이트!`;
 }
 
+// ★ 모든 데이터 전송 요청에 헤더 인증(Authorization: Bearer 토큰) 장착
 function saveData() { 
     checkBadges(); updateTicker(); if (!myEmail) return;
-    fetch(`${BACKEND_URL}/api/save/${encodeURIComponent(myEmail)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile: myProfile, noti: myNotifications }) }).catch(err => console.error(err));
+    fetch(`${BACKEND_URL}/api/save`, { 
+        method: "POST", 
+        headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` // 신분증 동봉
+        }, 
+        body: JSON.stringify({ profile: myProfile, noti: myNotifications }) 
+    }).catch(err => console.error(err));
 }
 
 function checkRefill() {
@@ -100,8 +108,8 @@ function renderHome() {
 function enterRoom(code) { currentRoomCode = code; renderHome(); }
 function exitRoomView() { currentRoomCode = null; renderHome(); }
 
-async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가시겠습니까?")) return; try { const res = await fetch(`${BACKEND_URL}/api/room/leave`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, room_code: currentRoomCode }) }); const data = await res.json(); if(data.status === 'success') { showToast("클럽에서 퇴장했습니다."); currentRoomCode = null; await initializeApp(); } } catch(err) { alert("오류 발생"); } }
-async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await refreshChat(); } catch(err) { console.error(err); } }
+async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가시겠습니까?")) return; try { const res = await fetch(`${BACKEND_URL}/api/room/leave`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: currentRoomCode }) }); const data = await res.json(); if(data.status === 'success') { showToast("클럽에서 퇴장했습니다."); currentRoomCode = null; await initializeApp(); } } catch(err) { alert("오류 발생"); } }
+async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await refreshChat(); } catch(err) { console.error(err); } }
 async function refreshChat() { await initializeApp(); }
 
 function openFriendDetail(friendEmail) {
@@ -139,7 +147,7 @@ async function submitEvaluation(evalType, intensity) {
 
     document.getElementById('eval-modal').style.display = 'none'; showToast(`⏳ 반영 중...`);
     try {
-        const res = await fetch(`${BACKEND_URL}/api/evaluate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity, reason: reasonText }) });
+        const res = await fetch(`${BACKEND_URL}/api/evaluate`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity, reason: reasonText }) });
         const data = await res.json(); 
         if (data.status === 'success') { showToast(`✅ 주가 조정 완료!`); await initializeApp(); } else { alert(data.message); }
     } catch(err) { alert("네트워크 오류 발생"); }
@@ -166,7 +174,7 @@ async function submitCreateAgenda() {
     const targetEmail = targetSelect.value; const agendaType = document.getElementById('agenda-type-select').value; const reason = document.getElementById('agenda-reason-input').value.trim();
     if(!reason) { alert("사유를 입력하세요!"); return; }
     document.getElementById('agenda-create-modal').style.display = 'none'; showToast("⏳ 안건 상정 중...");
-    try { const res = await fetch(`${BACKEND_URL}/api/agenda/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: currentRoomCode, creator_email: myEmail, target_email: targetEmail, agenda_type: agendaType, reason: reason }) }); const data = await res.json(); if(data.status === 'success') { alert(data.message); myProfile.stats.trialCount = (myProfile.stats.trialCount || 0) + 1; saveData(); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("서버 통신 실패"); }
+    try { const res = await fetch(`${BACKEND_URL}/api/agenda/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, creator_email: myEmail, target_email: targetEmail, agenda_type: agendaType, reason: reason }) }); const data = await res.json(); if(data.status === 'success') { alert(data.message); myProfile.stats.trialCount = (myProfile.stats.trialCount || 0) + 1; saveData(); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("서버 통신 실패"); }
 }
 
 function renderMeeting() {
@@ -182,10 +190,10 @@ function renderMeeting() {
         return `<div class="info-card" style="border-left: 5px solid ${titleColor};"><div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">피고인: <b>${a.target_name}</b></div></div></div><div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 기소 사유:</b><br>${a.reason}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#8b95a1; margin-bottom:12px; background:#fff; padding:4px;"><div>👍 찬성: <b style="color:#ff3b30;">${a.agreeVotes}표</b></div><div>👎 반대: <b style="color:#3182f6;">${a.disagreeVotes}표</b></div><div style="background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:4px; font-weight:bold;">정족수: (${requiredVotes}/${totalMembers}명)</div></div><div style="display: flex; gap: 10px;">${btnHtml}</div></div>`;
     }).join('');
 }
-async function submitVote(agendaId, voteType) { showToast("⏳ 표결 전달 중..."); try { const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); const data = await res.json(); if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await initializeApp(); switchTab('home'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("네트워크 오류"); } }
+async function submitVote(agendaId, voteType) { showToast("⏳ 표결 전달 중..."); try { const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); const data = await res.json(); if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await initializeApp(); switchTab('home'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("네트워크 오류"); } }
 
-async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await initializeApp(); } } catch(err) { alert("서버 오류"); } }
-async function joinExistingRoom() { const code = prompt("초대 코드를 입력하세요:"); if(!code || code.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/join`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, room_code: code.trim().toUpperCase() }) }); const data = await res.json(); if(data.status === 'error') { alert(data.message); return; } alert(`🚪 입장 성공!`); await initializeApp(); } catch(err) { alert("서버 오류"); } }
+async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await initializeApp(); } } catch(err) { alert("서버 오류"); } }
+async function joinExistingRoom() { const code = prompt("초대 코드를 입력하세요:"); if(!code || code.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: code.trim().toUpperCase() }) }); const data = await res.json(); if(data.status === 'error') { alert(data.message); return; } alert(`🚪 입장 성공!`); await initializeApp(); } catch(err) { alert("서버 오류"); } }
 
 function renderRanking() {
     const container = document.getElementById('ranking-content'); if (!container || !myProfile || globalRanking.length === 0) return;
@@ -198,15 +206,11 @@ function renderRanking() {
     container.innerHTML = `<div style="background: white; border-radius: 16px; padding: 20px 15px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee;"><h3 style="margin-top: 0; color: #333d4b;">🌍 전국구 통합 랭킹 Top 10</h3><p style="font-size:12px; color:#8b95a1; margin-bottom:20px;">모든 클럽의 주가가 합산된 실시간 순위보드입니다.</p>${top10.map((p, i) => createTotalRankCard(p, i)).join('')}</div>`;
 }
 
-// ★ 보상 관련 함수들: 브라우저가 조작하지 않고 서버(/api/reward)에 계산을 맡깁니다!
 async function doDailyAttendance() { 
-    const today = new Date().toDateString(); 
-    if (myProfile.lastDailyAttendance === today) { showToast("이미 완료하셨습니다!"); return; } 
-    showToast("⏳ 출석 처리 중...");
+    const today = new Date().toDateString(); if (myProfile.lastDailyAttendance === today) { showToast("이미 완료하셨습니다!"); return; } showToast("⏳ 출석 처리 중...");
     try {
-        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, reward_type: 'attendance', today_str: today }) });
-        const data = await res.json();
-        if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); } else { showToast(data.message); }
+        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: 'attendance', today_str: today }) });
+        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); } else { showToast(data.message); }
     } catch(err) { alert("서버 오류"); }
 }
 
@@ -219,22 +223,18 @@ function watchAd(type) {
 }
 
 async function claimAdReward(isVipPass = false) { 
-    document.getElementById('ad-modal').style.display = 'none'; const todayStr = new Date().toDateString(); 
-    showToast("⏳ 보상 수령 중...");
+    document.getElementById('ad-modal').style.display = 'none'; const todayStr = new Date().toDateString(); showToast("⏳ 보상 수령 중...");
     try {
-        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, reward_type: currentAdRewardType, today_str: todayStr }) });
-        const data = await res.json();
-        if(data.status === 'success') { myProfile = data.profile; showToast(isVipPass ? `👑 VIP 프리패스! ${data.message}` : data.message); saveData(); renderProfile(); } else { showToast(data.message); }
+        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: currentAdRewardType, today_str: todayStr }) });
+        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(isVipPass ? `👑 VIP 프리패스! ${data.message}` : data.message); saveData(); renderProfile(); } else { showToast(data.message); }
     } catch(err) { alert("서버 오류"); }
 }
 
 async function claimWeeklyTickets() { 
-    if (myProfile.weeklyTicketsClaimed) { showToast("이미 획득하셨습니다!"); return; } 
-    showToast("⏳ 처리 중...");
+    if (myProfile.weeklyTicketsClaimed) { showToast("이미 획득하셨습니다!"); return; } showToast("⏳ 처리 중...");
     try {
-        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, reward_type: 'weekly', today_str: new Date().toDateString() }) });
-        const data = await res.json();
-        if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); } else { showToast(data.message); }
+        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: 'weekly', today_str: new Date().toDateString() }) });
+        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); } else { showToast(data.message); }
     } catch(err) { alert("서버 오류"); }
 }
 
@@ -279,7 +279,7 @@ function renderProfile() {
 
 function openProfileModal() { document.getElementById('profile-modal').style.display = 'flex'; const grid = document.getElementById('default-profiles-grid'); grid.innerHTML = DEFAULT_AVATARS.map(url => `<div onclick="selectDefaultProfile('${url}')" style="cursor: pointer; border-radius: 12px; overflow: hidden; background: #f2f4f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.1s;"><img src="${url}" style="width: 100%; height: 100%; display: block; object-fit: cover;"></div>`).join(''); }
 function closeProfileModal() { document.getElementById('profile-modal').style.display = 'none'; }
-function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); showToast("프로필 이미지 변경!"); closeProfileModal(); renderProfile(); }
+function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); showToast("프로厌 이미지 변경!"); closeProfileModal(); renderProfile(); }
 async function changeNickname() { const newName = prompt("변경할 닉네임 (최대 8자):"); if(!newName || newName.trim() === "" || newName.trim() === myProfile.name) return; if (/[^a-zA-Z0-9가-힣]/.test(newName.trim())) { alert("특수문자 불가"); return; } try { const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName.trim())}`); const data = await res.json(); if(!data.available) { alert(data.message); return; } myProfile.name = newName.trim(); myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); saveData(); showToast("변경 완료!"); renderProfile(); } catch(err) { alert("오류 발생"); } }
 
 let fileInput = document.getElementById('custom-image-upload');
@@ -293,12 +293,20 @@ function showLoginScreen() {
     else { google.accounts.id.initialize({ client_id: "837250448431-hrlfbnof2bf4acofs03e28t3qdpkun5g.apps.googleusercontent.com", callback: handleCredentialResponse }); google.accounts.id.renderButton(document.getElementById("google-btn-container"), { theme: "outline", size: "large", shape: "pill" }); }
 }
 function triggerGoogleIntent(intent) { loginIntent = intent; document.getElementById('google-btn-container').style.display = 'flex'; }
+
+// ★ 로그인 시 구글 ID 토큰(발급된 정식 신분증)을 localStorage에 영구 보관
 async function handleCredentialResponse(response) {
-    const responsePayload = decodeJwtResponse(response.credential); const tempEmail = responsePayload.email; const overlay = document.getElementById('login-overlay'); if(overlay) overlay.innerHTML = `<div style="font-size:20px; font-weight:bold; color:#333d4b;">서버 연결 중... ⏳</div>`; 
+    const responsePayload = decodeJwtResponse(response.credential); const tempEmail = responsePayload.email; 
+    const idToken = response.credential;
+    localStorage.setItem('fc_id_token', idToken); // 신분증 보관
+    localStorage.setItem('fc_email', tempEmail);
+    
+    const overlay = document.getElementById('login-overlay'); if(overlay) overlay.innerHTML = `<div style="font-size:20px; font-weight:bold; color:#333d4b;">서버 연결 중... ⏳</div>`; 
     try {
-        const serverResponse = await fetch(`${BACKEND_URL}/api/data/${encodeURIComponent(tempEmail)}`); const serverData = await serverResponse.json();
+        const serverResponse = await fetch(`${BACKEND_URL}/api/data`, { headers: { "Authorization": `Bearer ${idToken}` } }); 
+        const serverData = await serverResponse.json();
         if (loginIntent === 'login' && serverData.isNewUser) { alert("가입 정보가 없습니다. 새로 시작하기를 이용해 주세요."); localStorage.clear(); location.reload(); return; }
-        myEmail = tempEmail; localStorage.setItem('fc_email', myEmail); 
+        myEmail = tempEmail;
         if (serverData.isNewUser) { showNicknameSetupScreen(responsePayload.picture); } 
         else { myProfile = serverData.profile; myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; if(overlay) overlay.remove(); finishSetup(); }
     } catch(err) { alert("연결 실패"); localStorage.clear(); location.reload(); }
@@ -309,10 +317,12 @@ async function submitNewNickname(googlePicture) { const inputEl = document.getEl
 
 async function initializeApp() { 
     try { 
-        if(!myEmail) return; const homeView = document.getElementById('friend-list'); if(homeView && (!myProfile)) { homeView.innerHTML = `<div style="text-align:center; padding:60px 20px; color:#3182f6; font-weight:bold; font-size:16px;">💤 서버 데이터 불러오는 중...</div>`; }
-        const serverResponse = await fetch(`${BACKEND_URL}/api/data/${encodeURIComponent(myEmail)}`); const serverData = await serverResponse.json(); 
-        if (serverData.isNewUser) { showLoginScreen(); return; } 
-        myProfile = serverData.profile; myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; 
+        const token = localStorage.getItem('fc_id_token'); if(!token) { showLoginScreen(); return; }
+        const homeView = document.getElementById('friend-list'); if(homeView && (!myProfile)) { homeView.innerHTML = `<div style="text-align:center; padding:60px 20px; color:#3182f6; font-weight:bold; font-size:16px;">💤 서버 데이터 불러오는 중...</div>`; }
+        const serverResponse = await fetch(`${BACKEND_URL}/api/data`, { headers: { "Authorization": `Bearer ${token}` } }); 
+        const serverData = await serverResponse.json(); 
+        if (serverData.status === 'unauthenticated' || serverData.isNewUser) { showLoginScreen(); return; } 
+        myProfile = serverData.profile; myEmail = localStorage.getItem('fc_email'); myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; 
         const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup(); 
     } catch(err) { console.error(err); alert("서버 연결에 실패했습니다."); } 
 }
@@ -326,14 +336,13 @@ function finishSetup() {
     checkRefill(); checkBadges(); updateTicker(); switchTab('home'); 
 }
 
-window.onload = () => { if (!myEmail) { showLoginScreen(); } else { initializeApp(); } };
+window.onload = () => { if (!localStorage.getItem('fc_id_token')) { showLoginScreen(); } else { initializeApp(); } };
 
 let myChartInstance = null; 
 function drawPriceChart() {
     const ctx = document.getElementById('priceChart'); if (!ctx || !myProfile || !myProfile.priceHistory) return;
     if (myChartInstance) { myChartInstance.destroy(); }
-    const history = myProfile.priceHistory;
-    const labels = (myProfile.timeHistory && myProfile.timeHistory.length === history.length) ? myProfile.timeHistory : history.map(() => '');
+    const history = myProfile.priceHistory; const labels = (myProfile.timeHistory && myProfile.timeHistory.length === history.length) ? myProfile.timeHistory : history.map(() => '');
     const isUp = history[history.length - 1] >= history[0]; const lineColor = isUp ? '#ff3b30' : '#3182f6'; const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
     myChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: '내 주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0 } }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } } });
 }

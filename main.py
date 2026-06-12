@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Header # ★ Header 추가
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -58,28 +58,42 @@ class VoteData(BaseModel):
     voter_email: str
     vote_type: str
 
-# ★ 신규 추가된 보상 전용 데이터 모델
 class RewardData(BaseModel):
     email: str
     reward_type: str
     today_str: str
 
-@app.get("/api/data/{email:path}")
-@app.get("/api/data/{email}")
-def get_user_data(email: str):
-    search_email = email.strip().lower()
-    user_data = db["users"].find_one({"_id": search_email})
-    
-    if not user_data: 
-        return {
-            "isNewUser": True,
-            "profile": {},
-            "noti": [],
-            "my_rooms": [],
-            "global_ranking": []
-        }
+# ★ [보안 패치 2] 구글 신분증(ID 토큰) 검증 헬퍼 함수
+def verify_google_token(auth_header: str):
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.split(" ")[1]
+    try:
+        # 구글 토큰 인포 엔드포인트에 토큰을 던져 진짜인지 확인
+        response = httpx.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={token}")
+        if response.status_code != 200:
+            return None
+        data = response.json()
+        # 발급 주체(Client ID)가 우리 서비스가 맞는지 검증
+        if data.get("aud") != "837250448431-hrlfbnof2bf4acofs03e28t3qdpkun5g.apps.googleusercontent.com":
+            return None
+        # 구글이 보증하는 진짜 유저 이메일 반환
+        return data.get("email").strip().lower()
+    except Exception:
+        return None
 
-    my_rooms_cursor = db["rooms"].find({"members": search_email})
+# ★ 경로에서 무방비한 {email}을 지우고, 신분증(헤더)을 통해서만 데이터를 전달받음
+@app.get("/api/data")
+def get_user_data(authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email: 
+        return {"status": "unauthenticated", "message": "로그인이 만료되었거나 올바르지 않은 신분증입니다."}
+        
+    user_data = db["users"].find_one({"_id": email})
+    if not user_data: 
+        return {"isNewUser": True, "profile": {}, "noti": [], "my_rooms": [], "global_ranking": []}
+
+    my_rooms_cursor = db["rooms"].find({"members": email})
     my_rooms = []
     
     for room in my_rooms_cursor:
@@ -111,15 +125,14 @@ def get_user_data(email: str):
         "global_ranking": global_ranking 
     }
 
-# ★ [보안 패치 1] 프론트엔드가 주가를 강제로 조작할 수 없도록, '껍데기'만 저장 허용!
-@app.post("/api/save/{email:path}")
-def save_user_data(email: str, data: UserData):
-    search_email = email.strip().lower()
-    existing_user = db["users"].find_one({"_id": search_email})
-
+@app.post("/api/save")
+def save_user_data(data: UserData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email: return {"status": "error", "message": "인증에 실패했습니다."}
+    
+    existing_user = db["users"].find_one({"_id": email})
     if existing_user and "profile" in existing_user:
         db_profile = existing_user["profile"]
-        # 프론트에서 보낸 데이터 중 외형적인 것만 허용 (돈, 주식 기록은 무시)
         db_profile["name"] = data.profile.get("name", db_profile.get("name"))
         db_profile["profileImage"] = data.profile.get("profileImage", db_profile.get("profileImage"))
         db_profile["nameColor"] = data.profile.get("nameColor", db_profile.get("nameColor"))
@@ -129,16 +142,20 @@ def save_user_data(email: str, data: UserData):
         final_profile = data.profile 
 
     db["users"].update_one(
-        {"_id": search_email}, 
+        {"_id": email}, 
         {"$set": {"profile": final_profile, "noti": data.noti}}, 
         upsert=True
     )
     return {"status": "success"}
 
-# ★ [보안 패치 1] 주가 및 티켓 계산을 브라우저가 아닌 파이썬 서버가 직접 처리
 @app.post("/api/reward")
-def claim_reward(data: RewardData):
-    user = db["users"].find_one({"_id": data.email})
+def claim_reward(data: RewardData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    # 신분증 주인과 보상받으려는 주인이 같은지 엄격하게 대조
+    if not email or email != data.email.strip().lower(): 
+        return {"status": "error", "message": "인증 실패: 신분증 도용이 감지되었습니다."}
+        
+    user = db["users"].find_one({"_id": email})
     if not user: return {"status": "error", "message": "유저를 찾을 수 없습니다."}
     
     profile = user["profile"]
@@ -147,59 +164,50 @@ def claim_reward(data: RewardData):
     msg = ""
 
     if data.reward_type == 'attendance':
-        if profile.get("lastDailyAttendance") == data.today_str:
-            return {"status": "error", "message": "이미 완료하셨습니다!"}
+        if profile.get("lastDailyAttendance") == data.today_str: return {"status": "error", "message": "이미 완료하셨습니다!"}
         profile["price"] = profile.get("price", 20000) + 50
         if profile["price"] > profile.get("maxPrice", 20000): profile["maxPrice"] = profile["price"]
         profile["lastDailyAttendance"] = data.today_str
         msg = "💵 일일 출석 완료!"
-
     elif data.reward_type == 'double_attendance':
-        if profile.get("lastDailyAdBonus") == data.today_str:
-            return {"status": "error", "message": "이미 2배 보상을 받았습니다."}
+        if profile.get("lastDailyAdBonus") == data.today_str: return {"status": "error", "message": "이미 2배 보상을 받았습니다."}
         profile["price"] = profile.get("price", 20000) + 50
         if profile["price"] > profile.get("maxPrice", 20000): profile["maxPrice"] = profile["price"]
         profile["lastDailyAdBonus"] = data.today_str
         msg = "🎁 50p가 추가 상승했습니다."
-
     elif data.reward_type == 'extra_ticket':
-        if profile.get("dailyAdTicketsDate") != data.today_str:
-            profile["dailyAdTicketsCount"] = 0
-        if profile.get("dailyAdTicketsCount", 0) >= 1:
-            return {"status": "error", "message": "오늘은 더 받을 수 없습니다."}
+        if profile.get("dailyAdTicketsDate") != data.today_str: profile["dailyAdTicketsCount"] = 0
+        if profile.get("dailyAdTicketsCount", 0) >= 1: return {"status": "error", "message": "오늘은 더 받을 수 없습니다."}
         profile["goodTickets"] = profile.get("goodTickets", 0) + 1
         profile["badTickets"] = profile.get("badTickets", 0) + 1
         profile["dailyAdTicketsCount"] = profile.get("dailyAdTicketsCount", 0) + 1
         profile["dailyAdTicketsDate"] = data.today_str
         msg = "🎁 평가권 각 +1장 획득!"
-
     elif data.reward_type == 'weekly':
-        if profile.get("weeklyTicketsClaimed"):
-            return {"status": "error", "message": "이미 획득하셨습니다!"}
+        if profile.get("weeklyTicketsClaimed"): return {"status": "error", "message": "이미 획득하셨습니다!"}
         profile["goodTickets"] = profile.get("goodTickets", 0) + 1
         profile["badTickets"] = profile.get("badTickets", 0) + 1
         profile["weeklyTicketsClaimed"] = True
         msg = "🎫 주간 보너스 평가권 획득!"
 
-    # 주가가 오르는 보상이면 차트에 기록 콕 찍기
     if data.reward_type in ['attendance', 'double_attendance']:
         if "priceHistory" not in profile:
             profile["priceHistory"] = [profile.get("basePrice", 20000)]
             profile["timeHistory"] = ["시작"]
         profile["priceHistory"].append(profile["price"])
-        
-        if "timeHistory" not in profile:
-            profile["timeHistory"] = [""] * (len(profile["priceHistory"]) - 1)
+        if "timeHistory" not in profile: profile["timeHistory"] = [""] * (len(profile["priceHistory"]) - 1)
         profile["timeHistory"].append(time_str)
 
-    db["users"].update_one({"_id": data.email}, {"$set": {"profile": profile}})
+    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
     return {"status": "success", "message": msg, "profile": profile}
 
 @app.post("/api/evaluate")
-def evaluate_user(data: EvalData):
-    # ★ [보안 패치 3] 거울 보고 칭찬하기 방지 로직
-    if data.evaluator_email == data.target_email:
-        return {"status": "error", "message": "거울 보고 칭찬하기 금지! 자신을 평가할 수 없습니다."}
+def evaluate_user(data: EvalData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.evaluator_email.strip().lower():
+        return {"status": "error", "message": "인증 실패: 타인의 명의로 평가를 보낼 수 없습니다."}
+        
+    if data.evaluator_email == data.target_email: return {"status": "error", "message": "자신을 평가할 수 없습니다."}
 
     evaluator = db["users"].find_one({"_id": data.evaluator_email})
     target = db["users"].find_one({"_id": data.target_email})
@@ -220,10 +228,8 @@ def evaluate_user(data: EvalData):
     change_rate = data.intensity * 0.01
     change_amount = base_price * change_rate
     
-    if data.eval_type == 'good':
-        target["profile"]["price"] += change_amount
-    else:
-        target["profile"]["price"] -= change_amount
+    if data.eval_type == 'good': target["profile"]["price"] += change_amount
+    else: target["profile"]["price"] -= change_amount
 
     if "priceHistory" not in target["profile"] or not target["profile"]["priceHistory"]:
         target["profile"]["priceHistory"] = [target["profile"].get("basePrice", 20000)]
@@ -233,23 +239,18 @@ def evaluate_user(data: EvalData):
 
     kst_now = datetime.utcnow() + timedelta(hours=9)
     current_time_str = kst_now.strftime("%m.%d %H:%M")
-    
-    if "timeHistory" not in target["profile"]:
-        target["profile"]["timeHistory"] = [""] * (len(target["profile"]["priceHistory"]) - 1)
+    if "timeHistory" not in target["profile"]: target["profile"]["timeHistory"] = [""] * (len(target["profile"]["priceHistory"]) - 1)
     target["profile"]["timeHistory"].append(current_time_str)
 
     eval_icon = "👍호평" if data.eval_type == "good" else "👎악평"
     evaluator_name = evaluator.get("profile", {}).get("name", "익명")
     noti_msg = f"[{eval_icon}] {evaluator_name}님의 평가: {data.reason}"
     
-    if "noti" not in target:
-        target["noti"] = []
-    
+    if "noti" not in target: target["noti"] = []
     target["noti"].insert(0, noti_msg)
     target["noti"] = target["noti"][:30] 
 
     db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"], "noti": target["noti"]}})
-    
     return {"status": "success"}
 
 @app.get("/api/check-nickname")
@@ -259,103 +260,77 @@ def check_nickname(nickname: str):
     return {"available": True}
 
 @app.post("/api/room/create")
-def create_room(data: RoomData):
+def create_room(data: RoomData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     import random, string
     code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-    db["rooms"].insert_one({
-        "_id": code, "name": data.room_name, "members": [data.email.strip().lower()],
-        "agendas": [], "messages": []
-    })
+    db["rooms"].insert_one({"_id": code, "name": data.room_name, "members": [email], "agendas": [], "messages": []})
     return {"status": "success", "room_code": code}
 
 @app.post("/api/room/join")
-def join_room(data: RoomData):
+def join_room(data: RoomData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room: return {"status": "error", "message": "존재하지 않는 코드입니다."}
-    user_email = data.email.strip().lower()
-    if user_email not in room.get("members", []):
-        db["rooms"].update_one({"_id": data.room_code}, {"$push": {"members": user_email}})
+    if email not in room.get("members", []): db["rooms"].update_one({"_id": data.room_code}, {"$push": {"members": email}})
     return {"status": "success"}
 
 @app.post("/api/room/leave")
-def leave_room(data: RoomData):
-    user_email = data.email.strip().lower()
-    db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"members": user_email}})
+def leave_room(data: RoomData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"members": email}})
     return {"status": "success"}
 
 @app.post("/api/room/chat")
-def send_chat(data: ChatData):
-    chat_msg = {
-        "sender_email": data.sender_email.strip().lower(),
-        "sender_name": data.sender_name,
-        "message": data.message
-    }
+def send_chat(data: ChatData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.sender_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    chat_msg = {"sender_email": email, "sender_name": data.sender_name, "message": data.message}
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": chat_msg}})
     return {"status": "success"}
 
 @app.post("/api/agenda/create")
-def create_agenda(data: AgendaData):
+def create_agenda(data: AgendaData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.creator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     import uuid
     agenda_id = str(uuid.uuid4())
     target = db["users"].find_one({"_id": data.target_email})
     target_name = target.get("profile", {}).get("name", "알 수 없음") if target else "알 수 없음"
-    
-    agenda = {
-        "id": agenda_id, "creator_email": data.creator_email, "target_email": data.target_email,
-        "target_name": target_name, "type": data.agenda_type, "reason": data.reason,
-        "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active"
-    }
+    agenda = {"id": agenda_id, "creator_email": email, "target_email": data.target_email, "target_name": target_name, "type": data.agenda_type, "reason": data.reason, "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active"}
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"agendas": agenda}})
     return {"status": "success", "message": "주주총회 안건이 상정되었습니다!"}
 
 @app.post("/api/agenda/vote")
-def vote_agenda(data: VoteData):
+def vote_agenda(data: VoteData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.voter_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room: return {"status": "error", "message": "방이 없습니다."}
-    
     agendas = room.get("agendas", [])
     target_agenda = None
     for a in agendas:
-        if a["id"] == data.agenda_id:
-            target_agenda = a
-            break
-            
+        if a["id"] == data.agenda_id: target_agenda = a; break
     if not target_agenda: return {"status": "error", "message": "안건을 찾을 수 없습니다."}
-    if data.voter_email in target_agenda.get("votedUsers", []): return {"status": "error", "message": "이미 투표하셨습니다."}
-    
-    target_agenda["votedUsers"].append(data.voter_email)
+    if email in target_agenda.get("votedUsers", []): return {"status": "error", "message": "이미 투표하셨습니다."}
+    target_agenda["votedUsers"].append(email)
     if data.vote_type == "agree": target_agenda["agreeVotes"] += 1
     else: target_agenda["disagreeVotes"] += 1
-    
     total_members = len(room.get("members", []))
     required_votes = (total_members // 2) + 1
-    
-    status_msg = "success"
-    message = "투표 완료"
-    
+    status_msg = "success"; message = "투표 완료"
     if target_agenda["agreeVotes"] >= required_votes:
         target_agenda["status"] = "resolved"
         target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
-        
         if target_user:
-            if target_agenda["type"] == "delist":
-                target_user["profile"]["status"] = "delisted"
-                target_user["profile"]["price"] = 0
-                message = f"🚨 {target_agenda['target_name']}님이 상장폐지 처리되었습니다."
-            elif target_agenda["type"] == "revival":
-                target_user["profile"]["status"] = "active"
-                target_user["profile"]["price"] = 10000
-                message = f"🌱 {target_agenda['target_name']}님이 기적적으로 회생(재상장) 되었습니다!"
-                
+            if target_agenda["type"] == "delist": target_user["profile"]["status"] = "delisted"; target_user["profile"]["price"] = 0; message = f"🚨 {target_agenda['target_name']}님이 상장폐지 처리되었습니다."
+            elif target_agenda["type"] == "revival": target_user["profile"]["status"] = "active"; target_user["profile"]["price"] = 10000; message = f"🌱 {target_agenda['target_name']}님이 기적적으로 회생(재상장) 되었습니다!"
             db["users"].update_one({"_id": target_agenda["target_email"]}, {"$set": {"profile": target_user["profile"]}})
-        
         status_msg = "resolved"
-        
-    elif target_agenda["disagreeVotes"] >= required_votes:
-        target_agenda["status"] = "rejected"
-        status_msg = "resolved"
-        message = f"⚖️ 반대표가 많아 안건이 기각되었습니다."
-
+    elif target_agenda["disagreeVotes"] >= required_votes: target_agenda["status"] = "rejected"; status_msg = "resolved"; message = f"⚖️ 반대표가 많아 안건이 기각되었습니다."
     db["rooms"].update_one({"_id": data.room_code}, {"$set": {"agendas": agendas}})
     return {"status": status_msg, "message": message}
 
@@ -365,13 +340,7 @@ async def upload_image(image: UploadFile = File(...)):
     contents = await image.read()
     img_b64 = base64.b64encode(contents).decode("utf-8")
     api_key = os.getenv("IMGBB_API_KEY")
-    
-    async with httpx.AsyncClient() as client:
-        res = await client.post(
-            f"https://api.imgbb.com/1/upload?key={api_key}",
-            data={"image": img_b64}
-        )
+    async with httpx.AsyncClient() as client: res = await client.post(f"https://api.imgbb.com/1/upload?key={api_key}", data={"image": img_b64})
     data = res.json()
-    if data.get("success"):
-        return {"url": data["data"]["url"]}
+    if data.get("success"): return {"url": data["data"]["url"]}
     return {"error": "업로드 실패"}
