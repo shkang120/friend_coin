@@ -5,7 +5,7 @@ from pymongo import MongoClient
 import os
 import httpx
 from dotenv import load_dotenv
-from datetime import datetime, timedelta # ★ 시간 처리를 위해 추가된 도구
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -58,6 +58,12 @@ class VoteData(BaseModel):
     voter_email: str
     vote_type: str
 
+# ★ 신규 추가된 보상 전용 데이터 모델
+class RewardData(BaseModel):
+    email: str
+    reward_type: str
+    today_str: str
+
 @app.get("/api/data/{email:path}")
 @app.get("/api/data/{email}")
 def get_user_data(email: str):
@@ -105,18 +111,96 @@ def get_user_data(email: str):
         "global_ranking": global_ranking 
     }
 
+# ★ [보안 패치 1] 프론트엔드가 주가를 강제로 조작할 수 없도록, '껍데기'만 저장 허용!
 @app.post("/api/save/{email:path}")
 def save_user_data(email: str, data: UserData):
     search_email = email.strip().lower()
+    existing_user = db["users"].find_one({"_id": search_email})
+
+    if existing_user and "profile" in existing_user:
+        db_profile = existing_user["profile"]
+        # 프론트에서 보낸 데이터 중 외형적인 것만 허용 (돈, 주식 기록은 무시)
+        db_profile["name"] = data.profile.get("name", db_profile.get("name"))
+        db_profile["profileImage"] = data.profile.get("profileImage", db_profile.get("profileImage"))
+        db_profile["nameColor"] = data.profile.get("nameColor", db_profile.get("nameColor"))
+        db_profile["isVIP"] = data.profile.get("isVIP", db_profile.get("isVIP"))
+        final_profile = db_profile
+    else:
+        final_profile = data.profile 
+
     db["users"].update_one(
         {"_id": search_email}, 
-        {"$set": {"profile": data.profile, "noti": data.noti}}, 
+        {"$set": {"profile": final_profile, "noti": data.noti}}, 
         upsert=True
     )
     return {"status": "success"}
 
+# ★ [보안 패치 1] 주가 및 티켓 계산을 브라우저가 아닌 파이썬 서버가 직접 처리
+@app.post("/api/reward")
+def claim_reward(data: RewardData):
+    user = db["users"].find_one({"_id": data.email})
+    if not user: return {"status": "error", "message": "유저를 찾을 수 없습니다."}
+    
+    profile = user["profile"]
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    time_str = kst_now.strftime("%m.%d %H:%M")
+    msg = ""
+
+    if data.reward_type == 'attendance':
+        if profile.get("lastDailyAttendance") == data.today_str:
+            return {"status": "error", "message": "이미 완료하셨습니다!"}
+        profile["price"] = profile.get("price", 20000) + 50
+        if profile["price"] > profile.get("maxPrice", 20000): profile["maxPrice"] = profile["price"]
+        profile["lastDailyAttendance"] = data.today_str
+        msg = "💵 일일 출석 완료!"
+
+    elif data.reward_type == 'double_attendance':
+        if profile.get("lastDailyAdBonus") == data.today_str:
+            return {"status": "error", "message": "이미 2배 보상을 받았습니다."}
+        profile["price"] = profile.get("price", 20000) + 50
+        if profile["price"] > profile.get("maxPrice", 20000): profile["maxPrice"] = profile["price"]
+        profile["lastDailyAdBonus"] = data.today_str
+        msg = "🎁 50p가 추가 상승했습니다."
+
+    elif data.reward_type == 'extra_ticket':
+        if profile.get("dailyAdTicketsDate") != data.today_str:
+            profile["dailyAdTicketsCount"] = 0
+        if profile.get("dailyAdTicketsCount", 0) >= 1:
+            return {"status": "error", "message": "오늘은 더 받을 수 없습니다."}
+        profile["goodTickets"] = profile.get("goodTickets", 0) + 1
+        profile["badTickets"] = profile.get("badTickets", 0) + 1
+        profile["dailyAdTicketsCount"] = profile.get("dailyAdTicketsCount", 0) + 1
+        profile["dailyAdTicketsDate"] = data.today_str
+        msg = "🎁 평가권 각 +1장 획득!"
+
+    elif data.reward_type == 'weekly':
+        if profile.get("weeklyTicketsClaimed"):
+            return {"status": "error", "message": "이미 획득하셨습니다!"}
+        profile["goodTickets"] = profile.get("goodTickets", 0) + 1
+        profile["badTickets"] = profile.get("badTickets", 0) + 1
+        profile["weeklyTicketsClaimed"] = True
+        msg = "🎫 주간 보너스 평가권 획득!"
+
+    # 주가가 오르는 보상이면 차트에 기록 콕 찍기
+    if data.reward_type in ['attendance', 'double_attendance']:
+        if "priceHistory" not in profile:
+            profile["priceHistory"] = [profile.get("basePrice", 20000)]
+            profile["timeHistory"] = ["시작"]
+        profile["priceHistory"].append(profile["price"])
+        
+        if "timeHistory" not in profile:
+            profile["timeHistory"] = [""] * (len(profile["priceHistory"]) - 1)
+        profile["timeHistory"].append(time_str)
+
+    db["users"].update_one({"_id": data.email}, {"$set": {"profile": profile}})
+    return {"status": "success", "message": msg, "profile": profile}
+
 @app.post("/api/evaluate")
 def evaluate_user(data: EvalData):
+    # ★ [보안 패치 3] 거울 보고 칭찬하기 방지 로직
+    if data.evaluator_email == data.target_email:
+        return {"status": "error", "message": "거울 보고 칭찬하기 금지! 자신을 평가할 수 없습니다."}
+
     evaluator = db["users"].find_one({"_id": data.evaluator_email})
     target = db["users"].find_one({"_id": data.target_email})
     if not evaluator or not target: return {"status": "error", "message": "유저를 찾을 수 없습니다."}
@@ -141,14 +225,12 @@ def evaluate_user(data: EvalData):
     else:
         target["profile"]["price"] -= change_amount
 
-    # ★ 차트 기록용 배열 (시간 포함) 업데이트
     if "priceHistory" not in target["profile"] or not target["profile"]["priceHistory"]:
         target["profile"]["priceHistory"] = [target["profile"].get("basePrice", 20000)]
         target["profile"]["timeHistory"] = ["시작"]
 
     target["profile"]["priceHistory"].append(target["profile"]["price"])
 
-    # ★ 한국 시간(UTC+9)으로 현재 시간 계산해서 시간 기록 배열에 추가
     kst_now = datetime.utcnow() + timedelta(hours=9)
     current_time_str = kst_now.strftime("%m.%d %H:%M")
     

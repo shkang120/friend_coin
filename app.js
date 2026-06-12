@@ -15,8 +15,7 @@ const defaultProfile = {
     lastDailyAdBonus: null, dailyAdTicketsDate: null, dailyAdTicketsCount: 0, 
     badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 },
     isVIP: false, nameColor: "#333d4b",
-    priceHistory: [],
-    timeHistory: [] // ★ 시간 기록용 배열 추가
+    priceHistory: [], timeHistory: []
 };
 
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = [];   
@@ -84,109 +83,27 @@ function switchTab(tabName) {
 
 function renderHome() {
     const list = document.getElementById('friend-list'); if(!list) return;
-    
     if (!currentRoomCode) { 
-        let html = `
-            <div style="display:flex; gap:10px; margin-bottom:20px;">
-                <button onclick="createNewRoom()" style="flex:1; padding:15px; background:#333d4b; color:white; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1);">+ 새 클럽 개설</button>
-                <button onclick="joinExistingRoom()" style="flex:1; padding:15px; background:#e8f5e9; color:#2e7d32; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.05);">🔑 코드로 입장</button>
-            </div>
-            <h3 style="color:#333d4b; margin-top:0; font-size:16px;">내 투자 클럽 목록</h3>
-        `;
+        let html = `<div style="display:flex; gap:10px; margin-bottom:20px;"><button onclick="createNewRoom()" style="flex:1; padding:15px; background:#333d4b; color:white; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1);">+ 새 클럽 개설</button><button onclick="joinExistingRoom()" style="flex:1; padding:15px; background:#e8f5e9; color:#2e7d32; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.05);">🔑 코드로 입장</button></div><h3 style="color:#333d4b; margin-top:0; font-size:16px;">내 투자 클럽 목록</h3>`;
         if (myRooms.length === 0) { html += `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">가입된 투자 클럽이 없습니다.</div>`; } 
-        else {
-            html += myRooms.map(r => `
-                <div onclick="enterRoom('${r.room_code}')" class="info-card" style="cursor:pointer; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; border:2px solid transparent; transition:0.2s;" onmouseover="this.style.borderColor='#3182f6'" onmouseout="this.style.borderColor='transparent'">
-                    <div><div style="font-weight:bold; font-size:16px; color:#333d4b; margin-bottom:4px;">${r.room_name}</div><div style="font-size:12px; color:#8b95a1;">👥 ${r.members.length}명 | 🔑 코드: <span style="color:#3182f6; font-weight:bold;">${r.room_code}</span></div></div>
-                    <div style="color:#3182f6; font-size:20px;">👉</div>
-                </div>
-            `).join('');
-        }
+        else { html += myRooms.map(r => `<div onclick="enterRoom('${r.room_code}')" class="info-card" style="cursor:pointer; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; border:2px solid transparent; transition:0.2s;" onmouseover="this.style.borderColor='#3182f6'" onmouseout="this.style.borderColor='transparent'"><div><div style="font-weight:bold; font-size:16px; color:#333d4b; margin-bottom:4px;">${r.room_name}</div><div style="font-size:12px; color:#8b95a1;">👥 ${r.members.length}명 | 🔑 코드: <span style="color:#3182f6; font-weight:bold;">${r.room_code}</span></div></div><div style="color:#3182f6; font-size:20px;">👉</div></div>`).join(''); }
         list.innerHTML = html;
-    } 
-    else { 
+    } else { 
         const room = myRooms.find(r => r.room_code === currentRoomCode); if (!room) { currentRoomCode = null; renderHome(); return; }
-        
-        let html = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:#f2f4f6; padding:15px; border-radius:16px;">
-                <button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비로</button>
-                <div style="text-align:right;">
-                    <div style="font-weight:bold; color:#333d4b; font-size:16px;">${room.room_name}</div>
-                    <div style="font-size:12px; color:#8b95a1;">초대 코드: <span style="color:#3182f6;">${room.room_code}</span></div>
-                </div>
-            </div>
-            
-            <div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div>
-                    <button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button>
-                </div>
-                <div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">
-                    ${room.messages && room.messages.length > 0 ? room.messages.map(m => {
-                        const isMe = m.sender_email === myEmail;
-                        return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':m.sender_name}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${m.message}</div></div>`;
-                    }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}
-                </div>
-                <div style="display:flex; gap:8px;">
-                    <input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()">
-                    <button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button>
-                </div>
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                <h3 style="color:#333d4b; margin:0; font-size:15px;">참여자 목록 (${room.members.length}명)</h3>
-                <button onclick="openCreateAgendaModal()" style="background:#ff3b30; color:white; border:none; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">⚖️ 재판 열기</button>
-            </div>
-        `;
-        
-        html += room.members.map(f => {
-            const isMe = f.email === myEmail; const isDelisted = f.status === 'delisted';
-            const clickEvent = !isMe ? `onclick="openFriendDetail('${f.email}')"` : "";
-            const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6; cursor:pointer;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer; transition: 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.05);");
-            return `
-                <div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}>
-                    <div style="display: flex; align-items: center; gap: 15px;">
-                        ${getAvatarHtml(f, 'small')}
-                        <div>
-                            <div style="font-size: 16px; font-weight: bold;"><span style="color: ${f.nameColor || '#333d4b'};">${f.name}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} ${isDelisted ? '<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px;">💀상장폐지</span>' : ''}</div>
-                            ${getBadgeHtml(f)}
-                        </div>
-                    </div>
-                    <div style="font-size: 16px; font-weight: bold; color: #333d4b;">${isDelisted ? '-' : Math.floor(f.price || 0).toLocaleString()} p</div>
-                </div>
-            `;
-        }).join('');
-        
+        let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:#f2f4f6; padding:15px; border-radius:16px;"><button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비로</button><div style="text-align:right;"><div style="font-weight:bold; color:#333d4b; font-size:16px;">${room.room_name}</div><div style="font-size:12px; color:#8b95a1;">초대 코드: <span style="color:#3182f6;">${room.room_code}</span></div></div></div><div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"><div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div><button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button></div><div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">${room.messages && room.messages.length > 0 ? room.messages.map(m => { const isMe = m.sender_email === myEmail; return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':m.sender_name}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${m.message}</div></div>`; }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}</div><div style="display:flex; gap:8px;"><input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()"><button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button></div></div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="color:#333d4b; margin:0; font-size:15px;">참여자 목록 (${room.members.length}명)</h3><button onclick="openCreateAgendaModal()" style="background:#ff3b30; color:white; border:none; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">⚖️ 재판 열기</button></div>`;
+        html += room.members.map(f => { const isMe = f.email === myEmail; const isDelisted = f.status === 'delisted'; const clickEvent = !isMe ? `onclick="openFriendDetail('${f.email}')"` : ""; const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6; cursor:pointer;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer; transition: 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.05);"); return `<div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}><div style="display: flex; align-items: center; gap: 15px;">${getAvatarHtml(f, 'small')}<div><div style="font-size: 16px; font-weight: bold;"><span style="color: ${f.nameColor || '#333d4b'};">${f.name}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} ${isDelisted ? '<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px;">💀상장폐지</span>' : ''}</div>${getBadgeHtml(f)}</div></div><div style="font-size: 16px; font-weight: bold; color: #333d4b;">${isDelisted ? '-' : Math.floor(f.price || 0).toLocaleString()} p</div></div>`; }).join('');
         html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer;">🚪 이 클럽에서 나가기</button>`;
-        
-        list.innerHTML = html;
-        setTimeout(() => { const chatBox = document.getElementById('chat-box'); if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; }, 10);
+        list.innerHTML = html; setTimeout(() => { const chatBox = document.getElementById('chat-box'); if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; }, 10);
     }
 }
 
 function enterRoom(code) { currentRoomCode = code; renderHome(); }
 function exitRoomView() { currentRoomCode = null; renderHome(); }
 
-async function leaveCurrentRoom() {
-    if(!confirm("정말 이 클럽에서 나가시겠습니까?")) return;
-    try {
-        const res = await fetch(`${BACKEND_URL}/api/room/leave`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, room_code: currentRoomCode }) });
-        const data = await res.json();
-        if(data.status === 'success') { showToast("클럽에서 퇴장했습니다."); currentRoomCode = null; await initializeApp(); }
-    } catch(err) { alert("오류 발생"); }
-}
-
-async function sendChat() {
-    const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return;
-    input.value = '';
-    try {
-        await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) });
-        await refreshChat();
-    } catch(err) { console.error(err); }
-}
+async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가시겠습니까?")) return; try { const res = await fetch(`${BACKEND_URL}/api/room/leave`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, room_code: currentRoomCode }) }); const data = await res.json(); if(data.status === 'success') { showToast("클럽에서 퇴장했습니다."); currentRoomCode = null; await initializeApp(); } } catch(err) { alert("오류 발생"); } }
+async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await refreshChat(); } catch(err) { console.error(err); } }
 async function refreshChat() { await initializeApp(); }
 
-// ★ 친구 상세 프로필 모달 (차트 및 사유 입력칸 포함)
 function openFriendDetail(friendEmail) {
     const room = myRooms.find(r => r.room_code === currentRoomCode); const friend = room.members.find(m => m.email === friendEmail); if (!friend) return;
     currentSelectedFriend = friend;
@@ -201,23 +118,15 @@ function openFriendDetail(friendEmail) {
             <div style="margin-bottom:15px;">${getAvatarHtml(friend, 'large')}</div>
             <h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${friend.name}</h2>
             <div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:15px;">${Math.floor(friend.price).toLocaleString()} p</div>
-            
-            <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;">
-                <canvas id="friendPriceChart" style="width:100%; height:100px;"></canvas>
-            </div>
-
+            <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendPriceChart" style="width:100%; height:100px;"></canvas></div>
             <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
-            
             <textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; margin-bottom:15px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea>
-            
             <div style="text-align:left; margin-bottom:15px;"><div style="font-size:13px; font-weight:bold; color:#ff3b30; margin-bottom:8px;">👍 호평하기 (티켓 1장)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('good', 1)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+1%<br><span style="font-size:10px;">+${p1}p</span></button><button onclick="submitEvaluation('good', 2)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+2%<br><span style="font-size:10px;">+${p2}p</span></button><button onclick="submitEvaluation('good', 3)" style="flex:1; padding:10px 5px; background:#ff3b30; border:1px solid #ff3b30; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">+3%<br><span style="font-size:10px;">+${p3}p</span></button></div></div>
             <div style="text-align:left; margin-bottom:25px;"><div style="font-size:13px; font-weight:bold; color:#3182f6; margin-bottom:8px;">👎 악평하기 (티켓 1장)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('bad', 1)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-1%<br><span style="font-size:10px;">-${p1}p</span></button><button onclick="submitEvaluation('bad', 2)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-2%<br><span style="font-size:10px;">-${p2}p</span></button><button onclick="submitEvaluation('bad', 3)" style="flex:1; padding:10px 5px; background:#3182f6; border:1px solid #3182f6; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">-3%<br><span style="font-size:10px;">-${p3}p</span></button></div></div>
             <button onclick="document.getElementById('eval-modal').style.display='none'" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">취소</button>
         </div>
     `;
-    modal.style.display = 'flex';
-
-    setTimeout(() => drawFriendPriceChart(friend), 50);
+    modal.style.display = 'flex'; setTimeout(() => drawFriendPriceChart(friend), 50);
 }
 
 async function submitEvaluation(evalType, intensity) {
@@ -225,30 +134,14 @@ async function submitEvaluation(evalType, intensity) {
     if (evalType === 'good' && myProfile.goodTickets <= 0) { alert("남은 호평권이 없습니다!"); return; }
     if (evalType === 'bad' && myProfile.badTickets <= 0) { alert("남은 악평권이 없습니다!"); return; }
 
-    const reasonInput = document.getElementById('eval-reason-input');
-    const reasonText = reasonInput ? reasonInput.value.trim() : "";
-    if (!reasonText) { 
-        alert("평가 사유를 반드시 작성해 주세요!"); 
-        if(reasonInput) reasonInput.focus();
-        return; 
-    }
+    const reasonInput = document.getElementById('eval-reason-input'); const reasonText = reasonInput ? reasonInput.value.trim() : "";
+    if (!reasonText) { alert("평가 사유를 반드시 작성해 주세요!"); if(reasonInput) reasonInput.focus(); return; }
 
     document.getElementById('eval-modal').style.display = 'none'; showToast(`⏳ 반영 중...`);
     try {
-        const res = await fetch(`${BACKEND_URL}/api/evaluate`, { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({ 
-                evaluator_email: myEmail, 
-                target_email: currentSelectedFriend.email, 
-                eval_type: evalType, 
-                intensity: intensity,
-                reason: reasonText 
-            }) 
-        });
+        const res = await fetch(`${BACKEND_URL}/api/evaluate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity, reason: reasonText }) });
         const data = await res.json(); 
-        if (data.status === 'success') { showToast(`✅ 주가 조정 완료!`); await initializeApp(); } 
-        else { alert(data.message); }
+        if (data.status === 'success') { showToast(`✅ 주가 조정 완료!`); await initializeApp(); } else { alert(data.message); }
     } catch(err) { alert("네트워크 오류 발생"); }
 }
 
@@ -273,25 +166,15 @@ async function submitCreateAgenda() {
     const targetEmail = targetSelect.value; const agendaType = document.getElementById('agenda-type-select').value; const reason = document.getElementById('agenda-reason-input').value.trim();
     if(!reason) { alert("사유를 입력하세요!"); return; }
     document.getElementById('agenda-create-modal').style.display = 'none'; showToast("⏳ 안건 상정 중...");
-    try {
-        const res = await fetch(`${BACKEND_URL}/api/agenda/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: currentRoomCode, creator_email: myEmail, target_email: targetEmail, agenda_type: agendaType, reason: reason }) });
-        const data = await res.json();
-        if(data.status === 'success') { alert(data.message); myProfile.stats.trialCount = (myProfile.stats.trialCount || 0) + 1; saveData(); await initializeApp(); switchTab('meeting'); } else { alert(data.message); }
-    } catch(err) { alert("서버 통신 실패"); }
+    try { const res = await fetch(`${BACKEND_URL}/api/agenda/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: currentRoomCode, creator_email: myEmail, target_email: targetEmail, agenda_type: agendaType, reason: reason }) }); const data = await res.json(); if(data.status === 'success') { alert(data.message); myProfile.stats.trialCount = (myProfile.stats.trialCount || 0) + 1; saveData(); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("서버 통신 실패"); }
 }
 
 function renderMeeting() {
     const list = document.getElementById('meeting-list'); if(!list) return;
     if (!currentRoomCode) { list.innerHTML = '<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">로비에서는 재판이 열리지 않습니다.</div>'; return; }
-    
-    const room = myRooms.find(r => r.room_code === currentRoomCode);
-    const activeAgendas = room.agendas ? room.agendas.filter(a => a.status === 'active') : [];
-    
+    const room = myRooms.find(r => r.room_code === currentRoomCode); const activeAgendas = room.agendas ? room.agendas.filter(a => a.status === 'active') : [];
     if (activeAgendas.length === 0) { list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">🕊️ [${room.room_name}] 방은 현재 평온합니다.<br>진행 중인 재판이 없습니다.</div>`; return; }
-    
-    const totalMembers = room.members.length; 
-    const requiredVotes = Math.floor(totalMembers / 2) + 1;
-    
+    const totalMembers = room.members.length; const requiredVotes = Math.floor(totalMembers / 2) + 1;
     list.innerHTML = activeAgendas.map(a => {
         let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; }
         const targetPerson = room.members.find(f => f.email === a.target_email); const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; const hasVoted = a.votedUsers && a.votedUsers.includes(myEmail);
@@ -299,14 +182,7 @@ function renderMeeting() {
         return `<div class="info-card" style="border-left: 5px solid ${titleColor};"><div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">피고인: <b>${a.target_name}</b></div></div></div><div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 기소 사유:</b><br>${a.reason}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#8b95a1; margin-bottom:12px; background:#fff; padding:4px;"><div>👍 찬성: <b style="color:#ff3b30;">${a.agreeVotes}표</b></div><div>👎 반대: <b style="color:#3182f6;">${a.disagreeVotes}표</b></div><div style="background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:4px; font-weight:bold;">정족수: (${requiredVotes}/${totalMembers}명)</div></div><div style="display: flex; gap: 10px;">${btnHtml}</div></div>`;
     }).join('');
 }
-async function submitVote(agendaId, voteType) {
-    showToast("⏳ 표결 전달 중...");
-    try {
-        const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) });
-        const data = await res.json();
-        if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await initializeApp(); switchTab('home'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await initializeApp(); switchTab('meeting'); } else { alert(data.message); }
-    } catch(err) { alert("네트워크 오류"); }
-}
+async function submitVote(agendaId, voteType) { showToast("⏳ 표결 전달 중..."); try { const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); const data = await res.json(); if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await initializeApp(); switchTab('home'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("네트워크 오류"); } }
 
 async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await initializeApp(); } } catch(err) { alert("서버 오류"); } }
 async function joinExistingRoom() { const code = prompt("초대 코드를 입력하세요:"); if(!code || code.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/join`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, room_code: code.trim().toUpperCase() }) }); const data = await res.json(); if(data.status === 'error') { alert(data.message); return; } alert(`🚪 입장 성공!`); await initializeApp(); } catch(err) { alert("서버 오류"); } }
@@ -322,6 +198,18 @@ function renderRanking() {
     container.innerHTML = `<div style="background: white; border-radius: 16px; padding: 20px 15px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee;"><h3 style="margin-top: 0; color: #333d4b;">🌍 전국구 통합 랭킹 Top 10</h3><p style="font-size:12px; color:#8b95a1; margin-bottom:20px;">모든 클럽의 주가가 합산된 실시간 순위보드입니다.</p>${top10.map((p, i) => createTotalRankCard(p, i)).join('')}</div>`;
 }
 
+// ★ 보상 관련 함수들: 브라우저가 조작하지 않고 서버(/api/reward)에 계산을 맡깁니다!
+async function doDailyAttendance() { 
+    const today = new Date().toDateString(); 
+    if (myProfile.lastDailyAttendance === today) { showToast("이미 완료하셨습니다!"); return; } 
+    showToast("⏳ 출석 처리 중...");
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, reward_type: 'attendance', today_str: today }) });
+        const data = await res.json();
+        if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); } else { showToast(data.message); }
+    } catch(err) { alert("서버 오류"); }
+}
+
 function watchAd(type) {
     const todayStr = new Date().toDateString(); if (type === 'double_attendance') { if (myProfile.lastDailyAttendance !== todayStr) { showToast("출석체크를 먼저 해주세요."); return; } if (myProfile.lastDailyAdBonus === todayStr) { showToast("이미 2배 보상을 받았습니다."); return; } } else if (type === 'extra_ticket') { if (myProfile.dailyAdTicketsDate !== todayStr) { myProfile.dailyAdTicketsCount = 0; myProfile.dailyAdTicketsDate = todayStr; } if (myProfile.dailyAdTicketsCount >= 1) { showToast("오늘은 더 받을 수 없습니다."); return; } }
     currentAdRewardType = type; if (myProfile.isVIP) { claimAdReward(true); return; }
@@ -329,32 +217,31 @@ function watchAd(type) {
     const btn = document.getElementById('ad-close-btn'); btn.textContent = "광고를 끝까지 시청해주세요"; btn.style.background = "#e5e8eb"; btn.style.color = "#8b95a1"; btn.disabled = true; btn.onclick = null;
     adInterval = setInterval(() => { timeLeft--; if (timeLeft > 0) { document.getElementById('ad-timer').textContent = `광고 시청 중... (${timeLeft}초)`; } else { clearInterval(adInterval); document.getElementById('ad-timer').textContent = "✅ 시청 완료!"; btn.textContent = "보상 받기 🎁"; btn.style.background = "#3182f6"; btn.style.color = "white"; btn.disabled = false; btn.onclick = () => claimAdReward(false); } }, 1000);
 }
-function claimAdReward(isVipPass = false) { 
+
+async function claimAdReward(isVipPass = false) { 
     document.getElementById('ad-modal').style.display = 'none'; const todayStr = new Date().toDateString(); 
-    if (currentAdRewardType === 'double_attendance') { 
-        myProfile.price += 50; 
-        if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; 
-        
-        // ★ 내 정보 로컬 주가 변동 시 시간도 기록
-        if (!myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice]; myProfile.timeHistory = ["시작"]; }
-        if (!myProfile.timeHistory) myProfile.timeHistory = myProfile.priceHistory.map(()=>"");
-        myProfile.priceHistory.push(myProfile.price);
-        myProfile.timeHistory.push(getCurrentTime());
-        
-        myProfile.lastDailyAdBonus = todayStr; 
-        if (isVipPass) showToast("👑 VIP 프리패스! 50p 상승."); else showToast("🎁 50p가 추가 상승했습니다."); 
-    } else if (currentAdRewardType === 'extra_ticket') { 
-        myProfile.goodTickets += 1; myProfile.badTickets += 1; myProfile.dailyAdTicketsCount++; myProfile.dailyAdTicketsDate = todayStr; 
-        if (isVipPass) showToast(`👑 VIP 프리패스! 평가권 +1장!`); else showToast(`🎁 평가권 각 +1장 획득!`); 
-    } 
-    saveData(); renderProfile(); 
+    showToast("⏳ 보상 수령 중...");
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, reward_type: currentAdRewardType, today_str: todayStr }) });
+        const data = await res.json();
+        if(data.status === 'success') { myProfile = data.profile; showToast(isVipPass ? `👑 VIP 프리패스! ${data.message}` : data.message); saveData(); renderProfile(); } else { showToast(data.message); }
+    } catch(err) { alert("서버 오류"); }
+}
+
+async function claimWeeklyTickets() { 
+    if (myProfile.weeklyTicketsClaimed) { showToast("이미 획득하셨습니다!"); return; } 
+    showToast("⏳ 처리 중...");
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: myEmail, reward_type: 'weekly', today_str: new Date().toDateString() }) });
+        const data = await res.json();
+        if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); } else { showToast(data.message); }
+    } catch(err) { alert("서버 오류"); }
 }
 
 function openVIPModal() { document.getElementById('vip-modal').style.display = 'flex'; if (myProfile.isVIP) { document.getElementById('vip-buy-section').style.display = 'none'; document.getElementById('vip-manage-section').style.display = 'block'; document.getElementById('vip-color-picker').value = myProfile.nameColor || '#333d4b'; } else { document.getElementById('vip-buy-section').style.display = 'block'; document.getElementById('vip-manage-section').style.none; } }
 function closeVIPModal() { document.getElementById('vip-modal').style.display = 'none'; }
 function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("💎 VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); }
 function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
-function claimWeeklyTickets() { if (myProfile.weeklyTicketsClaimed) { showToast("이미 획득하셨습니다!"); return; } myProfile.goodTickets += 1; myProfile.badTickets += 1; myProfile.weeklyTicketsClaimed = true; showToast("🎫 평가권 추가!"); saveData(); renderProfile(); }
 
 function renderProfile() {
     const container = document.getElementById('my-profile-info'); if(!container || !myProfile) return;
@@ -383,31 +270,11 @@ function renderProfile() {
         </div>
         <div style="font-size: 32px; font-weight: bold; color: #333d4b; margin-top: 20px;">${isDelisted ? '💀' : Math.floor(myProfile.price).toLocaleString()} p</div>
         <div style="font-weight: bold; color: ${colorClass}; margin-bottom: 20px;">${isDelisted ? '' : sign + Math.floor(changeAmount).toLocaleString() + ' p (' + sign + changeRate + '%)'}</div>
-        
-        <div style="background: white; padding: 15px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); border: 1px solid #f2f4f6;">
-            <canvas id="priceChart" style="width:100%; height:150px;"></canvas>
-        </div>
-        
+        <div style="background: white; padding: 15px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); border: 1px solid #f2f4f6;"><canvas id="priceChart" style="width:100%; height:150px;"></canvas></div>
         ${actionBtn}
         <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px; margin-bottom: 100px;" onclick="handleLogout()">🚪 로그아웃</button>
     `;
     setTimeout(drawPriceChart, 50); 
-}
-
-function doDailyAttendance() { 
-    const today = new Date().toDateString(); 
-    if (myProfile.lastDailyAttendance === today) { showToast("이미 완료하셨습니다!"); return; } 
-    myProfile.price += 50; 
-    if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; 
-    
-    // ★ 내 정보 로컬 주가 변동 시 시간도 기록
-    if (!myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice]; myProfile.timeHistory = ["시작"]; }
-    if (!myProfile.timeHistory) myProfile.timeHistory = myProfile.priceHistory.map(()=>"");
-    myProfile.priceHistory.push(myProfile.price); 
-    myProfile.timeHistory.push(getCurrentTime());
-    
-    myProfile.lastDailyAttendance = today; 
-    showToast("💵 일일 출석 완료!"); saveData(); renderProfile(); 
 }
 
 function openProfileModal() { document.getElementById('profile-modal').style.display = 'flex'; const grid = document.getElementById('default-profiles-grid'); grid.innerHTML = DEFAULT_AVATARS.map(url => `<div onclick="selectDefaultProfile('${url}')" style="cursor: pointer; border-radius: 12px; overflow: hidden; background: #f2f4f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.1s;"><img src="${url}" style="width: 100%; height: 100%; display: block; object-fit: cover;"></div>`).join(''); }
@@ -416,13 +283,7 @@ function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); s
 async function changeNickname() { const newName = prompt("변경할 닉네임 (최대 8자):"); if(!newName || newName.trim() === "" || newName.trim() === myProfile.name) return; if (/[^a-zA-Z0-9가-힣]/.test(newName.trim())) { alert("특수문자 불가"); return; } try { const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName.trim())}`); const data = await res.json(); if(!data.available) { alert(data.message); return; } myProfile.name = newName.trim(); myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); saveData(); showToast("변경 완료!"); renderProfile(); } catch(err) { alert("오류 발생"); } }
 
 let fileInput = document.getElementById('custom-image-upload');
-if(fileInput) {
-    fileInput.addEventListener('change', async function(e) { 
-        const file = e.target.files[0]; if(!file) return; 
-        const formData = new FormData(); formData.append("image", file); 
-        try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 업로드 완료!"); closeProfileModal(); renderProfile(); } else { showToast("🚨 업로드 실패"); } } catch(err) { showToast("🚨 네트워크 오류"); } 
-    });
-}
+if(fileInput) { fileInput.addEventListener('change', async function(e) { const file = e.target.files[0]; if(!file) return; const formData = new FormData(); formData.append("image", file); try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 업로드 완료!"); closeProfileModal(); renderProfile(); } else { showToast("🚨 업로드 실패"); } } catch(err) { showToast("🚨 네트워크 오류"); } }); }
 
 function decodeJwtResponse(token) { let base64Url = token.split('.')[1]; let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) { return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''))); }
 function showLoginScreen() {
@@ -448,109 +309,42 @@ async function submitNewNickname(googlePicture) { const inputEl = document.getEl
 
 async function initializeApp() { 
     try { 
-        if(!myEmail) return; 
-        const homeView = document.getElementById('friend-list');
-        if(homeView && (!myProfile)) {
-            homeView.innerHTML = `<div style="text-align:center; padding:60px 20px; color:#3182f6; font-weight:bold; font-size:16px;">💤 서버 데이터 불러오는 중...</div>`;
-        }
-        const serverResponse = await fetch(`${BACKEND_URL}/api/data/${encodeURIComponent(myEmail)}`); 
-        const serverData = await serverResponse.json(); 
+        if(!myEmail) return; const homeView = document.getElementById('friend-list'); if(homeView && (!myProfile)) { homeView.innerHTML = `<div style="text-align:center; padding:60px 20px; color:#3182f6; font-weight:bold; font-size:16px;">💤 서버 데이터 불러오는 중...</div>`; }
+        const serverResponse = await fetch(`${BACKEND_URL}/api/data/${encodeURIComponent(myEmail)}`); const serverData = await serverResponse.json(); 
         if (serverData.isNewUser) { showLoginScreen(); return; } 
         myProfile = serverData.profile; myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; 
-        const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); 
-        finishSetup(); 
-    } catch(err) { 
-        console.error(err); 
-        alert("서버 연결에 실패했습니다. 백엔드가 작동 중인지 확인해 주세요.");
-    } 
+        const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup(); 
+    } catch(err) { console.error(err); alert("서버 연결에 실패했습니다."); } 
 }
 
 function finishSetup() { 
     if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; } 
     if (myProfile && !myProfile.badges) myProfile.badges = []; 
     if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
-    
-    // ★ 초기 유저 시간 배열 세팅 호환 처리
-    if (myProfile && !myProfile.priceHistory) {
-        myProfile.priceHistory = [myProfile.basePrice, myProfile.price];
-        myProfile.timeHistory = ["시작", getCurrentTime()];
-    } else if (myProfile && !myProfile.timeHistory) {
-        myProfile.timeHistory = myProfile.priceHistory.map(() => "");
-    }
-    
+    if (myProfile && !myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice, myProfile.price]; myProfile.timeHistory = ["시작", getCurrentTime()]; } 
+    else if (myProfile && !myProfile.timeHistory) { myProfile.timeHistory = myProfile.priceHistory.map(() => ""); }
     checkRefill(); checkBadges(); updateTicker(); switchTab('home'); 
 }
 
 window.onload = () => { if (!myEmail) { showLoginScreen(); } else { initializeApp(); } };
 
-// ★ 내 주가 차트 그리기 함수 (시간 라벨 적용)
 let myChartInstance = null; 
 function drawPriceChart() {
-    const ctx = document.getElementById('priceChart');
-    if (!ctx || !myProfile || !myProfile.priceHistory) return;
+    const ctx = document.getElementById('priceChart'); if (!ctx || !myProfile || !myProfile.priceHistory) return;
     if (myChartInstance) { myChartInstance.destroy(); }
-    
     const history = myProfile.priceHistory;
-    // 시간 기록이 있으면 라벨로 사용, 없거나 길이가 다르면 빈칸 유지
     const labels = (myProfile.timeHistory && myProfile.timeHistory.length === history.length) ? myProfile.timeHistory : history.map(() => '');
-    
-    const isUp = history[history.length - 1] >= history[0];
-    const lineColor = isUp ? '#ff3b30' : '#3182f6';
-    const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
-    
-    myChartInstance = new Chart(ctx, {
-        type: 'line',
-        data: { labels: labels, datasets: [{ label: '내 주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] },
-        options: { 
-            responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, 
-            scales: { 
-                // ★ x축 설정: 보이도록 켜고, 글씨가 너무 많으면 최대 5개만 적당히 보여주게 설정
-                x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0 } }, 
-                y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' } } 
-            }, 
-            interaction: { intersect: false, mode: 'index' } 
-        }
-    });
+    const isUp = history[history.length - 1] >= history[0]; const lineColor = isUp ? '#ff3b30' : '#3182f6'; const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
+    myChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: '내 주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0 } }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } } });
 }
 
-// ★ 친구 주가 차트 그리기 함수 (시간 라벨 동기화 적용)
 let friendChartInstance = null; 
 function drawFriendPriceChart(friend) {
-    const ctx = document.getElementById('friendPriceChart');
-    if (!ctx) return;
+    const ctx = document.getElementById('friendPriceChart'); if (!ctx) return;
     if (friendChartInstance) { friendChartInstance.destroy(); }
-    
-    let history = [];
-    let labels = [];
-    
-    if (friend.priceHistory && friend.priceHistory.length > 0) {
-        history = [...friend.priceHistory]; 
-        labels = (friend.timeHistory && friend.timeHistory.length === history.length) ? [...friend.timeHistory] : history.map(() => '');
-        
-        if (history[history.length - 1] !== friend.price) { 
-            history.push(friend.price); 
-            labels.push(getCurrentTime());
-        }
-    } else { 
-        history = [friend.basePrice || 20000, friend.price]; 
-        labels = ["시작", getCurrentTime()];
-    }
-    
-    const isUp = history[history.length - 1] >= history[0];
-    const lineColor = isUp ? '#ff3b30' : '#3182f6';
-    const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
-    
-    friendChartInstance = new Chart(ctx, {
-        type: 'line',
-        data: { labels: labels, datasets: [{ label: '주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] },
-        options: { 
-            responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, 
-            scales: { 
-                // ★ x축 설정 (동일하게 적용)
-                x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0 } }, 
-                y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } 
-            }, 
-            interaction: { intersect: false, mode: 'index' } 
-        }
-    });
+    let history = []; let labels = [];
+    if (friend.priceHistory && friend.priceHistory.length > 0) { history = [...friend.priceHistory]; labels = (friend.timeHistory && friend.timeHistory.length === history.length) ? [...friend.timeHistory] : history.map(() => ''); if (history[history.length - 1] !== friend.price) { history.push(friend.price); labels.push(getCurrentTime()); } } 
+    else { history = [friend.basePrice || 20000, friend.price]; labels = ["시작", getCurrentTime()]; }
+    const isUp = history[history.length - 1] >= history[0]; const lineColor = isUp ? '#ff3b30' : '#3182f6'; const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
+    friendChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: '주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0 } }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } } });
 }
