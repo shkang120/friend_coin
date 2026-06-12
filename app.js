@@ -15,7 +15,8 @@ const defaultProfile = {
     lastDailyAdBonus: null, dailyAdTicketsDate: null, dailyAdTicketsCount: 0, 
     badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 },
     isVIP: false, nameColor: "#333d4b",
-    priceHistory: [] // ★ 차트 기록 배열 추가
+    priceHistory: [],
+    timeHistory: [] // ★ 시간 기록용 배열 추가
 };
 
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = [];   
@@ -219,7 +220,6 @@ function openFriendDetail(friendEmail) {
     setTimeout(() => drawFriendPriceChart(friend), 50);
 }
 
-// ★ 사유 검증 및 전송 로직 포함
 async function submitEvaluation(evalType, intensity) {
     if (!currentSelectedFriend) return;
     if (evalType === 'good' && myProfile.goodTickets <= 0) { alert("남은 호평권이 없습니다!"); return; }
@@ -334,8 +334,13 @@ function claimAdReward(isVipPass = false) {
     if (currentAdRewardType === 'double_attendance') { 
         myProfile.price += 50; 
         if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; 
-        if (!myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice];
+        
+        // ★ 내 정보 로컬 주가 변동 시 시간도 기록
+        if (!myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice]; myProfile.timeHistory = ["시작"]; }
+        if (!myProfile.timeHistory) myProfile.timeHistory = myProfile.priceHistory.map(()=>"");
         myProfile.priceHistory.push(myProfile.price);
+        myProfile.timeHistory.push(getCurrentTime());
+        
         myProfile.lastDailyAdBonus = todayStr; 
         if (isVipPass) showToast("👑 VIP 프리패스! 50p 상승."); else showToast("🎁 50p가 추가 상승했습니다."); 
     } else if (currentAdRewardType === 'extra_ticket') { 
@@ -351,7 +356,6 @@ function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; sav
 function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
 function claimWeeklyTickets() { if (myProfile.weeklyTicketsClaimed) { showToast("이미 획득하셨습니다!"); return; } myProfile.goodTickets += 1; myProfile.badTickets += 1; myProfile.weeklyTicketsClaimed = true; showToast("🎫 평가권 추가!"); saveData(); renderProfile(); }
 
-// ★ 내 정보 탭 렌더링 (차트 포함)
 function renderProfile() {
     const container = document.getElementById('my-profile-info'); if(!container || !myProfile) return;
     const isDelisted = myProfile.status === 'delisted'; const changeAmount = myProfile.price - myProfile.basePrice; const changeRate = ((changeAmount / myProfile.basePrice) * 100).toFixed(1);
@@ -385,7 +389,6 @@ function renderProfile() {
         </div>
         
         ${actionBtn}
-        <!-- ★ margin-bottom: 100px; 를 추가해서 밑에 빈 공간을 넉넉하게 뚫어줍니다 -->
         <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px; margin-bottom: 100px;" onclick="handleLogout()">🚪 로그아웃</button>
     `;
     setTimeout(drawPriceChart, 50); 
@@ -396,8 +399,13 @@ function doDailyAttendance() {
     if (myProfile.lastDailyAttendance === today) { showToast("이미 완료하셨습니다!"); return; } 
     myProfile.price += 50; 
     if (myProfile.price > myProfile.maxPrice) myProfile.maxPrice = myProfile.price; 
-    if (!myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice];
+    
+    // ★ 내 정보 로컬 주가 변동 시 시간도 기록
+    if (!myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice]; myProfile.timeHistory = ["시작"]; }
+    if (!myProfile.timeHistory) myProfile.timeHistory = myProfile.priceHistory.map(()=>"");
     myProfile.priceHistory.push(myProfile.price); 
+    myProfile.timeHistory.push(getCurrentTime());
+    
     myProfile.lastDailyAttendance = today; 
     showToast("💵 일일 출석 완료!"); saveData(); renderProfile(); 
 }
@@ -461,48 +469,88 @@ function finishSetup() {
     if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; } 
     if (myProfile && !myProfile.badges) myProfile.badges = []; 
     if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
-    if (myProfile && !myProfile.priceHistory) myProfile.priceHistory = [myProfile.basePrice, myProfile.price];
+    
+    // ★ 초기 유저 시간 배열 세팅 호환 처리
+    if (myProfile && !myProfile.priceHistory) {
+        myProfile.priceHistory = [myProfile.basePrice, myProfile.price];
+        myProfile.timeHistory = ["시작", getCurrentTime()];
+    } else if (myProfile && !myProfile.timeHistory) {
+        myProfile.timeHistory = myProfile.priceHistory.map(() => "");
+    }
+    
     checkRefill(); checkBadges(); updateTicker(); switchTab('home'); 
 }
 
 window.onload = () => { if (!myEmail) { showLoginScreen(); } else { initializeApp(); } };
 
-// ★ 내 주가 차트 그리기 함수
+// ★ 내 주가 차트 그리기 함수 (시간 라벨 적용)
 let myChartInstance = null; 
 function drawPriceChart() {
     const ctx = document.getElementById('priceChart');
     if (!ctx || !myProfile || !myProfile.priceHistory) return;
     if (myChartInstance) { myChartInstance.destroy(); }
+    
     const history = myProfile.priceHistory;
+    // 시간 기록이 있으면 라벨로 사용, 없거나 길이가 다르면 빈칸 유지
+    const labels = (myProfile.timeHistory && myProfile.timeHistory.length === history.length) ? myProfile.timeHistory : history.map(() => '');
+    
     const isUp = history[history.length - 1] >= history[0];
     const lineColor = isUp ? '#ff3b30' : '#3182f6';
     const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
-    const labels = history.map(() => ''); 
+    
     myChartInstance = new Chart(ctx, {
         type: 'line',
         data: { labels: labels, datasets: [{ label: '내 주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] },
-        options: { responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } }
+        options: { 
+            responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, 
+            scales: { 
+                // ★ x축 설정: 보이도록 켜고, 글씨가 너무 많으면 최대 5개만 적당히 보여주게 설정
+                x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0 } }, 
+                y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' } } 
+            }, 
+            interaction: { intersect: false, mode: 'index' } 
+        }
     });
 }
 
-// ★ 친구 주가 차트 그리기 함수 (데이터 동기화 및 애니메이션 적용)
+// ★ 친구 주가 차트 그리기 함수 (시간 라벨 동기화 적용)
 let friendChartInstance = null; 
 function drawFriendPriceChart(friend) {
     const ctx = document.getElementById('friendPriceChart');
     if (!ctx) return;
     if (friendChartInstance) { friendChartInstance.destroy(); }
+    
     let history = [];
+    let labels = [];
+    
     if (friend.priceHistory && friend.priceHistory.length > 0) {
         history = [...friend.priceHistory]; 
-        if (history[history.length - 1] !== friend.price) { history.push(friend.price); }
-    } else { history = [friend.basePrice || 20000, friend.price]; }
+        labels = (friend.timeHistory && friend.timeHistory.length === history.length) ? [...friend.timeHistory] : history.map(() => '');
+        
+        if (history[history.length - 1] !== friend.price) { 
+            history.push(friend.price); 
+            labels.push(getCurrentTime());
+        }
+    } else { 
+        history = [friend.basePrice || 20000, friend.price]; 
+        labels = ["시작", getCurrentTime()];
+    }
+    
     const isUp = history[history.length - 1] >= history[0];
     const lineColor = isUp ? '#ff3b30' : '#3182f6';
     const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
-    const labels = history.map(() => '');
+    
     friendChartInstance = new Chart(ctx, {
         type: 'line',
         data: { labels: labels, datasets: [{ label: '주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] },
-        options: { responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } }
+        options: { 
+            responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, 
+            scales: { 
+                // ★ x축 설정 (동일하게 적용)
+                x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0 } }, 
+                y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } 
+            }, 
+            interaction: { intersect: false, mode: 'index' } 
+        }
     });
 }

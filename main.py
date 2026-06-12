@@ -5,6 +5,7 @@ from pymongo import MongoClient
 import os
 import httpx
 from dotenv import load_dotenv
+from datetime import datetime, timedelta # ★ 시간 처리를 위해 추가된 도구
 
 load_dotenv()
 
@@ -22,7 +23,6 @@ MONGO_URL = os.getenv("MONGO_URL")
 client = MongoClient(MONGO_URL)
 db = client["friend_coin_db"] 
 
-# ★ 평가 데이터 모델 (사유 포함)
 class EvalData(BaseModel):
     evaluator_email: str
     target_email: str
@@ -58,7 +58,6 @@ class VoteData(BaseModel):
     voter_email: str
     vote_type: str
 
-# ★ 1. 경로 인코딩 호환성을 위한 2중 라우터
 @app.get("/api/data/{email:path}")
 @app.get("/api/data/{email}")
 def get_user_data(email: str):
@@ -116,14 +115,12 @@ def save_user_data(email: str, data: UserData):
     )
     return {"status": "success"}
 
-# ★ 2. 평가 시스템 (차트 연동 및 사유 알림 포함)
 @app.post("/api/evaluate")
 def evaluate_user(data: EvalData):
     evaluator = db["users"].find_one({"_id": data.evaluator_email})
     target = db["users"].find_one({"_id": data.target_email})
     if not evaluator or not target: return {"status": "error", "message": "유저를 찾을 수 없습니다."}
 
-    # 티켓 차감
     if data.eval_type == 'good':
         if evaluator["profile"].get("goodTickets", 0) <= 0: return {"status": "error", "message": "호평권 부족"}
         evaluator["profile"]["goodTickets"] -= 1
@@ -135,7 +132,6 @@ def evaluate_user(data: EvalData):
 
     db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": evaluator["profile"]}})
 
-    # 주가 변동 로직
     base_price = target["profile"].get("basePrice", 20000)
     change_rate = data.intensity * 0.01
     change_amount = base_price * change_rate
@@ -145,12 +141,21 @@ def evaluate_user(data: EvalData):
     else:
         target["profile"]["price"] -= change_amount
 
-    # ★ 차트 기록용 (priceHistory) 배열 업데이트
+    # ★ 차트 기록용 배열 (시간 포함) 업데이트
     if "priceHistory" not in target["profile"] or not target["profile"]["priceHistory"]:
         target["profile"]["priceHistory"] = [target["profile"].get("basePrice", 20000)]
+        target["profile"]["timeHistory"] = ["시작"]
+
     target["profile"]["priceHistory"].append(target["profile"]["price"])
 
-    # ★ 알림(noti) 업데이트: 사유 전송
+    # ★ 한국 시간(UTC+9)으로 현재 시간 계산해서 시간 기록 배열에 추가
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    current_time_str = kst_now.strftime("%m.%d %H:%M")
+    
+    if "timeHistory" not in target["profile"]:
+        target["profile"]["timeHistory"] = [""] * (len(target["profile"]["priceHistory"]) - 1)
+    target["profile"]["timeHistory"].append(current_time_str)
+
     eval_icon = "👍호평" if data.eval_type == "good" else "👎악평"
     evaluator_name = evaluator.get("profile", {}).get("name", "익명")
     noti_msg = f"[{eval_icon}] {evaluator_name}님의 평가: {data.reason}"
@@ -159,13 +164,12 @@ def evaluate_user(data: EvalData):
         target["noti"] = []
     
     target["noti"].insert(0, noti_msg)
-    target["noti"] = target["noti"][:30] # 알림은 30개까지만 보관
+    target["noti"] = target["noti"][:30] 
 
     db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"], "noti": target["noti"]}})
     
     return {"status": "success"}
 
-# === 기타 기본 기능 엔드포인트 ===
 @app.get("/api/check-nickname")
 def check_nickname(nickname: str):
     user = db["users"].find_one({"profile.name": nickname})
@@ -247,7 +251,6 @@ def vote_agenda(data: VoteData):
     status_msg = "success"
     message = "투표 완료"
     
-    # 정족수 달성 시 판결 로직
     if target_agenda["agreeVotes"] >= required_votes:
         target_agenda["status"] = "resolved"
         target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
