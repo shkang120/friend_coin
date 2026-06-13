@@ -17,7 +17,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False, # 토큰 자격 증명 충돌 방지용 필수 설정
+    allow_credentials=False, 
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -61,7 +61,6 @@ class VoteData(BaseModel):
     voter_email: str
     vote_type: str
 
-# 🛡️ 보안 패치: 프론트엔드에서 날짜를 조작하지 못하도록 입력값 제외
 class RewardData(BaseModel):
     email: str
     reward_type: str
@@ -70,6 +69,22 @@ class RespondEvalData(BaseModel):
     email: str
     eval_id: str
     action: str
+
+# 🛡️ [보안 패치 2번] 메모리 기반 API 도배 공격(매크로) 방지용 쿨타임 저장소
+# 서버가 켜져있는 동안 유저별 마지막 API 호출 시간을 기록합니다.
+api_cooldowns = {
+    "chat": {},     # 채팅: 1초 쿨타임
+    "evaluate": {}, # 평가: 3초 쿨타임
+    "agenda": {}    # 재판: 3초 쿨타임
+}
+
+def is_spamming(email: str, action_type: str, cooldown_seconds: int) -> bool:
+    now = datetime.utcnow()
+    last_time = api_cooldowns[action_type].get(email)
+    if last_time and (now - last_time).total_seconds() < cooldown_seconds:
+        return True # 쿨타임이 안 지났으면 스팸(도배)으로 간주
+    api_cooldowns[action_type][email] = now
+    return False
 
 def verify_google_token(auth_header: str):
     if not auth_header or not auth_header.startswith("Bearer "): return None
@@ -155,7 +170,6 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
 
     profile = user["profile"]
     kst_now = datetime.utcnow() + timedelta(hours=9)
-    # 🛡️ 백엔드가 클라이언트를 믿지 않고 스스로 한국 날짜를 도장 찍어 검증
     server_today_str = kst_now.strftime("%Y-%m-%d")
     time_str = kst_now.strftime("%m.%d %H:%M")
     msg = ""
@@ -203,7 +217,10 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
     if not email or email != data.evaluator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     if data.evaluator_email == data.target_email: return {"status": "error", "message": "자신을 평가할 수 없습니다."}
 
-    # 🛡️ 변동폭 제한 공격 완벽 방어
+    # 🛡️ 매크로 도배 방지 (3초 이내 연속 평가 금지)
+    if is_spamming(email, "evaluate", 3):
+        return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
+
     if data.intensity not in [1, 2, 3]:
         return {"status": "error", "message": "올바르지 않은 변동 수치입니다."}
 
@@ -333,7 +350,6 @@ def check_nickname(nickname: str):
 def create_room(data: RoomData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
-    # 🛡️ 암호학적으로 안전한 방 코드 난수 생성
     alphabet = string.ascii_uppercase + string.digits
     code = ''.join(secrets.choice(alphabet) for _ in range(6))
     db["rooms"].insert_one({"_id": code, "name": data.room_name, "members": [email], "agendas": [], "messages": []})
@@ -360,7 +376,10 @@ def send_chat(data: ChatData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.sender_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
 
-    # 🛡️ 방 가입 인원 여부 대조
+    # 🛡️ 매크로 도배 방지 (1초 이내 연속 채팅 금지)
+    if is_spamming(email, "chat", 1):
+        return {"status": "error", "message": "채팅 도배 방지! 천천히 입력해 주세요."}
+
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room or email not in room.get("members", []):
         return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
@@ -374,7 +393,10 @@ def create_agenda(data: AgendaData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.creator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
 
-    # 🛡️ 방 가입 인원 여부 대조
+    # 🛡️ 매크로 도배 방지 (3초 이내 연속 재판 발의 금지)
+    if is_spamming(email, "agenda", 3):
+        return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
+
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room or email not in room.get("members", []):
         return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
@@ -391,7 +413,6 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.voter_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
 
-    # 🛡️ 방 가입 인원 여부 대조
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room or email not in room.get("members", []):
         return {"status": "error", "message": "방이 없거나 해당 클럽의 멤버가 아닙니다."}
