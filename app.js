@@ -60,15 +60,11 @@ function updateTicker() {
     tickerEl.innerHTML = `[글로벌 시황] 👑 전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p) &nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; [공지] 프라이빗 투자 클럽 내부 채팅방 기능 업데이트!`;
 }
 
-// ★ 모든 데이터 전송 요청에 헤더 인증(Authorization: Bearer 토큰) 장착
 function saveData() { 
     checkBadges(); updateTicker(); if (!myEmail) return;
     fetch(`${BACKEND_URL}/api/save`, { 
         method: "POST", 
-        headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` // 신분증 동봉
-        }, 
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` }, 
         body: JSON.stringify({ profile: myProfile, noti: myNotifications }) 
     }).catch(err => console.error(err));
 }
@@ -126,7 +122,7 @@ function openFriendDetail(friendEmail) {
             <div style="margin-bottom:15px;">${getAvatarHtml(friend, 'large')}</div>
             <h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${friend.name}</h2>
             <div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:15px;">${Math.floor(friend.price).toLocaleString()} p</div>
-            <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendPriceChart" style="width:100%; height:100px;"></canvas></div>
+            <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendFriendChartCanvas" style="width:100%; height:110px;"></canvas></div>
             <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
             <textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; margin-bottom:15px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea>
             <div style="text-align:left; margin-bottom:15px;"><div style="font-size:13px; font-weight:bold; color:#ff3b30; margin-bottom:8px;">👍 호평하기 (티켓 1장)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('good', 1)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+1%<br><span style="font-size:10px;">+${p1}p</span></button><button onclick="submitEvaluation('good', 2)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+2%<br><span style="font-size:10px;">+${p2}p</span></button><button onclick="submitEvaluation('good', 3)" style="flex:1; padding:10px 5px; background:#ff3b30; border:1px solid #ff3b30; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">+3%<br><span style="font-size:10px;">+${p3}p</span></button></div></div>
@@ -141,15 +137,12 @@ async function submitEvaluation(evalType, intensity) {
     if (!currentSelectedFriend) return;
     if (evalType === 'good' && myProfile.goodTickets <= 0) { alert("남은 호평권이 없습니다!"); return; }
     if (evalType === 'bad' && myProfile.badTickets <= 0) { alert("남은 악평권이 없습니다!"); return; }
-
     const reasonInput = document.getElementById('eval-reason-input'); const reasonText = reasonInput ? reasonInput.value.trim() : "";
     if (!reasonText) { alert("평가 사유를 반드시 작성해 주세요!"); if(reasonInput) reasonInput.focus(); return; }
-
     document.getElementById('eval-modal').style.display = 'none'; showToast(`⏳ 반영 중...`);
     try {
         const res = await fetch(`${BACKEND_URL}/api/evaluate`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity, reason: reasonText }) });
-        const data = await res.json(); 
-        if (data.status === 'success') { showToast(`✅ 주가 조정 완료!`); await initializeApp(); } else { alert(data.message); }
+        const data = await res.json(); if (data.status === 'success') { showToast(`✅ 주가 조정 완료!`); await initializeApp(); } else { alert(data.message); }
     } catch(err) { alert("네트워크 오류 발생"); }
 }
 
@@ -163,7 +156,7 @@ function openCreateAgendaModal(defaultType = 'delist', targetEmail = '') {
             <h3 style="margin-top:0; color:#333d4b; text-align:center; font-size:18px;">⚖️ 주주총회 재판 기소장</h3>
             <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">1. 재판 대상자</label><select id="agenda-target-select" style="width:100%; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:15px; background:white; outline:none;">${memberOptions}</select>
             <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">2. 목적</label><select id="agenda-type-select" style="width:100%; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:15px; background:white; outline:none;"><option value="delist" ${defaultType === 'delist' ? 'selected' : ''}>🚨 자동/수동 상장폐지 심사 건</option><option value="revival" ${defaultType === 'revival' ? 'selected' : ''}>🌱 갱생 및 코인 회생 재상장 건</option></select>
-            <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">3. 기소 사유</label><textarea id="agenda-reason-input" placeholder="사유를 명시해 주세요." style="width:100%; height:80px; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:20px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none;"></textarea>
+            <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">3. 기소 사유</label><textarea id="agenda-reason-input" placeholder="사유를 명시해 주세요." style="width:100%; height:80px; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:20px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none Pap;"></textarea>
             <div style="display:flex; gap:10px;"><button onclick="document.getElementById('agenda-create-modal').style.display='none'" style="flex:1; padding:12px; background:#f2f4f6; border:none; border-radius:10px; font-weight:bold; color:#8b95a1; cursor:pointer;">취소</button><button onclick="submitCreateAgenda()" style="flex:1; padding:12px; background:#333d4b; border:none; border-radius:10px; font-weight:bold; color:white; cursor:pointer;">재판 시작 ⚖️</button></div>
         </div>
     `;
@@ -279,7 +272,7 @@ function renderProfile() {
 
 function openProfileModal() { document.getElementById('profile-modal').style.display = 'flex'; const grid = document.getElementById('default-profiles-grid'); grid.innerHTML = DEFAULT_AVATARS.map(url => `<div onclick="selectDefaultProfile('${url}')" style="cursor: pointer; border-radius: 12px; overflow: hidden; background: #f2f4f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.1s;"><img src="${url}" style="width: 100%; height: 100%; display: block; object-fit: cover;"></div>`).join(''); }
 function closeProfileModal() { document.getElementById('profile-modal').style.display = 'none'; }
-function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); showToast("프로厌 이미지 변경!"); closeProfileModal(); renderProfile(); }
+function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); showToast("프로필 이미지 변경!"); closeProfileModal(); renderProfile(); }
 async function changeNickname() { const newName = prompt("변경할 닉네임 (최대 8자):"); if(!newName || newName.trim() === "" || newName.trim() === myProfile.name) return; if (/[^a-zA-Z0-9가-힣]/.test(newName.trim())) { alert("특수문자 불가"); return; } try { const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName.trim())}`); const data = await res.json(); if(!data.available) { alert(data.message); return; } myProfile.name = newName.trim(); myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); saveData(); showToast("변경 완료!"); renderProfile(); } catch(err) { alert("오류 발생"); } }
 
 let fileInput = document.getElementById('custom-image-upload');
@@ -294,17 +287,12 @@ function showLoginScreen() {
 }
 function triggerGoogleIntent(intent) { loginIntent = intent; document.getElementById('google-btn-container').style.display = 'flex'; }
 
-// ★ 로그인 시 구글 ID 토큰(발급된 정식 신분증)을 localStorage에 영구 보관
 async function handleCredentialResponse(response) {
-    const responsePayload = decodeJwtResponse(response.credential); const tempEmail = responsePayload.email; 
-    const idToken = response.credential;
-    localStorage.setItem('fc_id_token', idToken); // 신분증 보관
-    localStorage.setItem('fc_email', tempEmail);
-    
+    const responsePayload = decodeJwtResponse(response.credential); const tempEmail = responsePayload.email; const idToken = response.credential;
+    localStorage.setItem('fc_id_token', idToken); localStorage.setItem('fc_email', tempEmail);
     const overlay = document.getElementById('login-overlay'); if(overlay) overlay.innerHTML = `<div style="font-size:20px; font-weight:bold; color:#333d4b;">서버 연결 중... ⏳</div>`; 
     try {
-        const serverResponse = await fetch(`${BACKEND_URL}/api/data`, { headers: { "Authorization": `Bearer ${idToken}` } }); 
-        const serverData = await serverResponse.json();
+        const serverResponse = await fetch(`${BACKEND_URL}/api/data`, { headers: { "Authorization": `Bearer ${idToken}` } }); const serverData = await serverResponse.json();
         if (loginIntent === 'login' && serverData.isNewUser) { alert("가입 정보가 없습니다. 새로 시작하기를 이용해 주세요."); localStorage.clear(); location.reload(); return; }
         myEmail = tempEmail;
         if (serverData.isNewUser) { showNicknameSetupScreen(responsePayload.picture); } 
@@ -319,8 +307,7 @@ async function initializeApp() {
     try { 
         const token = localStorage.getItem('fc_id_token'); if(!token) { showLoginScreen(); return; }
         const homeView = document.getElementById('friend-list'); if(homeView && (!myProfile)) { homeView.innerHTML = `<div style="text-align:center; padding:60px 20px; color:#3182f6; font-weight:bold; font-size:16px;">💤 서버 데이터 불러오는 중...</div>`; }
-        const serverResponse = await fetch(`${BACKEND_URL}/api/data`, { headers: { "Authorization": `Bearer ${token}` } }); 
-        const serverData = await serverResponse.json(); 
+        const serverResponse = await fetch(`${BACKEND_URL}/api/data`, { headers: { "Authorization": `Bearer ${token}` } }); const serverData = await serverResponse.json(); 
         if (serverData.status === 'unauthenticated' || serverData.isNewUser) { showLoginScreen(); return; } 
         myProfile = serverData.profile; myEmail = localStorage.getItem('fc_email'); myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; 
         const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup(); 
@@ -338,22 +325,70 @@ function finishSetup() {
 
 window.onload = () => { if (!localStorage.getItem('fc_id_token')) { showLoginScreen(); } else { initializeApp(); } };
 
+// ★ 내 주가 차트 (X축 날짜 가독성 및 여백 패치)
 let myChartInstance = null; 
 function drawPriceChart() {
     const ctx = document.getElementById('priceChart'); if (!ctx || !myProfile || !myProfile.priceHistory) return;
     if (myChartInstance) { myChartInstance.destroy(); }
     const history = myProfile.priceHistory; const labels = (myProfile.timeHistory && myProfile.timeHistory.length === history.length) ? myProfile.timeHistory : history.map(() => '');
     const isUp = history[history.length - 1] >= history[0]; const lineColor = isUp ? '#ff3b30' : '#3182f6'; const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
-    myChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: '내 주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0 } }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } } });
+    myChartInstance = new Chart(ctx, { 
+        type: 'line', 
+        data: { labels: labels, datasets: [{ label: '내 주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, 
+        options: { 
+            responsive: true, maintainAspectRatio: false, 
+            layout: { padding: { bottom: 10 } }, // ★ 텍스트가 잘리지 않도록 하단 여백 추가
+            animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, 
+            scales: { 
+                x: { 
+                    display: true, grid: { display: false }, 
+                    ticks: { 
+                        font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0,
+                        callback: function(val, index) {
+                            const label = this.getLabelForValue(val);
+                            if (label && label.includes(' ')) { return label.split(' ')[0]; } // ★ 공백 기준 앞자리(날짜)만 바닥에 출력
+                            return label;
+                        }
+                    } 
+                }, 
+                y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' } } 
+            }, 
+            interaction: { intersect: false, mode: 'index' } 
+        } 
+    });
 }
 
+// ★ 친구 주가 차트 (X축 날짜 가독성 및 여백 패치)
 let friendChartInstance = null; 
 function drawFriendPriceChart(friend) {
-    const ctx = document.getElementById('friendPriceChart'); if (!ctx) return;
+    const ctx = document.getElementById('friendFriendChartCanvas'); if (!ctx) return;
     if (friendChartInstance) { friendChartInstance.destroy(); }
     let history = []; let labels = [];
     if (friend.priceHistory && friend.priceHistory.length > 0) { history = [...friend.priceHistory]; labels = (friend.timeHistory && friend.timeHistory.length === history.length) ? [...friend.timeHistory] : history.map(() => ''); if (history[history.length - 1] !== friend.price) { history.push(friend.price); labels.push(getCurrentTime()); } } 
     else { history = [friend.basePrice || 20000, friend.price]; labels = ["시작", getCurrentTime()]; }
     const isUp = history[history.length - 1] >= history[0]; const lineColor = isUp ? '#ff3b30' : '#3182f6'; const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
-    friendChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: '주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0 } }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } } });
+    friendChartInstance = new Chart(ctx, { 
+        type: 'line', 
+        data: { labels: labels, datasets: [{ label: '주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, 
+        options: { 
+            responsive: true, maintainAspectRatio: false, 
+            layout: { padding: { bottom: 10 } }, // ★ 하단 여백 확보
+            animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, 
+            scales: { 
+                x: { 
+                    display: true, grid: { display: false }, 
+                    ticks: { 
+                        font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0,
+                        callback: function(val, index) {
+                            const label = this.getLabelForValue(val);
+                            if (label && label.includes(' ')) { return label.split(' ')[0]; } // ★ 바닥에는 날짜만 출력
+                            return label;
+                        }
+                    } 
+                }, 
+                y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } 
+            }, 
+            interaction: { intersect: false, mode: 'index' } 
+        } 
+    });
 }
