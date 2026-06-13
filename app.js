@@ -4,15 +4,10 @@ let myEmail = localStorage.getItem('fc_email') || null;
 let myUsername = localStorage.getItem('fc_username') || null;
 let loginIntent = ''; 
 
-// 🛡️ [보안 패치] 채팅창, 알림창에 악성 자바스크립트 스크립트 삽입(XSS)을 원천 차단하는 탈출 함수
+// 🛡️ [보안 패치] XSS 해킹 스크립트 무력화 함수
 function escapeHtml(text) {
     if (!text) return "";
-    return text.toString()
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+    return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
 function getCurrentTime() {
@@ -125,7 +120,7 @@ function switchTab(tabName) {
     if(!myProfile) return; checkRefill(); checkBadges();
     document.querySelectorAll('.view').forEach(v => { v.classList.remove('view-active'); });
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    const targetView = document.getElementById(tabName + '-view'); if (targetView) targetView.add('view-active');
+    const targetView = document.getElementById(tabName + '-view'); if (targetView) targetView.classList.add('view-active');
     const tabIndex = { 'home': 0, 'meeting': 1, 'ranking': 2, 'noti': 3, 'profile': 4 }[tabName];
     const navItems = document.querySelectorAll('.nav-item'); if (navItems[tabIndex]) navItems[tabIndex].classList.add('active');
     if (tabName === 'home') renderHome(); if (tabName === 'meeting') renderMeeting(); if (tabName === 'ranking') renderRanking(); if (tabName === 'noti') renderNoti(); if (tabName === 'profile') renderProfile();
@@ -300,34 +295,36 @@ function renderRanking() {
     container.innerHTML = `<div style="background: white; border-radius: 16px; padding: 20px 15px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee;"><h3 style="margin-top: 0; color: #333d4b;">🌍 전국구 통합 랭킹 Top 10</h3><p style="font-size:12px; color:#8b95a1; margin-bottom:20px;">모든 클럽의 주가가 합산된 실시간 순위보드입니다.</p>${top10.map((p, i) => createTotalRankCard(p, i)).join('')}</div>`;
 }
 
+// 🛡️ [보안 패치] 클라이언트 단에서 서버로 today_str를 전송하지 않습니다.
 async function doDailyAttendance() { 
-    const today = new Date().toDateString(); if (myProfile.lastDailyAttendance === today) { showToast("이미 완료하셨습니다!"); return; } showToast("⏳ 출석 처리 중...");
+    showToast("⏳ 출석 처리 중...");
     try {
-        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: 'attendance', today_str: today }) });
+        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: 'attendance' }) });
         const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); } else { showToast(data.message); }
     } catch(err) { alert("서버 오류"); }
 }
 
 function watchAd(type) {
-    const todayStr = new Date().toDateString(); if (type === 'double_attendance') { if (myProfile.lastDailyAttendance !== todayStr) { showToast("출석체크를 먼저 해주세요."); return; } if (myProfile.lastDailyAdBonus === todayStr) { showToast("이미 2배 보상을 받았습니다."); return; } } else if (type === 'extra_ticket') { if (myProfile.dailyAdTicketsDate !== todayStr) { myProfile.dailyAdTicketsCount = 0; myProfile.dailyAdTicketsDate = todayStr; } if (myProfile.dailyAdTicketsCount >= 1) { showToast("오늘은 더 받을 수 없습니다."); return; } }
     currentAdRewardType = type; if (myProfile.isVIP) { claimAdReward(true); return; }
     document.getElementById('ad-modal').style.display = 'flex'; let timeLeft = 3; document.getElementById('ad-timer').textContent = `광고 준비 중... (${timeLeft}초)`;
     const btn = document.getElementById('ad-close-btn'); btn.textContent = "광고를 끝까지 시청해주세요"; btn.style.background = "#e5e8eb"; btn.style.color = "#8b95a1"; btn.disabled = true; btn.onclick = null;
     adInterval = setInterval(() => { timeLeft--; if (timeLeft > 0) { document.getElementById('ad-timer').textContent = `광고 시청 중... (${timeLeft}초)`; } else { clearInterval(adInterval); document.getElementById('ad-timer').textContent = "✅ 시청 완료!"; btn.textContent = "보상 받기 🎁"; btn.style.background = "#3182f6"; btn.style.color = "white"; btn.disabled = false; btn.onclick = () => claimAdReward(false); } }, 1000);
 }
 
+// 🛡️ [보안 패치] today_str 전송 제거
 async function claimAdReward(isVipPass = false) { 
-    document.getElementById('ad-modal').style.display = 'none'; const todayStr = new Date().toDateString(); showToast("⏳ 보상 수령 중...");
+    document.getElementById('ad-modal').style.display = 'none'; showToast("⏳ 보상 수령 중...");
     try {
-        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: currentAdRewardType, today_str: todayStr }) });
+        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: currentAdRewardType }) });
         const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(isVipPass ? `👑 VIP 프리패스! ${data.message}` : data.message); saveData(); renderProfile(); } else { showToast(data.message); }
     } catch(err) { alert("서버 오류"); }
 }
 
+// 🛡️ [보안 패치] today_str 전송 제거
 async function claimWeeklyTickets() { 
-    if (myProfile.weeklyTicketsClaimed) { showToast("이미 획득하셨습니다!"); return; } showToast("⏳ 처리 중...");
+    showToast("⏳ 처리 중...");
     try {
-        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: 'weekly', today_str: new Date().toDateString() }) });
+        const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: 'weekly' }) });
         const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); } else { showToast(data.message); }
     } catch(err) { alert("서버 오류"); }
 }
