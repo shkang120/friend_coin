@@ -6,7 +6,7 @@ let loginIntent = '';
 
 function getCurrentTime() {
     const now = new Date();
-    return `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    return `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
 const defaultProfile = { 
@@ -15,7 +15,9 @@ const defaultProfile = {
     lastDailyAdBonus: null, dailyAdTicketsDate: null, dailyAdTicketsCount: 0, 
     badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 },
     isVIP: false, nameColor: "#333d4b",
-    priceHistory: [], timeHistory: []
+    priceHistory: [], timeHistory: [],
+    pending_evals: [], // 대기 중인 악평 보관함
+    defense_count: 0, defense_month: "" // 월별 재판 방어권 카운터
 };
 
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = [];   
@@ -39,10 +41,55 @@ function getAvatarHtml(person, size = 'small') {
 }
 function getBadgeHtml(person) { let allBadges = [...(person.dynamicBadges || []), ...(person.badges || [])]; if (allBadges.length === 0) return ''; return `<div style="display:flex; gap:4px; margin-top:4px; flex-wrap:wrap;">` + allBadges.map(b => `<span style="font-size:10px; background:#f2f4f6; padding:2px 6px; border-radius:4px; color:#4e5968;">${b}</span>`).join('') + `</div>`; }
 
+// ★ 알림 창 렌더링 함수에 '대기 중인 악평 결재 대기선' 전면 구현
 function renderNoti() {
     const container = document.getElementById('noti-list'); if (!container) return;
-    if (!myNotifications || myNotifications.length === 0) { container.innerHTML = '<div style="text-align:center; padding:40px; color:#8b95a1;">새로운 알림이 없습니다.</div>'; return; }
-    container.innerHTML = myNotifications.map(n => `<div style="padding:15px; border-bottom:1px solid #f2f4f6; color:#333d4b;">${n}</div>`).join('');
+    let html = '';
+
+    // 1. 결재 대기 중인 악평이 있다면 최상단에 리스트 렌더링
+    if (myProfile && myProfile.pending_evals && myProfile.pending_evals.length > 0) {
+        html += `<div style="background:#fff3f3; padding:15px; border-radius:12px; margin-bottom:15px; border:1px solid #ffe3e3;"><h4 style="margin:0 0 10px 0; color:#ff3b30; font-size:14px;">⚠️ 승인 대기 중인 악평 목록</h4>`;
+        html += myProfile.pending_evals.map(e => `
+            <div style="background:white; padding:12px; border-radius:8px; border:1px solid #ffd5d5; margin-bottom:8px; font-size:13px; color:#333d4b;">
+                <div>👤 <b>${e.evaluator_name}</b>의 악평 변동건: <b style="color:#3182f6;">-${e.intensity}%</b></div>
+                <div style="background:#f9fafb; padding:6px; border-radius:4px; margin:6px 0; color:#6b7684; font-size:12px;">💬 사유: ${e.reason}</div>
+                <div style="display:flex; gap:6px; margin-top:8px;">
+                    <button onclick="respondPendingEval('${e.id}', 'approve')" style="flex:1; padding:6px; background:#3182f6; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">👍 감수하고 승인</button>
+                    <button onclick="respondPendingEval('${e.id}', 'defend')" style="flex:1; padding:6px; background:#ff3b30; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">⚖️ 이의제기 (재판)</button>
+                </div>
+            </div>
+        `).join('');
+        html += `</div>`;
+    }
+
+    // 2. 일반 로그 알림 출력
+    if (!myNotifications || myNotifications.length === 0) { 
+        if(!html) { container.innerHTML = '<div style="text-align:center; padding:40px; color:#8b95a1;">새로운 알림이 없습니다.</div>'; return; }
+    } else {
+        html += myNotifications.map(n => `<div style="padding:15px; border-bottom:1px solid #f2f4f6; color:#333d4b;">${n}</div>`).join('');
+    }
+    container.innerHTML = html;
+}
+
+// ★ 악평 결재 처리 (승인 또는 재판 거부 요청 통신)
+async function respondPendingEval(evalId, action) {
+    const token = localStorage.getItem('fc_id_token');
+    if(action === 'defend') {
+        const curMonth = new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, '0');
+        let count = myProfile.defense_month === curMonth ? (myProfile.defense_count || 0) : 0;
+        if(count >= 3) { alert("🚨 이번 달 방어 재판권(3회)을 모두 소모하셨습니다! 이 악평은 무조건 승인해야 합니다."); return; }
+        if(!confirm(`⚖️ 이 악평에 대해 해명 재판을 발의하시겠습니까?\n(이번 달 남은 방어 기출 횟수: ${3 - count}회)`)) return;
+    }
+    showToast("⏳ 처리 요청 중...");
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/evaluate/respond`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ email: myEmail, eval_id: evalId, action: action })
+        });
+        const data = await res.json();
+        if(data.status === 'success') { alert(data.message); await initializeApp(); switchTab('noti'); } else { alert(data.message); }
+    } catch(err) { alert("통신 실패"); }
 }
 
 function checkBadges() {
@@ -125,8 +172,8 @@ function openFriendDetail(friendEmail) {
             <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendFriendChartCanvas" style="width:100%; height:110px;"></canvas></div>
             <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
             <textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; margin-bottom:15px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea>
-            <div style="text-align:left; margin-bottom:15px;"><div style="font-size:13px; font-weight:bold; color:#ff3b30; margin-bottom:8px;">👍 호평하기 (티켓 1장)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('good', 1)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+1%<br><span style="font-size:10px;">+${p1}p</span></button><button onclick="submitEvaluation('good', 2)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+2%<br><span style="font-size:10px;">+${p2}p</span></button><button onclick="submitEvaluation('good', 3)" style="flex:1; padding:10px 5px; background:#ff3b30; border:1px solid #ff3b30; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">+3%<br><span style="font-size:10px;">+${p3}p</span></button></div></div>
-            <div style="text-align:left; margin-bottom:25px;"><div style="font-size:13px; font-weight:bold; color:#3182f6; margin-bottom:8px;">👎 악평하기 (티켓 1장)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('bad', 1)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-1%<br><span style="font-size:10px;">-${p1}p</span></button><button onclick="submitEvaluation('bad', 2)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-2%<br><span style="font-size:10px;">-${p2}p</span></button><button onclick="submitEvaluation('bad', 3)" style="flex:1; padding:10px 5px; background:#3182f6; border:1px solid #3182f6; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">-3%<br><span style="font-size:10px;">-${p3}p</span></button></div></div>
+            <div style="text-align:left; margin-bottom:15px;"><div style="font-size:13px; font-weight:bold; color:#ff3b30; margin-bottom:8px;">👍 호평하기 (티켓 1장 - 즉시 변동)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('good', 1)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+1%<br><span style="font-size:10px;">+${p1}p</span></button><button onclick="submitEvaluation('good', 2)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+2%<br><span style="font-size:10px;">+${p2}p</span></button><button onclick="submitEvaluation('good', 3)" style="flex:1; padding:10px 5px; background:#ff3b30; border:1px solid #ff3b30; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">+3%<br><span style="font-size:10px;">+${p3}p</span></button></div></div>
+            <div style="text-align:left; margin-bottom:25px;"><div style="font-size:13px; font-weight:bold; color:#3182f6; margin-bottom:8px;">👎 악평하기 (티켓 1장 - 상대방 알림창 적재)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('bad', 1)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-1%<br><span style="font-size:10px;">-${p1}p</span></button><button onclick="submitEvaluation('bad', 2)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-2%<br><span style="font-size:10px;">-${p2}p</span></button><button onclick="submitEvaluation('bad', 3)" style="flex:1; padding:10px 5px; background:#3182f6; border:1px solid #3182f6; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">-3%<br><span style="font-size:10px;">-${p3}p</span></button></div></div>
             <button onclick="document.getElementById('eval-modal').style.display='none'" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">취소</button>
         </div>
     `;
@@ -142,7 +189,8 @@ async function submitEvaluation(evalType, intensity) {
     document.getElementById('eval-modal').style.display = 'none'; showToast(`⏳ 반영 중...`);
     try {
         const res = await fetch(`${BACKEND_URL}/api/evaluate`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity, reason: reasonText }) });
-        const data = await res.json(); if (data.status === 'success') { showToast(`✅ 주가 조정 완료!`); await initializeApp(); } else { alert(data.message); }
+        const data = await res.json(); 
+        if (data.status === 'success') { alert(data.message); await initializeApp(); } else { alert(data.message); }
     } catch(err) { alert("네트워크 오류 발생"); }
 }
 
@@ -156,7 +204,7 @@ function openCreateAgendaModal(defaultType = 'delist', targetEmail = '') {
             <h3 style="margin-top:0; color:#333d4b; text-align:center; font-size:18px;">⚖️ 주주총회 재판 기소장</h3>
             <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">1. 재판 대상자</label><select id="agenda-target-select" style="width:100%; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:15px; background:white; outline:none;">${memberOptions}</select>
             <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">2. 목적</label><select id="agenda-type-select" style="width:100%; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:15px; background:white; outline:none;"><option value="delist" ${defaultType === 'delist' ? 'selected' : ''}>🚨 자동/수동 상장폐지 심사 건</option><option value="revival" ${defaultType === 'revival' ? 'selected' : ''}>🌱 갱생 및 코인 회생 재상장 건</option></select>
-            <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">3. 기소 사유</label><textarea id="agenda-reason-input" placeholder="사유를 명시해 주세요." style="width:100%; height:80px; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:20px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none Pap;"></textarea>
+            <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">3. 기소 사유</label><textarea id="agenda-reason-input" placeholder="사유를 명시해 주세요." style="width:100%; height:80px; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:20px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none;"></textarea>
             <div style="display:flex; gap:10px;"><button onclick="document.getElementById('agenda-create-modal').style.display='none'" style="flex:1; padding:12px; background:#f2f4f6; border:none; border-radius:10px; font-weight:bold; color:#8b95a1; cursor:pointer;">취소</button><button onclick="submitCreateAgenda()" style="flex:1; padding:12px; background:#333d4b; border:none; border-radius:10px; font-weight:bold; color:white; cursor:pointer;">재판 시작 ⚖️</button></div>
         </div>
     `;
@@ -177,10 +225,10 @@ function renderMeeting() {
     if (activeAgendas.length === 0) { list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">🕊️ [${room.room_name}] 방은 현재 평온합니다.<br>진행 중인 재판이 없습니다.</div>`; return; }
     const totalMembers = room.members.length; const requiredVotes = Math.floor(totalMembers / 2) + 1;
     list.innerHTML = activeAgendas.map(a => {
-        let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; }
+        let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; } else if (a.type === 'defense') { titleColor = '#f39c12'; titleText = '⚖️ 악평 이의제기 방어 법정'; }
         const targetPerson = room.members.find(f => f.email === a.target_email); const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; const hasVoted = a.votedUsers && a.votedUsers.includes(myEmail);
         let btnHtml = hasVoted ? `<button style="width:100%; background:#e5e8eb; color:#8b95a1; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:not-allowed;" disabled>⚖️ 투표 완료</button>` : `<button class="btn-vote-disagree" style="flex:1; background:#f2f4f6; color:#4e5968;" onclick="submitVote('${a.id}', 'disagree')">반대(기각)</button><button class="btn-vote-agree" style="flex:1; background:${titleColor};" onclick="submitVote('${a.id}', 'agree')">찬성(판결)</button>`;
-        return `<div class="info-card" style="border-left: 5px solid ${titleColor};"><div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">피고인: <b>${a.target_name}</b></div></div></div><div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 기소 사유:</b><br>${a.reason}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#8b95a1; margin-bottom:12px; background:#fff; padding:4px;"><div>👍 찬성: <b style="color:#ff3b30;">${a.agreeVotes}표</b></div><div>👎 반대: <b style="color:#3182f6;">${a.disagreeVotes}표</b></div><div style="background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:4px; font-weight:bold;">정족수: (${requiredVotes}/${totalMembers}명)</div></div><div style="display: flex; gap: 10px;">${btnHtml}</div></div>`;
+        return `<div class="info-card" style="border-left: 5px solid ${titleColor};"><div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">피고인: <b>${a.target_name}</b></div></div></div><div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 재판 안건 사유:</b><br>${a.reason}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#8b95a1; margin-bottom:12px; background:#fff; padding:4px;"><div>👍 찬성: <b style="color:#ff3b30;">${a.agreeVotes}표</b></div><div>👎 반대: <b style="color:#3182f6;">${a.disagreeVotes}표</b></div><div style="background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:4px; font-weight:bold;">정족수: (${requiredVotes}/${totalMembers}명)</div></div><div style="display: flex; gap: 10px;">${btnHtml}</div></div>`;
     }).join('');
 }
 async function submitVote(agendaId, voteType) { showToast("⏳ 표결 전달 중..."); try { const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); const data = await res.json(); if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await initializeApp(); switchTab('home'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("네트워크 오류"); } }
@@ -325,40 +373,15 @@ function finishSetup() {
 
 window.onload = () => { if (!localStorage.getItem('fc_id_token')) { showLoginScreen(); } else { initializeApp(); } };
 
-// ★ 내 주가 차트 (X축 날짜 가독성 및 여백 패치)
 let myChartInstance = null; 
 function drawPriceChart() {
     const ctx = document.getElementById('priceChart'); if (!ctx || !myProfile || !myProfile.priceHistory) return;
     if (myChartInstance) { myChartInstance.destroy(); }
     const history = myProfile.priceHistory; const labels = (myProfile.timeHistory && myProfile.timeHistory.length === history.length) ? myProfile.timeHistory : history.map(() => '');
     const isUp = history[history.length - 1] >= history[0]; const lineColor = isUp ? '#ff3b30' : '#3182f6'; const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
-    myChartInstance = new Chart(ctx, { 
-        type: 'line', 
-        data: { labels: labels, datasets: [{ label: '내 주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, 
-        options: { 
-            responsive: true, maintainAspectRatio: false, 
-            layout: { padding: { bottom: 10 } }, // ★ 텍스트가 잘리지 않도록 하단 여백 추가
-            animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, 
-            scales: { 
-                x: { 
-                    display: true, grid: { display: false }, 
-                    ticks: { 
-                        font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0,
-                        callback: function(val, index) {
-                            const label = this.getLabelForValue(val);
-                            if (label && label.includes(' ')) { return label.split(' ')[0]; } // ★ 공백 기준 앞자리(날짜)만 바닥에 출력
-                            return label;
-                        }
-                    } 
-                }, 
-                y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' } } 
-            }, 
-            interaction: { intersect: false, mode: 'index' } 
-        } 
-    });
+    myChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: '내 주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { bottom: 10 } }, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0, callback: function(val, index) { const label = this.getLabelForValue(val); if (label && label.includes(' ')) { return label.split(' ')[0]; } return label; } } }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10, family: 'sans-serif' }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } } });
 }
 
-// ★ 친구 주가 차트 (X축 날짜 가독성 및 여백 패치)
 let friendChartInstance = null; 
 function drawFriendPriceChart(friend) {
     const ctx = document.getElementById('friendFriendChartCanvas'); if (!ctx) return;
@@ -367,28 +390,5 @@ function drawFriendPriceChart(friend) {
     if (friend.priceHistory && friend.priceHistory.length > 0) { history = [...friend.priceHistory]; labels = (friend.timeHistory && friend.timeHistory.length === history.length) ? [...friend.timeHistory] : history.map(() => ''); if (history[history.length - 1] !== friend.price) { history.push(friend.price); labels.push(getCurrentTime()); } } 
     else { history = [friend.basePrice || 20000, friend.price]; labels = ["시작", getCurrentTime()]; }
     const isUp = history[history.length - 1] >= history[0]; const lineColor = isUp ? '#ff3b30' : '#3182f6'; const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
-    friendChartInstance = new Chart(ctx, { 
-        type: 'line', 
-        data: { labels: labels, datasets: [{ label: '주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, 
-        options: { 
-            responsive: true, maintainAspectRatio: false, 
-            layout: { padding: { bottom: 10 } }, // ★ 하단 여백 확보
-            animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, 
-            scales: { 
-                x: { 
-                    display: true, grid: { display: false }, 
-                    ticks: { 
-                        font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0,
-                        callback: function(val, index) {
-                            const label = this.getLabelForValue(val);
-                            if (label && label.includes(' ')) { return label.split(' ')[0]; } // ★ 바닥에는 날짜만 출력
-                            return label;
-                        }
-                    } 
-                }, 
-                y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } 
-            }, 
-            interaction: { intersect: false, mode: 'index' } 
-        } 
-    });
+    friendChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: '주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { bottom: 10 } }, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0, callback: function(val, index) { const label = this.getLabelForValue(val); if (label && label.includes(' ')) { return label.split(' ')[0]; } return label; } } }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } } });
 }
