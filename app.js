@@ -169,7 +169,7 @@ function openFriendDetail(friendEmail) {
             <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
             
             <div style="text-align:left; margin-bottom:15px;">
-                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">1. 평가 종류 선택</div>
+                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">평가 종류 선택</div>
                 <div style="display:flex; gap:10px;">
                     <button id="eval-type-good" onclick="selectEvalType('good')" style="flex:1; padding:12px; border:1px solid #ffdbdb; background:white; color:#ff3b30; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👍 호평하기</button>
                     <button id="eval-type-bad" onclick="selectEvalType('bad')" style="flex:1; padding:12px; border:1px solid #d6ebff; background:white; color:#3182f6; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👎 악평하기</button>
@@ -177,7 +177,7 @@ function openFriendDetail(friendEmail) {
             </div>
 
             <div id="eval-intensity-section" style="text-align:left; margin-bottom:15px; display:none;">
-                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">2. 변동폭 선택</div>
+                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">변동폭 선택</div>
                 <div style="display:flex; gap:8px;">
                     <button id="eval-int-1" onclick="selectEvalIntensity(1)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-1-pct">1%</span><br><span id="eval-int-1-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button>
                     <button id="eval-int-2" onclick="selectEvalIntensity(2)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-2-pct">2%</span><br><span id="eval-int-2-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button>
@@ -186,7 +186,7 @@ function openFriendDetail(friendEmail) {
             </div>
 
             <div style="text-align:left; margin-bottom:20px;">
-                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">3. 사유 작성</div>
+                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">사유 작성</div>
                 <textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea>
             </div>
 
