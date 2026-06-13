@@ -4,6 +4,17 @@ let myEmail = localStorage.getItem('fc_email') || null;
 let myUsername = localStorage.getItem('fc_username') || null;
 let loginIntent = ''; 
 
+// 🛡️ [보안 패치] 채팅창, 알림창에 악성 자바스크립트 스크립트 삽입(XSS)을 원천 차단하는 탈출 함수
+function escapeHtml(text) {
+    if (!text) return "";
+    return text.toString()
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 function getCurrentTime() {
     const now = new Date();
     return `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -23,7 +34,6 @@ const defaultProfile = {
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = [];   
 let currentRoomCode = null; let currentAdRewardType = null; let adInterval = null; let currentSelectedFriend = null; 
 
-// ★ 평가 모달창의 선택 상태를 기억하는 변수
 let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 };
 
 const DEFAULT_AVATARS = [
@@ -51,8 +61,8 @@ function renderNoti() {
         html += `<div style="background:#fff3f3; padding:15px; border-radius:12px; margin-bottom:15px; border:1px solid #ffe3e3;"><h4 style="margin:0 0 10px 0; color:#ff3b30; font-size:14px;">⚠️ 승인 대기 중인 악평 목록</h4>`;
         html += myProfile.pending_evals.map(e => `
             <div style="background:white; padding:12px; border-radius:8px; border:1px solid #ffd5d5; margin-bottom:8px; font-size:13px; color:#333d4b;">
-                <div>👤 <b>${e.evaluator_name}</b>의 악평 변동건: <b style="color:#3182f6;">-${e.intensity}%</b></div>
-                <div style="background:#f9fafb; padding:6px; border-radius:4px; margin:6px 0; color:#6b7684; font-size:12px;">💬 사유: ${e.reason}</div>
+                <div>👤 <b>${escapeHtml(e.evaluator_name)}</b>의 악평 변동건: <b style="color:#3182f6;">-${e.intensity}%</b></div>
+                <div style="background:#f9fafb; padding:6px; border-radius:4px; margin:6px 0; color:#6b7684; font-size:12px;">💬 사유: ${escapeHtml(e.reason)}</div>
                 <div style="display:flex; gap:6px; margin-top:8px;">
                     <button onclick="respondPendingEval('${e.id}', 'approve')" style="flex:1; padding:6px; background:#3182f6; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">👍 감수하고 승인</button>
                     <button onclick="respondPendingEval('${e.id}', 'defend')" style="flex:1; padding:6px; background:#ff3b30; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">⚖️ 이의제기 (재판)</button>
@@ -64,7 +74,7 @@ function renderNoti() {
     if (!myNotifications || myNotifications.length === 0) { 
         if(!html) { container.innerHTML = '<div style="text-align:center; padding:40px; color:#8b95a1;">새로운 알림이 없습니다.</div>'; return; }
     } else {
-        html += myNotifications.map(n => `<div style="padding:15px; border-bottom:1px solid #f2f4f6; color:#333d4b;">${n}</div>`).join('');
+        html += myNotifications.map(n => `<div style="padding:15px; border-bottom:1px solid #f2f4f6; color:#333d4b;">${escapeHtml(n)}</div>`).join('');
     }
     container.innerHTML = html;
 }
@@ -115,7 +125,7 @@ function switchTab(tabName) {
     if(!myProfile) return; checkRefill(); checkBadges();
     document.querySelectorAll('.view').forEach(v => { v.classList.remove('view-active'); });
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    const targetView = document.getElementById(tabName + '-view'); if (targetView) targetView.classList.add('view-active');
+    const targetView = document.getElementById(tabName + '-view'); if (targetView) targetView.add('view-active');
     const tabIndex = { 'home': 0, 'meeting': 1, 'ranking': 2, 'noti': 3, 'profile': 4 }[tabName];
     const navItems = document.querySelectorAll('.nav-item'); if (navItems[tabIndex]) navItems[tabIndex].classList.add('active');
     if (tabName === 'home') renderHome(); if (tabName === 'meeting') renderMeeting(); if (tabName === 'ranking') renderRanking(); if (tabName === 'noti') renderNoti(); if (tabName === 'profile') renderProfile();
@@ -126,12 +136,12 @@ function renderHome() {
     if (!currentRoomCode) { 
         let html = `<div style="display:flex; gap:10px; margin-bottom:20px;"><button onclick="createNewRoom()" style="flex:1; padding:15px; background:#333d4b; color:white; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1);">+ 새 클럽 개설</button><button onclick="joinExistingRoom()" style="flex:1; padding:15px; background:#e8f5e9; color:#2e7d32; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.05);">🔑 코드로 입장</button></div><h3 style="color:#333d4b; margin-top:0; font-size:16px;">내 투자 클럽 목록</h3>`;
         if (myRooms.length === 0) { html += `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">가입된 투자 클럽이 없습니다.</div>`; } 
-        else { html += myRooms.map(r => `<div onclick="enterRoom('${r.room_code}')" class="info-card" style="cursor:pointer; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; border:2px solid transparent; transition:0.2s;" onmouseover="this.style.borderColor='#3182f6'" onmouseout="this.style.borderColor='transparent'"><div><div style="font-weight:bold; font-size:16px; color:#333d4b; margin-bottom:4px;">${r.room_name}</div><div style="font-size:12px; color:#8b95a1;">👥 ${r.members.length}명 | 🔑 코드: <span style="color:#3182f6; font-weight:bold;">${r.room_code}</span></div></div><div style="color:#3182f6; font-size:20px;">👉</div></div>`).join(''); }
+        else { html += myRooms.map(r => `<div onclick="enterRoom('${r.room_code}')" class="info-card" style="cursor:pointer; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; border:2px solid transparent; transition:0.2s;" onmouseover="this.style.borderColor='#3182f6'" onmouseout="this.style.borderColor='transparent'"><div><div style="font-weight:bold; font-size:16px; color:#333d4b; margin-bottom:4px;">${escapeHtml(r.room_name)}</div><div style="font-size:12px; color:#8b95a1;">👥 ${r.members.length}명 | 🔑 코드: <span style="color:#3182f6; font-weight:bold;">${r.room_code}</span></div></div><div style="color:#3182f6; font-size:20px;">👉</div></div>`).join(''); }
         list.innerHTML = html;
     } else { 
         const room = myRooms.find(r => r.room_code === currentRoomCode); if (!room) { currentRoomCode = null; renderHome(); return; }
-        let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:#f2f4f6; padding:15px; border-radius:16px;"><button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비로</button><div style="text-align:right;"><div style="font-weight:bold; color:#333d4b; font-size:16px;">${room.room_name}</div><div style="font-size:12px; color:#8b95a1;">초대 코드: <span style="color:#3182f6;">${room.room_code}</span></div></div></div><div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"><div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div><button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button></div><div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">${room.messages && room.messages.length > 0 ? room.messages.map(m => { const isMe = m.sender_email === myEmail; return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':m.sender_name}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${m.message}</div></div>`; }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}</div><div style="display:flex; gap:8px;"><input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()"><button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button></div></div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="color:#333d4b; margin:0; font-size:15px;">참여자 목록 (${room.members.length}명)</h3><button onclick="openCreateAgendaModal()" style="background:#ff3b30; color:white; border:none; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">⚖️ 재판 열기</button></div>`;
-        html += room.members.map(f => { const isMe = f.email === myEmail; const isDelisted = f.status === 'delisted'; const clickEvent = !isMe ? `onclick="openFriendDetail('${f.email}')"` : ""; const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6; cursor:pointer;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer; transition: 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.05);"); return `<div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}><div style="display: flex; align-items: center; gap: 15px;">${getAvatarHtml(f, 'small')}<div><div style="font-size: 16px; font-weight: bold;"><span style="color: ${f.nameColor || '#333d4b'};">${f.name}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} ${isDelisted ? '<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px;">💀상장폐지</span>' : ''}</div>${getBadgeHtml(f)}</div></div><div style="font-size: 16px; font-weight: bold; color: #333d4b;">${isDelisted ? '-' : Math.floor(f.price || 0).toLocaleString()} p</div></div>`; }).join('');
+        let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:#f2f4f6; padding:15px; border-radius:16px;"><button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비로</button><div style="text-align:right;"><div style="font-weight:bold; color:#333d4b; font-size:16px;">${escapeHtml(room.room_name)}</div><div style="font-size:12px; color:#8b95a1;">초대 코드: <span style="color:#3182f6;">${room.room_code}</span></div></div></div><div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"><div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div><button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button></div><div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">${room.messages && room.messages.length > 0 ? room.messages.map(m => { const isMe = m.sender_email === myEmail; return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${escapeHtml(m.message)}</div></div>`; }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}</div><div style="display:flex; gap:8px;"><input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()"><button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button></div></div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="color:#333d4b; margin:0; font-size:15px;">참여자 목록 (${room.members.length}명)</h3><button onclick="openCreateAgendaModal()" style="background:#ff3b30; color:white; border:none; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">⚖️ 재판 열기</button></div>`;
+        html += room.members.map(f => { const isMe = f.email === myEmail; const isDelisted = f.status === 'delisted'; const clickEvent = !isMe ? `onclick="openFriendDetail('${f.email}')"` : ""; const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6; cursor:pointer;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer; transition: 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.05);"); return `<div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}><div style="display: flex; align-items: center; gap: 15px;">${getAvatarHtml(f, 'small')}<div><div style="font-size: 16px; font-weight: bold;"><span style="color: ${f.nameColor || '#333d4b'};">${escapeHtml(f.name)}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} ${isDelisted ? '<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px;">💀상장폐지</span>' : ''}</div>${getBadgeHtml(f)}</div></div><div style="font-size: 16px; font-weight: bold; color: #333d4b;">${isDelisted ? '-' : Math.floor(f.price || 0).toLocaleString()} p</div></div>`; }).join('');
         html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer;">🚪 이 클럽에서 나가기</button>`;
         list.innerHTML = html; setTimeout(() => { const chatBox = document.getElementById('chat-box'); if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; }, 10);
     }
@@ -144,7 +154,6 @@ async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가�
 async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await refreshChat(); } catch(err) { console.error(err); } }
 async function refreshChat() { await initializeApp(); }
 
-// ★ 평가 화면 (모달) 로직 수정: 스텝(순서) 방식 적용
 function openFriendDetail(friendEmail) {
     const room = myRooms.find(r => r.room_code === currentRoomCode); const friend = room.members.find(m => m.email === friendEmail); if (!friend) return;
     currentSelectedFriend = friend;
@@ -153,7 +162,6 @@ function openFriendDetail(friendEmail) {
     let modal = document.getElementById('eval-modal');
     if(!modal) { modal = document.createElement('div'); modal.id = 'eval-modal'; modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;"; document.body.appendChild(modal); }
     
-    // 계산된 변동폭 저장 및 선택 내역 초기화
     evalState.p1 = Math.floor(friend.price * 0.01); 
     evalState.p2 = Math.floor(friend.price * 0.02); 
     evalState.p3 = Math.floor(friend.price * 0.03);
@@ -163,13 +171,13 @@ function openFriendDetail(friendEmail) {
     modal.innerHTML = `
         <div style="background:white; padding:30px 25px; border-radius:20px; width:85%; max-width:340px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;">
             <div style="margin-bottom:15px;">${getAvatarHtml(friend, 'large')}</div>
-            <h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${friend.name}</h2>
+            <h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${escapeHtml(friend.name)}</h2>
             <div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:15px;">${Math.floor(friend.price).toLocaleString()} p</div>
             <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendFriendChartCanvas" style="width:100%; height:110px;"></canvas></div>
             <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
             
             <div style="text-align:left; margin-bottom:15px;">
-                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">평가 종류 선택</div>
+                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">1. 평가 종류 선택</div>
                 <div style="display:flex; gap:10px;">
                     <button id="eval-type-good" onclick="selectEvalType('good')" style="flex:1; padding:12px; border:1px solid #ffdbdb; background:white; color:#ff3b30; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👍 호평하기</button>
                     <button id="eval-type-bad" onclick="selectEvalType('bad')" style="flex:1; padding:12px; border:1px solid #d6ebff; background:white; color:#3182f6; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👎 악평하기</button>
@@ -177,7 +185,7 @@ function openFriendDetail(friendEmail) {
             </div>
 
             <div id="eval-intensity-section" style="text-align:left; margin-bottom:15px; display:none;">
-                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">변동폭 선택</div>
+                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">2. 변동폭 선택</div>
                 <div style="display:flex; gap:8px;">
                     <button id="eval-int-1" onclick="selectEvalIntensity(1)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-1-pct">1%</span><br><span id="eval-int-1-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button>
                     <button id="eval-int-2" onclick="selectEvalIntensity(2)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-2-pct">2%</span><br><span id="eval-int-2-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button>
@@ -186,7 +194,7 @@ function openFriendDetail(friendEmail) {
             </div>
 
             <div style="text-align:left; margin-bottom:20px;">
-                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">사유 작성</div>
+                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">3. 사유 작성</div>
                 <textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea>
             </div>
 
@@ -197,68 +205,29 @@ function openFriendDetail(friendEmail) {
     modal.style.display = 'flex'; setTimeout(() => drawFriendPriceChart(friend), 50);
 }
 
-// 1단계: 호평/악평 버튼을 누르면 색상을 입히고 % 버튼들을 보여줌
 function selectEvalType(type) {
-    evalState.type = type;
-    evalState.intensity = null; // 종류를 바꾸면 % 선택은 초기화
-    
-    const goodBtn = document.getElementById('eval-type-good');
-    const badBtn = document.getElementById('eval-type-bad');
-    const intSec = document.getElementById('eval-intensity-section');
-    
-    goodBtn.style.background = 'white'; goodBtn.style.color = '#ff3b30';
-    badBtn.style.background = 'white'; badBtn.style.color = '#3182f6';
-    
+    evalState.type = type; evalState.intensity = null;
+    const goodBtn = document.getElementById('eval-type-good'); const badBtn = document.getElementById('eval-type-bad'); const intSec = document.getElementById('eval-intensity-section');
+    goodBtn.style.background = 'white'; goodBtn.style.color = '#ff3b30'; badBtn.style.background = 'white'; badBtn.style.color = '#3182f6';
     if (type === 'good') {
         goodBtn.style.background = '#ff3b30'; goodBtn.style.color = 'white';
-        document.getElementById('eval-int-1-pct').textContent = '+1%';
-        document.getElementById('eval-int-2-pct').textContent = '+2%';
-        document.getElementById('eval-int-3-pct').textContent = '+3%';
-        document.getElementById('eval-int-1-pts').textContent = `+${evalState.p1.toLocaleString()}p`;
-        document.getElementById('eval-int-2-pts').textContent = `+${evalState.p2.toLocaleString()}p`;
-        document.getElementById('eval-int-3-pts').textContent = `+${evalState.p3.toLocaleString()}p`;
+        document.getElementById('eval-int-1-pct').textContent = '+1%'; document.getElementById('eval-int-2-pct').textContent = '+2%'; document.getElementById('eval-int-3-pct').textContent = '+3%';
+        document.getElementById('eval-int-1-pts').textContent = `+${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `+${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `+${evalState.p3.toLocaleString()}p`;
     } else {
         badBtn.style.background = '#3182f6'; badBtn.style.color = 'white';
-        document.getElementById('eval-int-1-pct').textContent = '-1%';
-        document.getElementById('eval-int-2-pct').textContent = '-2%';
-        document.getElementById('eval-int-3-pct').textContent = '-3%';
-        document.getElementById('eval-int-1-pts').textContent = `-${evalState.p1.toLocaleString()}p`;
-        document.getElementById('eval-int-2-pts').textContent = `-${evalState.p2.toLocaleString()}p`;
-        document.getElementById('eval-int-3-pts').textContent = `-${evalState.p3.toLocaleString()}p`;
+        document.getElementById('eval-int-1-pct').textContent = '-1%'; document.getElementById('eval-int-2-pct').textContent = '-2%'; document.getElementById('eval-int-3-pct').textContent = '-3%';
+        document.getElementById('eval-int-1-pts').textContent = `-${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `-${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `-${evalState.p3.toLocaleString()}p`;
     }
-    
-    intSec.style.display = 'block'; // % 구역 활성화
-    
-    // % 버튼들 흰색으로 초기화
-    [1, 2, 3].forEach(i => {
-        const btn = document.getElementById(`eval-int-${i}`);
-        btn.style.background = 'white';
-        btn.style.color = '#333d4b';
-        btn.style.borderColor = '#e5e8eb';
-    });
+    intSec.style.display = 'block';
+    [1, 2, 3].forEach(i => { const btn = document.getElementById(`eval-int-${i}`); btn.style.background = 'white'; btn.style.color = '#333d4b'; btn.style.borderColor = '#e5e8eb'; });
 }
 
-// 2단계: % 버튼을 누르면 해당 버튼만 색칠됨
 function selectEvalIntensity(intensity) {
     evalState.intensity = intensity;
-    const color = evalState.type === 'good' ? '#ff3b30' : '#3182f6';
-    const bgColor = evalState.type === 'good' ? '#fff2f2' : '#f0f8ff';
-    
-    [1, 2, 3].forEach(i => {
-        const btn = document.getElementById(`eval-int-${i}`);
-        if (i === intensity) {
-            btn.style.background = bgColor;
-            btn.style.color = color;
-            btn.style.borderColor = color;
-        } else {
-            btn.style.background = 'white';
-            btn.style.color = '#333d4b';
-            btn.style.borderColor = '#e5e8eb';
-        }
-    });
+    const color = evalState.type === 'good' ? '#ff3b30' : '#3182f6'; const bgColor = evalState.type === 'good' ? '#fff2f2' : '#f0f8ff';
+    [1, 2, 3].forEach(i => { const btn = document.getElementById(`eval-int-${i}`); if (i === intensity) { btn.style.background = bgColor; btn.style.color = color; btn.style.borderColor = color; } else { btn.style.background = 'white'; btn.style.color = '#333d4b'; btn.style.borderColor = '#e5e8eb'; } });
 }
 
-// 최종: 모든 조건이 맞는지 검사 후 서버로 전송
 function submitEvaluationFinal() {
     if (!evalState.type) { alert("평가 종류(호평/악평)를 선택해주세요."); return; }
     if (!evalState.intensity) { alert("변동폭(1%, 2%, 3%)을 선택해주세요."); return; }
@@ -274,8 +243,7 @@ async function submitEvaluation(evalType, intensity) {
     document.getElementById('eval-modal').style.display = 'none'; showToast(`⏳ 반영 중...`);
     try {
         const res = await fetch(`${BACKEND_URL}/api/evaluate`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity, reason: reasonText }) });
-        const data = await res.json(); 
-        if (data.status === 'success') { alert(data.message); await initializeApp(); } else { alert(data.message); }
+        const data = await res.json(); if (data.status === 'success') { alert(data.message); await initializeApp(); } else { alert(data.message); }
     } catch(err) { alert("네트워크 오류 발생"); }
 }
 
@@ -283,7 +251,7 @@ function openCreateAgendaModal(defaultType = 'delist', targetEmail = '') {
     const room = myRooms.find(r => r.room_code === currentRoomCode); if (!room) return;
     let modal = document.getElementById('agenda-create-modal');
     if(!modal) { modal = document.createElement('div'); modal.id = 'agenda-create-modal'; modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;"; document.body.appendChild(modal); }
-    const memberOptions = room.members.filter(m => m.email !== myEmail).map(m => `<option value="${m.email}" ${m.email === targetEmail ? 'selected' : ''}>${m.name} (${m.status === 'delisted' ? '상폐상태' : Math.floor(m.price)+'p'})</option>`).join('');
+    const memberOptions = room.members.filter(m => m.email !== myEmail).map(m => `<option value="${m.email}" ${m.email === targetEmail ? 'selected' : ''}>${escapeHtml(m.name)} (${m.status === 'delisted' ? '상폐상태' : Math.floor(m.price)+'p'})</option>`).join('');
     modal.innerHTML = `
         <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:left; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
             <h3 style="margin-top:0; color:#333d4b; text-align:center; font-size:18px;">⚖️ 주주총회 재판 기소장</h3>
@@ -307,13 +275,13 @@ function renderMeeting() {
     const list = document.getElementById('meeting-list'); if(!list) return;
     if (!currentRoomCode) { list.innerHTML = '<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">로비에서는 재판이 열리지 않습니다.</div>'; return; }
     const room = myRooms.find(r => r.room_code === currentRoomCode); const activeAgendas = room.agendas ? room.agendas.filter(a => a.status === 'active') : [];
-    if (activeAgendas.length === 0) { list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">🕊️ [${room.room_name}] 방은 현재 평온합니다.<br>진행 중인 재판이 없습니다.</div>`; return; }
+    if (activeAgendas.length === 0) { list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">🕊️ [${escapeHtml(room.room_name)}] 방은 현재 평온합니다.<br>진행 중인 재판이 없습니다.</div>`; return; }
     const totalMembers = room.members.length; const requiredVotes = Math.floor(totalMembers / 2) + 1;
     list.innerHTML = activeAgendas.map(a => {
         let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; } else if (a.type === 'defense') { titleColor = '#f39c12'; titleText = '⚖️ 악평 이의제기 방어 법정'; }
         const targetPerson = room.members.find(f => f.email === a.target_email); const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; const hasVoted = a.votedUsers && a.votedUsers.includes(myEmail);
         let btnHtml = hasVoted ? `<button style="width:100%; background:#e5e8eb; color:#8b95a1; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:not-allowed;" disabled>⚖️ 투표 완료</button>` : `<button class="btn-vote-disagree" style="flex:1; background:#f2f4f6; color:#4e5968;" onclick="submitVote('${a.id}', 'disagree')">반대(기각)</button><button class="btn-vote-agree" style="flex:1; background:${titleColor};" onclick="submitVote('${a.id}', 'agree')">찬성(판결)</button>`;
-        return `<div class="info-card" style="border-left: 5px solid ${titleColor};"><div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">피고인: <b>${a.target_name}</b></div></div></div><div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 재판 안건 사유:</b><br>${a.reason}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#8b95a1; margin-bottom:12px; background:#fff; padding:4px;"><div>👍 찬성: <b style="color:#ff3b30;">${a.agreeVotes}표</b></div><div>👎 반대: <b style="color:#3182f6;">${a.disagreeVotes}표</b></div><div style="background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:4px; font-weight:bold;">정족수: (${requiredVotes}/${totalMembers}명)</div></div><div style="display: flex; gap: 10px;">${btnHtml}</div></div>`;
+        return `<div class="info-card" style="border-left: 5px solid ${titleColor};"><div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">피고인: <b>${escapeHtml(a.target_name)}</b></div></div></div><div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 재판 안건 사유:</b><br>${escapeHtml(a.reason)}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#8b95a1; margin-bottom:12px; background:#fff; padding:4px;"><div>👍 찬성: <b style="color:#ff3b30;">${a.agreeVotes}표</b></div><div>👎 반대: <b style="color:#3182f6;">${a.disagreeVotes}표</b></div><div style="background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:4px; font-weight:bold;">정족수: (${requiredVotes}/${totalMembers}명)</div></div><div style="display: flex; gap: 10px;">${btnHtml}</div></div>`;
     }).join('');
 }
 async function submitVote(agendaId, voteType) { showToast("⏳ 표결 전달 중..."); try { const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); const data = await res.json(); if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await initializeApp(); switchTab('home'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("네트워크 오류"); } }
@@ -327,7 +295,7 @@ function renderRanking() {
     const createTotalRankCard = (p, index) => {
         const medals = ['🥇', '🥈', '🥉']; const rankIcon = index < 3 ? medals[index] : `<span style="display:inline-block; width: 24px; text-align:center; color:#8b95a1; font-size:14px; font-weight:bold;">${index+1}</span>`;
         const isMe = p.name === myProfile.name; const bg = isMe ? "background:#f0f8ff;" : "";
-        return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid #f9fafb; border-radius:8px; ${bg}"><div style="display: flex; align-items: center; font-size: 15px; font-weight: bold;"><span style="font-size: 18px; margin-right: 10px; width:20px; text-align:center;">${rankIcon}</span>${getAvatarHtml(p, 'small')}<span style="margin-left:10px; color: ${p.nameColor || '#333d4b'};">${p.name}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''}</div><div style="font-weight: bold; color: #333d4b;">${Math.floor(p.price||0).toLocaleString()} p</div></div>`;
+        return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid #f9fafb; border-radius:8px; ${bg}"><div style="display: flex; align-items: center; font-size: 15px; font-weight: bold;"><span style="font-size: 18px; margin-right: 10px; width:20px; text-align:center;">${rankIcon}</span>${getAvatarHtml(p, 'small')}<span style="margin-left:10px; color: ${p.nameColor || '#333d4b'};">${escapeHtml(p.name)}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''}</div><div style="font-weight: bold; color: #333d4b;">${Math.floor(p.price||0).toLocaleString()} p</div></div>`;
     };
     container.innerHTML = `<div style="background: white; border-radius: 16px; padding: 20px 15px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee;"><h3 style="margin-top: 0; color: #333d4b;">🌍 전국구 통합 랭킹 Top 10</h3><p style="font-size:12px; color:#8b95a1; margin-bottom:20px;">모든 클럽의 주가가 합산된 실시간 순위보드입니다.</p>${top10.map((p, i) => createTotalRankCard(p, i)).join('')}</div>`;
 }
@@ -387,7 +355,7 @@ function renderProfile() {
     container.innerHTML = `
         ${vipBanner}
         <div style="position: relative; display: inline-block;">${getAvatarHtml(myProfile, 'large')}<button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✏️</button></div>
-        <h2 style="margin: 10px 0; color: ${myProfile.nameColor || '#333d4b'}; display:flex; justify-content:center; align-items:center; gap:8px;">${myProfile.name} 코인 <span onclick="changeNickname()" style="font-size:14px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span></h2>
+        <h2 style="margin: 10px 0; color: ${myProfile.nameColor || '#333d4b'}; display:flex; justify-content:center; align-items:center; gap:8px;">${escapeHtml(myProfile.name)} 코인 <span onclick="changeNickname()" style="font-size:14px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span></h2>
         <div style="font-size:12px; color:#8b95a1; margin-bottom:10px;">내 주가는 모든 클럽에 적용됩니다.</div>
         ${getBadgeHtml(myProfile)}
         <div style="display: flex; justify-content: space-around; margin: 20px 0;">

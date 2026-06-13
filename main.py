@@ -15,7 +15,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False, # 토큰 자격 증명 충돌 방지를 위해 False 처리
+    allow_credentials=False, # 토큰 헤더 자격 증명 충돌 방지를 위해 False 처리 필수
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -64,11 +64,10 @@ class RewardData(BaseModel):
     reward_type: str
     today_str: str
 
-# ★ 결재 승인/재판방어 데이터 전용 모델
 class RespondEvalData(BaseModel):
     email: str
     eval_id: str
-    action: str  # "approve" or "defend"
+    action: str
 
 def verify_google_token(auth_header: str):
     if not auth_header or not auth_header.startswith("Bearer "): return None
@@ -81,7 +80,6 @@ def verify_google_token(auth_header: str):
         return data.get("email").strip().lower()
     except Exception: return None
 
-# ★ [보안 및 자동 감시 연동] 유저 접속 시 30일 경과 및 -70% 자동 재판 트리거링
 @app.get("/api/data")
 def get_user_data(authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -93,13 +91,10 @@ def get_user_data(authorization: str = Header(None)):
 
     profile = user_data.get("profile", {})
     
-    # ─── 🚨 [기획 반영 1] 최고가 대비 -70% 하락 및 30일 방치 시 자동 재판 개시 ───
     if profile.get("narackStartTime") and profile.get("narackLastHitEmail"):
         start_time = datetime.fromisoformat(profile["narackStartTime"])
-        # 현재는 테스트를 위해 실시간 30일 설정 (필요시 1분=timedelta(minutes=1)로 변경하여 테스트 가능)
         if datetime.utcnow() >= start_time + timedelta(days=30):
             last_hit_email = profile["narackLastHitEmail"]
-            # 막타 친 사람과 내가 공유하는 방 자동 탐색
             common_room = db["rooms"].find_one({"members": {"$all": [email, last_hit_email]}})
             if common_room:
                 agenda_id = str(uuid.uuid4())
@@ -111,7 +106,6 @@ def get_user_data(authorization: str = Header(None)):
                 }
                 db["rooms"].update_one({"_id": common_room["_id"]}, {"$push": {"agendas": agenda}})
                 
-                # 중복 트리거 방지를 위해 타이머 소멸
                 profile["narackStartTime"] = None
                 profile["narackLastHitEmail"] = None
                 db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
@@ -186,7 +180,6 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
         profile["weeklyTicketsClaimed"] = True
         msg = "🎫 주간 보너스 평가권 획득!"
 
-    # 최고 주가 실시간 갱신용
     if profile["price"] > profile.get("maxPrice", 20000): profile["maxPrice"] = profile["price"]
 
     if data.reward_type in ['attendance', 'double_attendance']:
@@ -199,12 +192,15 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
     db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
     return {"status": "success", "message": msg, "profile": profile}
 
-# ★ 호평과 악평의 전송 파이프라인 분리 구축
 @app.post("/api/evaluate")
 def evaluate_user(data: EvalData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.evaluator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     if data.evaluator_email == data.target_email: return {"status": "error", "message": "자신을 평가할 수 없습니다."}
+
+    # 🛡️ [보안 패치 1] API 다이렉트 변조 우회를 통한 100만% 변동 폭 해킹 원천 차단
+    if data.intensity not in [1, 2, 3]:
+        return {"status": "error", "message": "올바르지 않은 변동 수치입니다. (1~3%만 허용)"}
 
     evaluator = db["users"].find_one({"_id": data.evaluator_email})
     target = db["users"].find_one({"_id": data.target_email})
@@ -212,7 +208,6 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
 
     evaluator_name = evaluator.get("profile", {}).get("name", "익명")
 
-    # [1] 👍 호평인 경우: 예전처럼 지체 없이 실시간 즉각 주가 상승 반영
     if data.eval_type == 'good':
         if evaluator["profile"].get("goodTickets", 0) <= 0: return {"status": "error", "message": "호평권 부족"}
         evaluator["profile"]["goodTickets"] -= 1
@@ -234,7 +229,6 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
         if "noti" not in target: target["noti"] = []
         target["noti"].insert(0, f"[👍호평] {evaluator_name}님의 평가 (+{data.intensity}%): {data.reason}")
         
-        # 만약 고점대비 -70% 나락상태였다가 호평을 통해 탈출했는지 대조 검증
         if target["profile"].get("narackStartTime") and target["profile"]["price"] > (target["profile"].get("maxPrice", 20000) * 0.3):
             target["profile"]["narackStartTime"] = None
             target["profile"]["narackLastHitEmail"] = None
@@ -242,7 +236,6 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
         db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"], "noti": target["noti"]}})
         return {"status": "success", "message": "👍 호평이 즉시 반영되었습니다."}
 
-    # [2] 👎 악평인 경우: 주가 즉시 삭감 차단 후, 상대방 결재 보관함(`pending_evals`)으로 토스
     else:
         if evaluator["profile"].get("badTickets", 0) <= 0: return {"status": "error", "message": "악평권 부족"}
         evaluator["profile"]["badTickets"] -= 1
@@ -260,7 +253,6 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
         db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"]}})
         return {"status": "success", "message": "👎 악평 전송 완료! 피평가자의 승인/이의제기를 대기합니다."}
 
-# ★ [기획 반영 2] 악평에 대한 컨컨/방어재판 라우팅 라우터 개설
 @app.post("/api/evaluate/respond")
 def respond_pending_evaluation(data: RespondEvalData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -274,7 +266,6 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
     target_eval = next((e for e in pending_list if e["id"] == data.eval_id), None)
     if not target_eval: return {"status": "error", "message": "해당 악평 안건을 찾을 수 없습니다."}
 
-    # 🟢 [행동 A: 승인 받아들이기] 쿨하게 도장 찍고 주가 삭감 처리
     if data.action == "approve":
         base_price = profile.get("basePrice", 20000)
         change_amount = base_price * (target_eval["intensity"] * 0.01)
@@ -289,7 +280,6 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
         if "noti" not in user: user["noti"] = []
         user["noti"].insert(0, f"[👎악평 수락] {target_eval['evaluator_name']}님의 악평(-{target_eval['intensity']}% 적용): {target_eval['reason']}")
 
-        # 🚨 여기서 고점대비 -70% 이하 낙하했는지 즉각 체크 연동
         max_p = profile.get("maxPrice", 20000)
         if profile["price"] <= (max_p * 0.3) and not profile.get("narackStartTime"):
             profile["narackStartTime"] = datetime.utcnow().isoformat()
@@ -299,7 +289,6 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
         db["users"].update_one({"_id": email}, {"$set": {"profile": profile, "noti": user["noti"]}})
         return {"status": "success", "message": "악평을 승인하여 주가 변동이 최종 반영되었습니다."}
 
-    # 🔴 [행동 B: 이의제기 방어재판 개시] 월 3회 자물쇠 검증 후 자동 기소장 상정
     elif data.action == "defend":
         cur_month = datetime.utcnow().strftime("%Y-%m")
         if profile.get("defense_month") != cur_month:
@@ -309,28 +298,25 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
         if profile.get("defense_count", 0) >= 3:
             return {"status": "error", "message": "이번 달 방어 재판권(3회)을 전부 소급 사용하셨습니다. 기각 불가."}
 
-        # 두 유저가 동시 가입 중인 교집합 방 리서치
         common_room = db["rooms"].find_one({"members": {"$all": [email, target_eval["evaluator_email"]]}})
         if not common_room:
             return {"status": "error", "message": "공격한 유저와 같은 투자 클럽(방)에 소속되어 있지 않아 방어 재판을 개최할 수 없습니다."}
 
-        # 카운터 1 차감 가동
         profile["defense_count"] += 1
         
-        # 방에 방어 법정 개설 상정
         agenda_id = str(uuid.uuid4())
         agenda = {
             "id": agenda_id, "creator_email": email, "target_email": email, "target_name": profile.get("name"),
             "type": "defense",
             "reason": f"⚖️ [악평 이의제기 방어 재판] 피고인이 {target_eval['evaluator_name']}님의 악평(-{target_eval['intensity']}%)에 정식 탄핵 요청을 제기했습니다.\n[악평 사유]: {target_eval['reason']}",
             "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active",
-            "associated_eval": target_eval # 재판 투표 확정 시 정산을 위해 데이터 보관
+            "associated_eval": target_eval
         }
         
         profile["pending_evals"] = [e for e in pending_list if e["id"] != data.eval_id]
         db["rooms"].update_one({"_id": common_room["_id"]}, {"$push": {"agendas": agenda}})
         db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-        return {"status": "success", "message": f"⚖️ 성공적으로 법정에 탄핵 상정했습니다! 클럽 멤버들의 배심원 표결을 유도하세요. (이번 달 남은 방어 기회: {3 - profile['defense_count']}회)"}
+        return {"status": "success", "message": f"⚖️ 성공적으로 법정에 탄핵 상정했습니다! (이번 달 남은 방어 기회: {3 - profile['defense_count']}회)"}
 
 @app.get("/api/check-nickname")
 def check_nickname(nickname: str):
@@ -367,6 +353,12 @@ def leave_room(data: RoomData, authorization: str = Header(None)):
 def send_chat(data: ChatData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.sender_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    
+    # 🛡️ [보안 패치 2] 해당 방 코드 로드 후, 유저가 방에 정상 침투·소속해 있는지 인가 검증
+    room = db["rooms"].find_one({"_id": data.room_code})
+    if not room or email not in room.get("members", []):
+        return {"status": "error", "message": "인증 권한 실패: 해당 클럽의 소속 멤버가 아닙니다."}
+
     chat_msg = {"sender_email": email, "sender_name": data.sender_name, "message": data.message}
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": chat_msg}})
     return {"status": "success"}
@@ -375,6 +367,13 @@ def send_chat(data: ChatData, authorization: str = Header(None)):
 def create_agenda(data: AgendaData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.creator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    
+    # 🛡️ [보안 패치 2] 타 방에 유령 회원 상태로 무단 재판 기소 상정하는 해킹 차단
+    room = db["rooms"].find_one({"_id": data.room_code})
+    if not room or email not in room.get("members", []):
+        return {"status": "error", "message": "인증 권한 실패: 해당 클럽의 소속 멤버가 아닙니다."}
+
+    import uuid
     agenda_id = str(uuid.uuid4())
     target = db["users"].find_one({"_id": data.target_email})
     target_name = target.get("profile", {}).get("name", "알 수 없음") if target else "알 수 없음"
@@ -382,7 +381,6 @@ def create_agenda(data: AgendaData, authorization: str = Header(None)):
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"agendas": agenda}})
     return {"status": "success", "message": "주주총회 안건이 상정되었습니다!"}
 
-# ★ 투표 완료 분기점에 '방어 재판 승리/패배 정산 로직' 탑재 파싱
 @app.post("/api/agenda/vote")
 def vote_agenda(data: VoteData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -390,6 +388,10 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room: return {"status": "error", "message": "방이 없습니다."}
     
+    # 🛡️ [보안 패치 2] 가입하지 않은 방의 주주총회에 몰래 다중 투표 던지는 매크로 원천 차단
+    if email not in room.get("members", []):
+        return {"status": "error", "message": "인증 권한 실패: 해당 클럽의 소속 멤버가 아닙니다."}
+
     agendas = room.get("agendas", [])
     target_agenda = None
     for a in agendas:
@@ -404,21 +406,17 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
     total_members = len(room.get("members", []))
     required_votes = (total_members // 2) + 1
     status_msg = "success"; message = "투표 완료"
-
-    # 과반수 찬성(판결 성립) 시
+    
     if target_agenda["agreeVotes"] >= required_votes:
         target_agenda["status"] = "resolved"
         target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
         if target_user:
-            # A. 기존 상장폐지 처리인 경우
             if target_agenda["type"] == "delist":
                 target_user["profile"]["status"] = "delisted"; target_user["profile"]["price"] = 0
                 message = f"🚨 {target_agenda['target_name']}님이 자동/수동 판결에 의해 최종 상장폐지되었습니다."
-            # B. 기존 회생 처리인 경우
             elif target_agenda["type"] == "revival":
                 target_user["profile"]["status"] = "active"; target_user["profile"]["price"] = 10000
                 message = f"🌱 {target_agenda['target_name']}님이 기적적으로 회생(재상장) 되었습니다!"
-            # C. ⚖️ [신규 기획] 이의제기 방어재판에서 '찬성'이 이겼을 때 = 고발자가 맞다! -> 주가 전격 하락 정산
             elif target_agenda["type"] == "defense":
                 assoc = target_agenda["associated_eval"]
                 base_p = target_user["profile"].get("basePrice", 20000)
@@ -434,7 +432,6 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
                 if "noti" not in target_user: target_user["noti"] = []
                 target_user["noti"].insert(0, f"[👎재판 패소] 악평 정당화 판결 확정 (-{assoc['intensity']}% 적용): {assoc['reason']}")
 
-                # 고점대비 -70% 나락 타이머 대조
                 max_p = target_user["profile"].get("maxPrice", 20000)
                 if target_user["profile"]["price"] <= (max_p * 0.3) and not target_user["profile"].get("narackStartTime"):
                     target_user["profile"]["narackStartTime"] = datetime.utcnow().isoformat()
@@ -445,7 +442,6 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
             db["users"].update_one({"_id": target_agenda["target_email"]}, {"$set": {"profile": target_user["profile"], "noti": target_user.get("noti", [])}})
         status_msg = "resolved"
 
-    # 과반수 반대(기각 성립) 시
     elif target_agenda["disagreeVotes"] >= required_votes:
         target_agenda["status"] = "rejected"; status_msg = "resolved"
         if target_agenda["type"] == "defense":
