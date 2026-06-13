@@ -6,7 +6,7 @@ let loginIntent = '';
 
 function getCurrentTime() {
     const now = new Date();
-    return `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    return `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
 const defaultProfile = { 
@@ -16,12 +16,15 @@ const defaultProfile = {
     badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 },
     isVIP: false, nameColor: "#333d4b",
     priceHistory: [], timeHistory: [],
-    pending_evals: [], // 대기 중인 악평 보관함
-    defense_count: 0, defense_month: "" // 월별 재판 방어권 카운터
+    pending_evals: [], 
+    defense_count: 0, defense_month: "" 
 };
 
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = [];   
 let currentRoomCode = null; let currentAdRewardType = null; let adInterval = null; let currentSelectedFriend = null; 
+
+// ★ 평가 모달창의 선택 상태를 기억하는 변수
+let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 };
 
 const DEFAULT_AVATARS = [
     'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aneka&backgroundColor=c0aede',
@@ -41,12 +44,9 @@ function getAvatarHtml(person, size = 'small') {
 }
 function getBadgeHtml(person) { let allBadges = [...(person.dynamicBadges || []), ...(person.badges || [])]; if (allBadges.length === 0) return ''; return `<div style="display:flex; gap:4px; margin-top:4px; flex-wrap:wrap;">` + allBadges.map(b => `<span style="font-size:10px; background:#f2f4f6; padding:2px 6px; border-radius:4px; color:#4e5968;">${b}</span>`).join('') + `</div>`; }
 
-// ★ 알림 창 렌더링 함수에 '대기 중인 악평 결재 대기선' 전면 구현
 function renderNoti() {
     const container = document.getElementById('noti-list'); if (!container) return;
     let html = '';
-
-    // 1. 결재 대기 중인 악평이 있다면 최상단에 리스트 렌더링
     if (myProfile && myProfile.pending_evals && myProfile.pending_evals.length > 0) {
         html += `<div style="background:#fff3f3; padding:15px; border-radius:12px; margin-bottom:15px; border:1px solid #ffe3e3;"><h4 style="margin:0 0 10px 0; color:#ff3b30; font-size:14px;">⚠️ 승인 대기 중인 악평 목록</h4>`;
         html += myProfile.pending_evals.map(e => `
@@ -61,8 +61,6 @@ function renderNoti() {
         `).join('');
         html += `</div>`;
     }
-
-    // 2. 일반 로그 알림 출력
     if (!myNotifications || myNotifications.length === 0) { 
         if(!html) { container.innerHTML = '<div style="text-align:center; padding:40px; color:#8b95a1;">새로운 알림이 없습니다.</div>'; return; }
     } else {
@@ -71,22 +69,17 @@ function renderNoti() {
     container.innerHTML = html;
 }
 
-// ★ 악평 결재 처리 (승인 또는 재판 거부 요청 통신)
 async function respondPendingEval(evalId, action) {
     const token = localStorage.getItem('fc_id_token');
     if(action === 'defend') {
         const curMonth = new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, '0');
         let count = myProfile.defense_month === curMonth ? (myProfile.defense_count || 0) : 0;
         if(count >= 3) { alert("🚨 이번 달 방어 재판권(3회)을 모두 소모하셨습니다! 이 악평은 무조건 승인해야 합니다."); return; }
-        if(!confirm(`⚖️ 이 악평에 대해 해명 재판을 발의하시겠습니까?\n(이번 달 남은 방어 기출 횟수: ${3 - count}회)`)) return;
+        if(!confirm(`⚖️ 이 악평에 대해 해명 재판을 발의하시겠습니까?\n(이번 달 남은 방어 기회: ${3 - count}회)`)) return;
     }
     showToast("⏳ 처리 요청 중...");
     try {
-        const res = await fetch(`${BACKEND_URL}/api/evaluate/respond`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ email: myEmail, eval_id: evalId, action: action })
-        });
+        const res = await fetch(`${BACKEND_URL}/api/evaluate/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ email: myEmail, eval_id: evalId, action: action }) });
         const data = await res.json();
         if(data.status === 'success') { alert(data.message); await initializeApp(); switchTab('noti'); } else { alert(data.message); }
     } catch(err) { alert("통신 실패"); }
@@ -109,11 +102,7 @@ function updateTicker() {
 
 function saveData() { 
     checkBadges(); updateTicker(); if (!myEmail) return;
-    fetch(`${BACKEND_URL}/api/save`, { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` }, 
-        body: JSON.stringify({ profile: myProfile, noti: myNotifications }) 
-    }).catch(err => console.error(err));
+    fetch(`${BACKEND_URL}/api/save`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ profile: myProfile, noti: myNotifications }) }).catch(err => console.error(err));
 }
 
 function checkRefill() {
@@ -155,6 +144,7 @@ async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가�
 async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await refreshChat(); } catch(err) { console.error(err); } }
 async function refreshChat() { await initializeApp(); }
 
+// ★ 평가 화면 (모달) 로직 수정: 스텝(순서) 방식 적용
 function openFriendDetail(friendEmail) {
     const room = myRooms.find(r => r.room_code === currentRoomCode); const friend = room.members.find(m => m.email === friendEmail); if (!friend) return;
     currentSelectedFriend = friend;
@@ -162,22 +152,117 @@ function openFriendDetail(friendEmail) {
 
     let modal = document.getElementById('eval-modal');
     if(!modal) { modal = document.createElement('div'); modal.id = 'eval-modal'; modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;"; document.body.appendChild(modal); }
-    const p1 = Math.floor(friend.price * 0.01).toLocaleString(); const p2 = Math.floor(friend.price * 0.02).toLocaleString(); const p3 = Math.floor(friend.price * 0.03).toLocaleString();
     
+    // 계산된 변동폭 저장 및 선택 내역 초기화
+    evalState.p1 = Math.floor(friend.price * 0.01); 
+    evalState.p2 = Math.floor(friend.price * 0.02); 
+    evalState.p3 = Math.floor(friend.price * 0.03);
+    evalState.type = null; 
+    evalState.intensity = null;
+
     modal.innerHTML = `
-        <div style="background:white; padding:30px 25px; border-radius:20px; width:85%; max-width:340px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+        <div style="background:white; padding:30px 25px; border-radius:20px; width:85%; max-width:340px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;">
             <div style="margin-bottom:15px;">${getAvatarHtml(friend, 'large')}</div>
             <h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${friend.name}</h2>
             <div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:15px;">${Math.floor(friend.price).toLocaleString()} p</div>
             <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendFriendChartCanvas" style="width:100%; height:110px;"></canvas></div>
             <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
-            <textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; margin-bottom:15px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea>
-            <div style="text-align:left; margin-bottom:15px;"><div style="font-size:13px; font-weight:bold; color:#ff3b30; margin-bottom:8px;">👍 호평하기 (티켓 1장 - 즉시 변동)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('good', 1)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+1%<br><span style="font-size:10px;">+${p1}p</span></button><button onclick="submitEvaluation('good', 2)" style="flex:1; padding:10px 5px; background:#fff2f2; border:1px solid #ffdbdb; border-radius:8px; color:#ff3b30; font-weight:bold; cursor:pointer; font-size:12px;">+2%<br><span style="font-size:10px;">+${p2}p</span></button><button onclick="submitEvaluation('good', 3)" style="flex:1; padding:10px 5px; background:#ff3b30; border:1px solid #ff3b30; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">+3%<br><span style="font-size:10px;">+${p3}p</span></button></div></div>
-            <div style="text-align:left; margin-bottom:25px;"><div style="font-size:13px; font-weight:bold; color:#3182f6; margin-bottom:8px;">👎 악평하기 (티켓 1장 - 상대방 알림창 적재)</div><div style="display:flex; gap:8px;"><button onclick="submitEvaluation('bad', 1)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-1%<br><span style="font-size:10px;">-${p1}p</span></button><button onclick="submitEvaluation('bad', 2)" style="flex:1; padding:10px 5px; background:#f0f8ff; border:1px solid #d6ebff; border-radius:8px; color:#3182f6; font-weight:bold; cursor:pointer; font-size:12px;">-2%<br><span style="font-size:10px;">-${p2}p</span></button><button onclick="submitEvaluation('bad', 3)" style="flex:1; padding:10px 5px; background:#3182f6; border:1px solid #3182f6; border-radius:8px; color:white; font-weight:bold; cursor:pointer; font-size:12px;">-3%<br><span style="font-size:10px;">-${p3}p</span></button></div></div>
+            
+            <div style="text-align:left; margin-bottom:15px;">
+                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">1. 평가 종류 선택</div>
+                <div style="display:flex; gap:10px;">
+                    <button id="eval-type-good" onclick="selectEvalType('good')" style="flex:1; padding:12px; border:1px solid #ffdbdb; background:white; color:#ff3b30; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👍 호평하기</button>
+                    <button id="eval-type-bad" onclick="selectEvalType('bad')" style="flex:1; padding:12px; border:1px solid #d6ebff; background:white; color:#3182f6; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👎 악평하기</button>
+                </div>
+            </div>
+
+            <div id="eval-intensity-section" style="text-align:left; margin-bottom:15px; display:none;">
+                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">2. 변동폭 선택</div>
+                <div style="display:flex; gap:8px;">
+                    <button id="eval-int-1" onclick="selectEvalIntensity(1)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-1-pct">1%</span><br><span id="eval-int-1-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button>
+                    <button id="eval-int-2" onclick="selectEvalIntensity(2)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-2-pct">2%</span><br><span id="eval-int-2-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button>
+                    <button id="eval-int-3" onclick="selectEvalIntensity(3)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-3-pct">3%</span><br><span id="eval-int-3-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button>
+                </div>
+            </div>
+
+            <div style="text-align:left; margin-bottom:20px;">
+                <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">3. 사유 작성</div>
+                <textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea>
+            </div>
+
+            <button onclick="submitEvaluationFinal()" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; font-size:15px; cursor:pointer; margin-bottom:10px; transition:0.2s;">🚀 평가 보내기</button>
             <button onclick="document.getElementById('eval-modal').style.display='none'" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">취소</button>
         </div>
     `;
     modal.style.display = 'flex'; setTimeout(() => drawFriendPriceChart(friend), 50);
+}
+
+// 1단계: 호평/악평 버튼을 누르면 색상을 입히고 % 버튼들을 보여줌
+function selectEvalType(type) {
+    evalState.type = type;
+    evalState.intensity = null; // 종류를 바꾸면 % 선택은 초기화
+    
+    const goodBtn = document.getElementById('eval-type-good');
+    const badBtn = document.getElementById('eval-type-bad');
+    const intSec = document.getElementById('eval-intensity-section');
+    
+    goodBtn.style.background = 'white'; goodBtn.style.color = '#ff3b30';
+    badBtn.style.background = 'white'; badBtn.style.color = '#3182f6';
+    
+    if (type === 'good') {
+        goodBtn.style.background = '#ff3b30'; goodBtn.style.color = 'white';
+        document.getElementById('eval-int-1-pct').textContent = '+1%';
+        document.getElementById('eval-int-2-pct').textContent = '+2%';
+        document.getElementById('eval-int-3-pct').textContent = '+3%';
+        document.getElementById('eval-int-1-pts').textContent = `+${evalState.p1.toLocaleString()}p`;
+        document.getElementById('eval-int-2-pts').textContent = `+${evalState.p2.toLocaleString()}p`;
+        document.getElementById('eval-int-3-pts').textContent = `+${evalState.p3.toLocaleString()}p`;
+    } else {
+        badBtn.style.background = '#3182f6'; badBtn.style.color = 'white';
+        document.getElementById('eval-int-1-pct').textContent = '-1%';
+        document.getElementById('eval-int-2-pct').textContent = '-2%';
+        document.getElementById('eval-int-3-pct').textContent = '-3%';
+        document.getElementById('eval-int-1-pts').textContent = `-${evalState.p1.toLocaleString()}p`;
+        document.getElementById('eval-int-2-pts').textContent = `-${evalState.p2.toLocaleString()}p`;
+        document.getElementById('eval-int-3-pts').textContent = `-${evalState.p3.toLocaleString()}p`;
+    }
+    
+    intSec.style.display = 'block'; // % 구역 활성화
+    
+    // % 버튼들 흰색으로 초기화
+    [1, 2, 3].forEach(i => {
+        const btn = document.getElementById(`eval-int-${i}`);
+        btn.style.background = 'white';
+        btn.style.color = '#333d4b';
+        btn.style.borderColor = '#e5e8eb';
+    });
+}
+
+// 2단계: % 버튼을 누르면 해당 버튼만 색칠됨
+function selectEvalIntensity(intensity) {
+    evalState.intensity = intensity;
+    const color = evalState.type === 'good' ? '#ff3b30' : '#3182f6';
+    const bgColor = evalState.type === 'good' ? '#fff2f2' : '#f0f8ff';
+    
+    [1, 2, 3].forEach(i => {
+        const btn = document.getElementById(`eval-int-${i}`);
+        if (i === intensity) {
+            btn.style.background = bgColor;
+            btn.style.color = color;
+            btn.style.borderColor = color;
+        } else {
+            btn.style.background = 'white';
+            btn.style.color = '#333d4b';
+            btn.style.borderColor = '#e5e8eb';
+        }
+    });
+}
+
+// 최종: 모든 조건이 맞는지 검사 후 서버로 전송
+function submitEvaluationFinal() {
+    if (!evalState.type) { alert("평가 종류(호평/악평)를 선택해주세요."); return; }
+    if (!evalState.intensity) { alert("변동폭(1%, 2%, 3%)을 선택해주세요."); return; }
+    submitEvaluation(evalState.type, evalState.intensity);
 }
 
 async function submitEvaluation(evalType, intensity) {
