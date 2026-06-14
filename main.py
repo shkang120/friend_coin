@@ -1,6 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, Header
+from fastapi import FastAPI, UploadFile, File, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pymongo import MongoClient
 import os
 import httpx
@@ -26,12 +26,13 @@ MONGO_URL = os.getenv("MONGO_URL")
 client = MongoClient(MONGO_URL)
 db = client["friend_coin_db"] 
 
+# 🛡️ [심화 보안 패치 1] Field(max_length=...)를 추가하여 DB 용량 폭파 테러 완벽 방어
 class EvalData(BaseModel):
     evaluator_email: str
     target_email: str
     eval_type: str
     intensity: int
-    reason: str = ""
+    reason: str = Field("", max_length=500) # 평가 사유 500자 제한
 
 class UserData(BaseModel):
     profile: dict
@@ -39,14 +40,21 @@ class UserData(BaseModel):
 
 class RoomData(BaseModel):
     email: str
-    room_name: str = ""
+    room_name: str = Field("", max_length=30) # 방 이름 30자 제한
     room_code: str = ""
 
 class ChatData(BaseModel):
     room_code: str
     sender_email: str
     sender_name: str
-    message: str
+    message: str = Field(..., max_length=1000) # 채팅 도배 방지 1000자 제한
+
+class AgendaData(BaseModel):
+    room_code: str
+    creator_email: str
+    target_email: str
+    agenda_type: str
+    reason: str = Field(..., max_length=1000) # 재판 사유 1000자 제한
 
 class VoteData(BaseModel):
     room_code: str
@@ -63,12 +71,11 @@ class RespondEvalData(BaseModel):
     eval_id: str
     action: str
 
-# 📅 캘린더용 데이터 모델 (시작일과 종료일 추가 완료)
 class EventAddData(BaseModel):
     room_code: str
     start_date: str
     end_date: str
-    title: str
+    title: str = Field(..., max_length=50) # 캘린더 일정 제목 50자 제한
     creator_name: str
     creator_email: str
 
@@ -227,7 +234,7 @@ def get_user_data(authorization: str = Header(None)):
             "members": members_profiles, 
             "agendas": room.get("agendas", []), 
             "messages": room.get("messages", []),
-            "events": room.get("events", []) # 📅 캘린더 데이터 로드
+            "events": room.get("events", [])
         })
 
     all_users = list(db["users"].find({}, {"profile": 1}))
@@ -493,7 +500,6 @@ def send_chat(data: ChatData, authorization: str = Header(None)):
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": chat_msg}})
     return {"status": "success"}
 
-# 📅 [패치] 다중 일정 생성 API
 @app.post("/api/room/event/add")
 def add_room_event(data: EventAddData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -593,10 +599,18 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
     db["rooms"].update_one({"_id": data.room_code}, {"$set": {"agendas": agendas}})
     return {"status": status_msg, "message": message}
 
+# 🛡️ [심화 보안 패치 2] 이미지 업로드 크기 및 파일 타입 제한 (메모리 폭파 방지)
 @app.post("/api/upload")
 async def upload_image(image: UploadFile = File(...)):
-    import base64
+    if not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="이미지 파일만 업로드할 수 있습니다.")
+    
+    MAX_SIZE = 5 * 1024 * 1024 # 5MB 제한
     contents = await image.read()
+    if len(contents) > MAX_SIZE:
+        raise HTTPException(status_code=400, detail="파일 크기는 5MB를 초과할 수 없습니다.")
+        
+    import base64
     img_b64 = base64.b64encode(contents).decode("utf-8")
     api_key = os.getenv("IMGBB_API_KEY")
     async with httpx.AsyncClient() as client: res = await client.post(f"https://api.imgbb.com/1/upload?key={api_key}", data={"image": img_b64})
