@@ -63,10 +63,11 @@ class RespondEvalData(BaseModel):
     eval_id: str
     action: str
 
-# 📅 캘린더용 데이터 모델 추가
+# 📅 캘린더용 데이터 모델 (시작일과 종료일 추가 완료)
 class EventAddData(BaseModel):
     room_code: str
-    date: str
+    start_date: str
+    end_date: str
     title: str
     creator_name: str
     creator_email: str
@@ -226,7 +227,7 @@ def get_user_data(authorization: str = Header(None)):
             "members": members_profiles, 
             "agendas": room.get("agendas", []), 
             "messages": room.get("messages", []),
-            "events": room.get("events", []) # 📅 캘린더 데이터 로드[cite: 1]
+            "events": room.get("events", []) # 📅 캘린더 데이터 로드
         })
 
     all_users = list(db["users"].find({}, {"profile": 1}))
@@ -492,7 +493,7 @@ def send_chat(data: ChatData, authorization: str = Header(None)):
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": chat_msg}})
     return {"status": "success"}
 
-# 📅 캘린더 전용 API (일정 추가)
+# 📅 [패치] 다중 일정 생성 API
 @app.post("/api/room/event/add")
 def add_room_event(data: EventAddData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -503,7 +504,8 @@ def add_room_event(data: EventAddData, authorization: str = Header(None)):
 
     event = {
         "id": str(uuid.uuid4()),
-        "date": data.date,
+        "start_date": data.start_date,
+        "end_date": data.end_date,
         "title": data.title,
         "creator_email": email,
         "creator_name": data.creator_name
@@ -511,7 +513,6 @@ def add_room_event(data: EventAddData, authorization: str = Header(None)):
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"events": event}})
     return {"status": "success"}
 
-# 📅 캘린더 전용 API (일정 삭제)
 @app.post("/api/room/event/delete")
 def delete_room_event(data: EventDeleteData, authorization: str = Header(None)):
     email = verify_google_token(authorization)

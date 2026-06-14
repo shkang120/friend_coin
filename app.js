@@ -14,6 +14,14 @@ function getCurrentTime() {
     return `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
+// 🛠️ [패치] 백엔드(YYYY-MM-DD)와 완벽하게 일치하는 날짜 포맷 생성기
+function getFormattedDate(d) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const date = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${date}`;
+}
+
 const defaultProfile = { 
     name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active',
     goodTickets: 2, badTickets: 2, lastRefillTime: null, lastDailyAttendance: null, weeklyTicketsClaimed: false,
@@ -33,7 +41,7 @@ let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 };
 // 📅 캘린더 전용 상태 변수
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
-let calSelectedDate = null;
+let calSelectedDate = getFormattedDate(new Date());
 
 const DEFAULT_AVATARS = [
     'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aneka&backgroundColor=c0aede',
@@ -131,49 +139,70 @@ function switchTab(tabName) {
     if (tabName === 'home') renderHome(); if (tabName === 'meeting') renderMeeting(); if (tabName === 'ranking') renderRanking(); if (tabName === 'noti') renderNoti(); if (tabName === 'profile') renderProfile();
 }
 
-// 📅 캘린더 생성 함수
+// 📅 캘린더 생성 및 렌더링 함수
 function getCalendarHtml(room) {
     const firstDay = new Date(calYear, calMonth, 1).getDay();
     const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const realToday = getFormattedDate(new Date()); // 실제 오늘 날짜 (YYYY-MM-DD)
     
     let gridHtml = '<div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:5px; text-align:center; font-size:12px; margin-bottom:10px;">';
     const days = ['일','월','화','수','목','금','토'];
-    days.forEach(d => gridHtml += `<div style="font-weight:bold; color:#8b95a1;">${d}</div>`);
+    days.forEach(d => gridHtml += `<div style="font-weight:bold; color:#8b95a1; padding-bottom:5px;">${d}</div>`);
     for(let i=0; i<firstDay; i++) gridHtml += `<div></div>`;
     
     for(let i=1; i<=daysInMonth; i++) {
         const dStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
-        const hasEvent = room.events && room.events.some(e => e.date === dStr);
+        // 다중일(시작일~종료일) 포함 여부 계산
+        const hasEvent = (room.events || []).some(e => {
+            const start = e.start_date || e.date; 
+            const end = e.end_date || start;
+            return dStr >= start && dStr <= end;
+        });
+        
         const isSelected = calSelectedDate === dStr;
+        const isToday = realToday === dStr;
+        
         const dotHtml = hasEvent ? `<div style="width:4px; height:4px; background:#ff3b30; border-radius:50%; margin:2px auto 0;"></div>` : '';
         const bg = isSelected ? '#3182f6' : (hasEvent ? '#fff3f3' : 'transparent');
-        const color = isSelected ? 'white' : '#333d4b';
-        gridHtml += `<div onclick="selectCalDate('${dStr}')" style="padding:5px; border-radius:8px; cursor:pointer; background:${bg}; color:${color}; font-weight:${hasEvent||isSelected?'bold':'normal'}; transition:0.2s;">${i}${dotHtml}</div>`;
+        const color = isSelected ? 'white' : (isToday && !isSelected ? '#3182f6' : '#333d4b');
+        const border = isToday && !isSelected ? 'border:2px solid #3182f6;' : 'border:2px solid transparent;';
+        
+        gridHtml += `<div onclick="selectCalDate('${dStr}')" style="padding:4px; border-radius:8px; cursor:pointer; background:${bg}; color:${color}; font-weight:${hasEvent||isSelected||isToday?'bold':'normal'}; ${border} box-sizing:border-box; transition:0.2s;">${i}${dotHtml}</div>`;
     }
     gridHtml += '</div>';
 
     let selectedEventsHtml = '';
     if (calSelectedDate) {
-        const dayEvents = (room.events || []).filter(e => e.date === calSelectedDate);
+        // 선택한 날짜에 포함되는 모든 일정 필터링
+        const dayEvents = (room.events || []).filter(e => {
+            const start = e.start_date || e.date;
+            const end = e.end_date || start;
+            return calSelectedDate >= start && calSelectedDate <= end;
+        });
+        
         selectedEventsHtml = `<div style="background:#f9fafb; padding:10px; border-radius:10px; border:1px solid #e5e8eb;">
             <div style="font-weight:bold; font-size:13px; color:#333d4b; margin-bottom:10px;">📅 ${calSelectedDate} 일정</div>
-            ${dayEvents.map(e => `<div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:8px; border-radius:6px; margin-bottom:6px; border:1px solid #eee;">
-                <div style="font-size:13px; color:#333d4b;"><b>${escapeHtml(e.title)}</b> <span style="font-size:11px; color:#8b95a1;">(${escapeHtml(e.creator_name)})</span></div>
-                <button onclick="deleteEvent('${e.id}')" style="background:none; border:none; color:#ff3b30; font-size:12px; cursor:pointer;">❌</button>
-            </div>`).join('')}
+            ${dayEvents.map(e => {
+                const dateTag = (e.start_date !== e.end_date && e.end_date) ? `<span style="font-size:10px; background:#e8f5e9; color:#2e7d32; padding:2px 4px; border-radius:4px;">${e.start_date.slice(5)} ~ ${e.end_date.slice(5)}</span>` : '';
+                return `<div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:8px; border-radius:6px; margin-bottom:6px; border:1px solid #eee;">
+                    <div style="font-size:13px; color:#333d4b;"><b>${escapeHtml(e.title)}</b> ${dateTag} <span style="font-size:11px; color:#8b95a1;">(${escapeHtml(e.creator_name)})</span></div>
+                    <button onclick="deleteEvent('${e.id}')" style="background:none; border:none; color:#ff3b30; font-size:12px; cursor:pointer;">❌</button>
+                </div>`
+            }).join('')}
             ${dayEvents.length === 0 ? `<div style="font-size:12px; color:#8b95a1; text-align:center; margin-bottom:10px;">등록된 약속이 없습니다.</div>` : ''}
-            <button onclick="addEvent('${calSelectedDate}')" style="width:100%; padding:8px; background:#3182f6; color:white; border:none; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">+ 일정 추가</button>
+            <button onclick="openAddEventModal('${calSelectedDate}')" style="width:100%; padding:8px; background:#3182f6; color:white; border:none; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">+ 일정 추가</button>
         </div>`;
     }
 
+    // 🛠️ [패치] 네이티브 Date Picker를 이용한 다이렉트 날짜/월 이동
     return `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #e5e8eb; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                 <div style="font-size:14px; font-weight:bold; color:#333d4b;">🗓️ 클럽 공유 캘린더</div>
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <button onclick="changeCalMonth(-1)" style="background:none; border:none; cursor:pointer; color:#8b95a1;">◀</button>
-                    <div style="font-size:13px; font-weight:bold; color:#333d4b;">${calYear}년 ${calMonth+1}월</div>
-                    <button onclick="changeCalMonth(1)" style="background:none; border:none; cursor:pointer; color:#8b95a1;">▶</button>
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <button onclick="changeCalMonth(-1)" style="background:none; border:none; cursor:pointer; color:#8b95a1; padding:0 5px;">◀</button>
+                    <input type="date" value="${calSelectedDate}" onchange="handleDatePickerChange(this.value)" style="font-size:14px; font-weight:bold; color:#333d4b; border:none; outline:none; background:transparent; cursor:pointer; font-family:sans-serif; text-align:center; width:125px;">
+                    <button onclick="changeCalMonth(1)" style="background:none; border:none; cursor:pointer; color:#8b95a1; padding:0 5px;">▶</button>
                 </div>
             </div>
             ${gridHtml}
@@ -193,15 +222,70 @@ window.selectCalDate = function(dStr) {
     calSelectedDate = dStr;
     renderHome();
 };
-window.addEvent = async function(dateStr) {
-    const title = prompt(`[${dateStr}] 추가할 약속을 입력하세요 (예: 강남역 고기집):`);
-    if(!title || !title.trim()) return;
+window.handleDatePickerChange = function(val) {
+    if(!val) return;
+    const d = new Date(val);
+    calYear = d.getFullYear();
+    calMonth = d.getMonth();
+    calSelectedDate = val;
+    renderHome();
+};
+
+// 📅 다중일정 생성 전용 모달창
+window.openAddEventModal = function(dateStr) {
+    let modal = document.getElementById('event-modal');
+    if(!modal) {
+        modal = document.createElement('div');
+        modal.id = 'event-modal';
+        modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;";
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+        <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:left; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+            <h3 style="margin-top:0; color:#333d4b; text-align:center; font-size:18px;">🗓️ 일정 추가</h3>
+            <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">1. 일정 내용</label>
+            <input type="text" id="event-title-input" placeholder="예: 부산 2박 3일 여행" style="width:100%; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:15px; box-sizing:border-box; outline:none; font-family:sans-serif;">
+            
+            <div style="display:flex; gap:10px; margin-bottom:20px;">
+                <div style="flex:1;">
+                    <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">시작일</label>
+                    <input type="date" id="event-start-input" value="${dateStr}" style="width:100%; padding:10px; border:1px solid #e5e8eb; border-radius:10px; box-sizing:border-box; outline:none; font-family:sans-serif; font-size:13px;">
+                </div>
+                <div style="flex:1;">
+                    <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">종료일</label>
+                    <input type="date" id="event-end-input" value="${dateStr}" style="width:100%; padding:10px; border:1px solid #e5e8eb; border-radius:10px; box-sizing:border-box; outline:none; font-family:sans-serif; font-size:13px;">
+                </div>
+            </div>
+            
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('event-modal').style.display='none'" style="flex:1; padding:12px; background:#f2f4f6; border:none; border-radius:10px; font-weight:bold; color:#8b95a1; cursor:pointer;">취소</button>
+                <button onclick="submitNewEvent()" style="flex:1; padding:12px; background:#3182f6; border:none; border-radius:10px; font-weight:bold; color:white; cursor:pointer;">추가하기</button>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+};
+
+window.submitNewEvent = async function() {
+    const title = document.getElementById('event-title-input').value.trim();
+    const start = document.getElementById('event-start-input').value;
+    const end = document.getElementById('event-end-input').value;
+    if(!title) { alert("일정 내용을 입력하세요!"); return; }
+    if(start > end) { alert("종료일이 시작일보다 빠를 수 없습니다!"); return; }
+    
+    document.getElementById('event-modal').style.display = 'none';
     showToast("⏳ 일정 등록 중...");
     try {
-        const res = await fetch(`${BACKEND_URL}/api/room/event/add`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, date: dateStr, title: title.trim(), creator_name: myProfile.name, creator_email: myEmail }) });
-        const data = await res.json(); if(data.status === 'success') { await initializeApp(); } else { alert(data.message); }
+        const res = await fetch(`${BACKEND_URL}/api/room/event/add`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, 
+            body: JSON.stringify({ room_code: currentRoomCode, start_date: start, end_date: end, title: title, creator_name: myProfile.name, creator_email: myEmail }) 
+        });
+        const data = await res.json(); 
+        if(data.status === 'success') { await initializeApp(); switchTab('home'); } else { alert(data.message); }
     } catch(err) { alert("통신 에러"); }
 };
+
 window.deleteEvent = async function(eventId) {
     if(!confirm("이 일정을 삭제하시겠습니까?")) return;
     showToast("⏳ 삭제 중...");
@@ -229,7 +313,6 @@ function renderHome() {
         // 캘린더 주입
         html += getCalendarHtml(room);
 
-        // ⚖️ 수동 재판 버튼 제거됨
         html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="color:#333d4b; margin:0; font-size:15px;">참여자 목록 (${room.members.length}명)</h3></div>`;
         
         html += room.members.map(f => { const isMe = f.email === myEmail; const isDelisted = f.status === 'delisted'; const clickEvent = !isMe ? `onclick="openFriendDetail('${f.email}')"` : ""; const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6; cursor:pointer;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer; transition: 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.05);"); return `<div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}><div style="display: flex; align-items: center; gap: 15px;">${getAvatarHtml(f, 'small')}<div><div style="font-size: 16px; font-weight: bold;"><span style="color: ${f.nameColor || '#333d4b'};">${escapeHtml(f.name)}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} ${isDelisted ? '<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px;">💀상장폐지</span>' : ''}</div>${getBadgeHtml(f)}</div></div><div style="font-size: 16px; font-weight: bold; color: #333d4b;">${isDelisted ? '-' : Math.floor(f.price || 0).toLocaleString()} p</div></div>`; }).join('');
@@ -240,10 +323,11 @@ function renderHome() {
 
 function enterRoom(code) { 
     currentRoomCode = code; 
+    // 🛠️ [패치] 방을 나갔다 들어올 때 무조건 현재 날짜로 초기화
     const now = new Date();
     calYear = now.getFullYear();
     calMonth = now.getMonth();
-    calSelectedDate = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    calSelectedDate = getFormattedDate(now);
     renderHome(); 
 }
 
@@ -256,8 +340,8 @@ async function refreshChat() { await initializeApp(); }
 function openFriendDetail(friendEmail) {
     const room = myRooms.find(r => r.room_code === currentRoomCode); const friend = room.members.find(m => m.email === friendEmail); if (!friend) return;
     currentSelectedFriend = friend;
-    // ⚖️ 수동 회생 재판 제거됨에 따른 알림만 표출
-    if (friend.status === 'delisted') { alert(`💀 상장폐지된 코인은 더 이상 평가하거나 수동으로 회생시킬 수 없습니다.`); return; }
+    
+    if (friend.status === 'delisted') { alert(`💀 상장폐지된 코인은 더 이상 평가할 수 없습니다.`); return; }
 
     let modal = document.getElementById('eval-modal');
     if(!modal) { modal = document.createElement('div'); modal.id = 'eval-modal'; modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;"; document.body.appendChild(modal); }
@@ -417,12 +501,27 @@ function renderProfile() {
     const isDelisted = myProfile.status === 'delisted'; const changeAmount = myProfile.price - myProfile.basePrice; const changeRate = ((changeAmount / myProfile.basePrice) * 100).toFixed(1);
     const colorClass = changeAmount > 0 ? '#ff3b30' : (changeAmount < 0 ? '#3182f6' : '#8b95a1'); const sign = changeAmount > 0 ? '+' : '';
     const vipBanner = myProfile.isVIP ? `<div style="background: linear-gradient(135deg, #d4af37, #f3e5f5); padding: 15px; border-radius: 12px; color: white; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div style="color:#333d4b;">👑 VIP 멤버십 적용 중</div><div style="font-size: 12px; background: rgba(255,255,255,0.4); color: #333d4b; padding: 6px 10px; border-radius: 6px;">설정 ⚙️</div></div>` : `<div style="background: #333d4b; padding: 15px; border-radius: 12px; color: #d4af37; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div>💎 프리미엄 가입하기</div><div style="font-size: 12px; background: rgba(255,255,255,0.1); padding: 6px 10px; border-radius: 6px; color:white;">알아보기 👉</div></div>`;
-    const todayStr = new Date().toDateString(); const hasDailyDone = myProfile.lastDailyAttendance === todayStr;
-    const dailyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasDailyDone ? '#e5e8eb' : '#e8f5e9'}; color: ${hasDailyDone ? '#8b95a1' : '#2e7d32'}; font-weight: bold; border: none; cursor: ${hasDailyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="doDailyAttendance()" ${hasDailyDone ? 'disabled' : ''}>📅 매일 출석 (+50p)</button>`;
-    const hasAdBonusDone = myProfile.lastDailyAdBonus === todayStr; let adDoubleBtn = ''; if (hasDailyDone && !hasAdBonusDone) { adDoubleBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #e3f2fd; color: #1565c0; font-weight: bold; border: none; cursor: pointer; margin-bottom: 10px;" onclick="watchAd('double_attendance')">🎬 광고 보고 2배 출석 (+50p)</button>`; } else if (hasDailyDone && hasAdBonusDone) { adDoubleBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #e5e8eb; color: #8b95a1; font-weight: bold; border: none; cursor: not-allowed; margin-bottom: 10px;" disabled>✅ 출석 보상 2배 완료</button>`; }
-    const hasWeeklyDone = myProfile.weeklyTicketsClaimed === true; const weeklyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasWeeklyDone ? '#e5e8eb' : '#fff3e0'}; color: ${hasWeeklyDone ? '#8b95a1' : '#e65100'}; font-weight: bold; border: none; cursor: ${hasWeeklyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="claimWeeklyTickets()" ${hasWeeklyDone ? 'disabled' : ''}>🎁 주간 보너스 평가권 (각 +1장)</button>`;
-    if (myProfile.dailyAdTicketsDate !== todayStr) myProfile.dailyAdTicketsCount = 0; const adTicketCount = myProfile.dailyAdTicketsCount || 0; const isAdTicketMax = adTicketCount >= 1;
-    const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${isAdTicketMax ? '#e5e8eb' : '#f3e5f5'}; color: ${isAdTicketMax ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${isAdTicketMax ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="watchAd('extra_ticket')" ${isAdTicketMax ? 'disabled' : ''}>🎬 광고 보고 평가권 추가 (${adTicketCount}/1회)</button>`;
+    
+    // 🛠️ [패치] 백엔드와 완벽하게 일치하는 형식(YYYY-MM-DD)으로 비교합니다.
+    const todayStr = getFormattedDate(new Date()); 
+    const hasDailyDone = myProfile.lastDailyAttendance === todayStr;
+    const dailyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasDailyDone ? '#e5e8eb' : '#e8f5e9'}; color: ${hasDailyDone ? '#8b95a1' : '#2e7d32'}; font-weight: bold; border: none; cursor: ${hasDailyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="doDailyAttendance()" ${hasDailyDone ? 'disabled' : ''}>${hasDailyDone ? '✅ 출석 완료' : '📅 매일 출석 (+50p)'}</button>`;
+    
+    const hasAdBonusDone = myProfile.lastDailyAdBonus === todayStr; 
+    let adDoubleBtn = ''; 
+    if (hasDailyDone && !hasAdBonusDone) { 
+        adDoubleBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #e3f2fd; color: #1565c0; font-weight: bold; border: none; cursor: pointer; margin-bottom: 10px;" onclick="watchAd('double_attendance')">🎬 광고 보고 2배 출석 (+50p)</button>`; 
+    } else if (hasDailyDone && hasAdBonusDone) { 
+        adDoubleBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #e5e8eb; color: #8b95a1; font-weight: bold; border: none; cursor: not-allowed; margin-bottom: 10px;" disabled>✅ 출석 보상 2배 완료</button>`; 
+    }
+    
+    const hasWeeklyDone = myProfile.weeklyTicketsClaimed === true; 
+    const weeklyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasWeeklyDone ? '#e5e8eb' : '#fff3e0'}; color: ${hasWeeklyDone ? '#8b95a1' : '#e65100'}; font-weight: bold; border: none; cursor: ${hasWeeklyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="claimWeeklyTickets()" ${hasWeeklyDone ? 'disabled' : ''}>${hasWeeklyDone ? '✅ 주간 보너스 완료' : '🎁 주간 보너스 평가권 (각 +1장)'}</button>`;
+    
+    if (myProfile.dailyAdTicketsDate !== todayStr) myProfile.dailyAdTicketsCount = 0; 
+    const adTicketCount = myProfile.dailyAdTicketsCount || 0; 
+    const isAdTicketMax = adTicketCount >= 1;
+    const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${isAdTicketMax ? '#e5e8eb' : '#f3e5f5'}; color: ${isAdTicketMax ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${isAdTicketMax ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="watchAd('extra_ticket')" ${isAdTicketMax ? 'disabled' : ''}>${isAdTicketMax ? '✅ 오늘 티켓 추가 완료' : `🎬 광고 보고 평가권 추가 (${adTicketCount}/1회)`}</button>`;
 
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
     if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
