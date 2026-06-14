@@ -70,19 +70,17 @@ class RespondEvalData(BaseModel):
     eval_id: str
     action: str
 
-# 🛡️ [보안 패치 2번] 메모리 기반 API 도배 공격(매크로) 방지용 쿨타임 저장소
-# 서버가 켜져있는 동안 유저별 마지막 API 호출 시간을 기록합니다.
 api_cooldowns = {
-    "chat": {},     # 채팅: 1초 쿨타임
-    "evaluate": {}, # 평가: 3초 쿨타임
-    "agenda": {}    # 재판: 3초 쿨타임
+    "chat": {},     
+    "evaluate": {}, 
+    "agenda": {}    
 }
 
 def is_spamming(email: str, action_type: str, cooldown_seconds: int) -> bool:
     now = datetime.utcnow()
     last_time = api_cooldowns[action_type].get(email)
     if last_time and (now - last_time).total_seconds() < cooldown_seconds:
-        return True # 쿨타임이 안 지났으면 스팸(도배)으로 간주
+        return True 
     api_cooldowns[action_type][email] = now
     return False
 
@@ -107,6 +105,42 @@ def get_user_data(authorization: str = Header(None)):
         return {"isNewUser": True, "profile": {}, "noti": [], "my_rooms": [], "global_ranking": []}
 
     profile = user_data.get("profile", {})
+    
+    # ⚖️ [패치] 악평 승인 대기 3일 경과 시 자동 수락 로직
+    pending_list = profile.get("pending_evals", [])
+    new_pending = []
+    profile_modified = False
+    
+    for e in pending_list:
+        if "timestamp" in e:
+            created = datetime.fromisoformat(e["timestamp"])
+            if datetime.utcnow() >= created + timedelta(days=3):
+                # 3일 잠수 시 자동 승인 처리
+                base_p = profile.get("basePrice", 20000)
+                change_amount = base_p * (e["intensity"] * 0.01)
+                profile["price"] = profile.get("price", 20000) - change_amount
+                
+                if "priceHistory" not in profile:
+                    profile["priceHistory"] = [base_p]; profile["timeHistory"] = ["시작"]
+                profile["priceHistory"].append(profile["price"])
+                kst_now = datetime.utcnow() + timedelta(hours=9)
+                profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
+                
+                if "noti" not in user_data: user_data["noti"] = []
+                user_data["noti"].insert(0, f"[👎자동 수락] 3일 무응답으로 {e['evaluator_name']}님의 악평 강제 승인 (-{e['intensity']}% 적용)")
+                
+                max_p = profile.get("maxPrice", 20000)
+                if profile["price"] <= (max_p * 0.3) and not profile.get("narackStartTime"):
+                    profile["narackStartTime"] = datetime.utcnow().isoformat()
+                    profile["narackLastHitEmail"] = e["evaluator_email"]
+                    
+                profile_modified = True
+                continue
+        new_pending.append(e)
+        
+    if profile_modified:
+        profile["pending_evals"] = new_pending
+        db["users"].update_one({"_id": email}, {"$set": {"profile": profile, "noti": user_data.get("noti", [])}})
 
     if profile.get("narackStartTime") and profile.get("narackLastHitEmail"):
         start_time = datetime.fromisoformat(profile["narackStartTime"])
@@ -119,7 +153,8 @@ def get_user_data(authorization: str = Header(None)):
                     "id": agenda_id, "creator_email": "system", "target_email": email,
                     "target_name": profile.get("name", "알 수 없음"), "type": "delist",
                     "reason": f"📉 [시스템 자동 상정] 최고 주가 대비 -70% 이하의 나락 상태에서 30일 동안 탈출하지 못했습니다. (마지막 타격자: {last_hit_email})",
-                    "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active"
+                    "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active",
+                    "created_at": datetime.utcnow().isoformat()
                 }
                 db["rooms"].update_one({"_id": common_room["_id"]}, {"$push": {"agendas": agenda}})
 
@@ -130,6 +165,51 @@ def get_user_data(authorization: str = Header(None)):
     my_rooms_cursor = db["rooms"].find({"members": email})
     my_rooms = []
     for room in my_rooms_cursor:
+        room_modified = False
+        # ⚖️ [패치] 재판 3일 무응답 방치 시 원고 승소(찬성) 자동 가결 로직
+        for a in room.get("agendas", []):
+            if a.get("status") == "active" and a.get("created_at"):
+                created = datetime.fromisoformat(a["created_at"])
+                if datetime.utcnow() >= created + timedelta(days=3):
+                    a["status"] = "resolved"
+                    a["agreeVotes"] = 999 
+                    room_modified = True
+                    
+                    target_user = db["users"].find_one({"_id": a["target_email"]})
+                    if target_user:
+                        t_prof = target_user.get("profile", {})
+                        t_noti = target_user.get("noti", [])
+                        
+                        if a["type"] == "delist":
+                            t_prof["status"] = "delisted"; t_prof["price"] = 0
+                            t_noti.insert(0, f"🚨 3일 무응답으로 {a['target_name']}님의 상장폐지 재판이 자동 가결되었습니다.")
+                        elif a["type"] == "revival":
+                            t_prof["status"] = "active"; t_prof["price"] = 10000
+                            t_noti.insert(0, f"🌱 3일 무응답으로 {a['target_name']}님의 회생 재판이 자동 가결되었습니다.")
+                        elif a["type"] == "defense":
+                            assoc = a.get("associated_eval", {})
+                            base_p = t_prof.get("basePrice", 20000)
+                            change_amount = base_p * (assoc.get("intensity", 0) * 0.01)
+                            t_prof["price"] = t_prof.get("price", 20000) - change_amount
+                            
+                            if "priceHistory" not in t_prof:
+                                t_prof["priceHistory"] = [base_p]; t_prof["timeHistory"] = ["시작"]
+                            t_prof["priceHistory"].append(t_prof["price"])
+                            kst_now = datetime.utcnow() + timedelta(hours=9)
+                            t_prof["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
+                            
+                            t_noti.insert(0, f"[👎재판 패소] 3일 무응답으로 악평 정당화 자동 확정 (-{assoc.get('intensity', 0)}% 적용)")
+                            
+                            max_p = t_prof.get("maxPrice", 20000)
+                            if t_prof["price"] <= (max_p * 0.3) and not t_prof.get("narackStartTime"):
+                                t_prof["narackStartTime"] = datetime.utcnow().isoformat()
+                                t_prof["narackLastHitEmail"] = assoc.get("evaluator_email")
+                                
+                        db["users"].update_one({"_id": a["target_email"]}, {"$set": {"profile": t_prof, "noti": t_noti}})
+                        
+        if room_modified:
+            db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"agendas": room.get("agendas")}})
+            
         members_profiles = []
         for member_email in room["members"]:
             m_data = db["users"].find_one({"_id": member_email})
@@ -217,12 +297,8 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
     if not email or email != data.evaluator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     if data.evaluator_email == data.target_email: return {"status": "error", "message": "자신을 평가할 수 없습니다."}
 
-    # 🛡️ 매크로 도배 방지 (3초 이내 연속 평가 금지)
-    if is_spamming(email, "evaluate", 3):
-        return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
-
-    if data.intensity not in [1, 2, 3]:
-        return {"status": "error", "message": "올바르지 않은 변동 수치입니다."}
+    if is_spamming(email, "evaluate", 3): return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
+    if data.intensity not in [1, 2, 3]: return {"status": "error", "message": "올바르지 않은 변동 수치입니다."}
 
     evaluator = db["users"].find_one({"_id": data.evaluator_email})
     target = db["users"].find_one({"_id": data.target_email})
@@ -332,7 +408,8 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
             "type": "defense",
             "reason": f"⚖️ [악평 이의제기 방어 재판] 피고인이 {target_eval['evaluator_name']}님의 악평(-{target_eval['intensity']}%)에 정식 탄핵 요청을 제기했습니다.\n[악평 사유]: {target_eval['reason']}",
             "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active",
-            "associated_eval": target_eval
+            "associated_eval": target_eval,
+            "created_at": datetime.utcnow().isoformat() # ⚖️ [패치] 재판 자동 가결을 위한 생성 시간 도장 추가
         }
 
         profile["pending_evals"] = [e for e in pending_list if e["id"] != data.eval_id]
@@ -368,6 +445,26 @@ def join_room(data: RoomData, authorization: str = Header(None)):
 def leave_room(data: RoomData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    
+    room = db["rooms"].find_one({"_id": data.room_code})
+    if not room: return {"status": "error", "message": "방이 존재하지 않습니다."}
+
+    # ⚖️ [패치] 꼼수 방지: 도망자 출국 금지 로직
+    room_members = room.get("members", [])
+    user = db["users"].find_one({"_id": email})
+    profile = user.get("profile", {})
+    
+    for a in room.get("agendas", []):
+        if a.get("status") == "active" and a.get("target_email") == email:
+            return {"status": "error", "message": "🚨 도망 금지: 본인이 회부된 진행 중인 재판이 있어 방을 나갈 수 없습니다."}
+            
+    for pe in profile.get("pending_evals", []):
+        if pe.get("evaluator_email") in room_members:
+            return {"status": "error", "message": "🚨 도망 금지: 이 방의 멤버가 작성한 결재 대기 중인 악평이 있습니다."}
+            
+    if profile.get("narackStartTime") and profile.get("narackLastHitEmail") in room_members:
+        return {"status": "error", "message": "🚨 도망 금지: 상장폐지 심사 대기 중(나락 상태)이므로 방을 나갈 수 없습니다."}
+
     db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"members": email}})
     return {"status": "success"}
 
@@ -376,13 +473,10 @@ def send_chat(data: ChatData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.sender_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
 
-    # 🛡️ 매크로 도배 방지 (1초 이내 연속 채팅 금지)
-    if is_spamming(email, "chat", 1):
-        return {"status": "error", "message": "채팅 도배 방지! 천천히 입력해 주세요."}
+    if is_spamming(email, "chat", 1): return {"status": "error", "message": "채팅 도배 방지! 천천히 입력해 주세요."}
 
     room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []):
-        return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
+    if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
 
     chat_msg = {"sender_email": email, "sender_name": data.sender_name, "message": data.message}
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": chat_msg}})
@@ -393,18 +487,15 @@ def create_agenda(data: AgendaData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.creator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
 
-    # 🛡️ 매크로 도배 방지 (3초 이내 연속 재판 발의 금지)
-    if is_spamming(email, "agenda", 3):
-        return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
+    if is_spamming(email, "agenda", 3): return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
 
     room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []):
-        return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
+    if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
 
     agenda_id = str(uuid.uuid4())
     target = db["users"].find_one({"_id": data.target_email})
     target_name = target.get("profile", {}).get("name", "알 수 없음") if target else "알 수 없음"
-    agenda = {"id": agenda_id, "creator_email": email, "target_email": data.target_email, "target_name": target_name, "type": data.agenda_type, "reason": data.reason, "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active"}
+    agenda = {"id": agenda_id, "creator_email": email, "target_email": data.target_email, "target_name": target_name, "type": data.agenda_type, "reason": data.reason, "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active", "created_at": datetime.utcnow().isoformat()} # ⚖️ [패치] 생성 시간 도장
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"agendas": agenda}})
     return {"status": "success", "message": "주주총회 안건이 상정되었습니다!"}
 
@@ -414,8 +505,7 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
     if not email or email != data.voter_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
 
     room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []):
-        return {"status": "error", "message": "방이 없거나 해당 클럽의 멤버가 아닙니다."}
+    if not room or email not in room.get("members", []): return {"status": "error", "message": "방이 없거나 해당 클럽의 멤버가 아닙니다."}
 
     agendas = room.get("agendas", [])
     target_agenda = None

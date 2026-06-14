@@ -4,7 +4,6 @@ let myEmail = localStorage.getItem('fc_email') || null;
 let myUsername = localStorage.getItem('fc_username') || null;
 let loginIntent = ''; 
 
-// 🛡️ [보안 패치] XSS 해킹 스크립트 무력화 함수
 function escapeHtml(text) {
     if (!text) return "";
     return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -58,7 +57,8 @@ function renderNoti() {
             <div style="background:white; padding:12px; border-radius:8px; border:1px solid #ffd5d5; margin-bottom:8px; font-size:13px; color:#333d4b;">
                 <div>👤 <b>${escapeHtml(e.evaluator_name)}</b>의 악평 변동건: <b style="color:#3182f6;">-${e.intensity}%</b></div>
                 <div style="background:#f9fafb; padding:6px; border-radius:4px; margin:6px 0; color:#6b7684; font-size:12px;">💬 사유: ${escapeHtml(e.reason)}</div>
-                <div style="display:flex; gap:6px; margin-top:8px;">
+                <div style="font-size:11px; color:#ff3b30; margin-bottom:8px; font-weight:bold;">⏳ 3일 무응답 시 강제 수락됩니다.</div>
+                <div style="display:flex; gap:6px;">
                     <button onclick="respondPendingEval('${e.id}', 'approve')" style="flex:1; padding:6px; background:#3182f6; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">👍 감수하고 승인</button>
                     <button onclick="respondPendingEval('${e.id}', 'defend')" style="flex:1; padding:6px; background:#ff3b30; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">⚖️ 이의제기 (재판)</button>
                 </div>
@@ -145,7 +145,7 @@ function renderHome() {
 function enterRoom(code) { currentRoomCode = code; renderHome(); }
 function exitRoomView() { currentRoomCode = null; renderHome(); }
 
-async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가시겠습니까?")) return; try { const res = await fetch(`${BACKEND_URL}/api/room/leave`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: currentRoomCode }) }); const data = await res.json(); if(data.status === 'success') { showToast("클럽에서 퇴장했습니다."); currentRoomCode = null; await initializeApp(); } } catch(err) { alert("오류 발생"); } }
+async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가시겠습니까?")) return; try { const res = await fetch(`${BACKEND_URL}/api/room/leave`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: currentRoomCode }) }); const data = await res.json(); if(data.status === 'success') { showToast("클럽에서 퇴장했습니다."); currentRoomCode = null; await initializeApp(); } else { alert(data.message); } } catch(err) { alert("오류 발생"); } }
 async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await refreshChat(); } catch(err) { console.error(err); } }
 async function refreshChat() { await initializeApp(); }
 
@@ -276,7 +276,7 @@ function renderMeeting() {
         let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; } else if (a.type === 'defense') { titleColor = '#f39c12'; titleText = '⚖️ 악평 이의제기 방어 법정'; }
         const targetPerson = room.members.find(f => f.email === a.target_email); const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; const hasVoted = a.votedUsers && a.votedUsers.includes(myEmail);
         let btnHtml = hasVoted ? `<button style="width:100%; background:#e5e8eb; color:#8b95a1; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:not-allowed;" disabled>⚖️ 투표 완료</button>` : `<button class="btn-vote-disagree" style="flex:1; background:#f2f4f6; color:#4e5968;" onclick="submitVote('${a.id}', 'disagree')">반대(기각)</button><button class="btn-vote-agree" style="flex:1; background:${titleColor};" onclick="submitVote('${a.id}', 'agree')">찬성(판결)</button>`;
-        return `<div class="info-card" style="border-left: 5px solid ${titleColor};"><div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">피고인: <b>${escapeHtml(a.target_name)}</b></div></div></div><div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 재판 안건 사유:</b><br>${escapeHtml(a.reason)}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#8b95a1; margin-bottom:12px; background:#fff; padding:4px;"><div>👍 찬성: <b style="color:#ff3b30;">${a.agreeVotes}표</b></div><div>👎 반대: <b style="color:#3182f6;">${a.disagreeVotes}표</b></div><div style="background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:4px; font-weight:bold;">정족수: (${requiredVotes}/${totalMembers}명)</div></div><div style="display: flex; gap: 10px;">${btnHtml}</div></div>`;
+        return `<div class="info-card" style="border-left: 5px solid ${titleColor};"><div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">피고인: <b>${escapeHtml(a.target_name)}</b></div></div></div><div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 재판 안건 사유:</b><br>${escapeHtml(a.reason)}</div><div style="font-size:11px; color:#ff3b30; margin-bottom:8px; font-weight:bold; text-align:center;">⏳ 3일 이내 미결정 시 원고 승소(가결)로 강제 처리됩니다.</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#8b95a1; margin-bottom:12px; background:#fff; padding:4px;"><div>👍 찬성: <b style="color:#ff3b30;">${a.agreeVotes}표</b></div><div>👎 반대: <b style="color:#3182f6;">${a.disagreeVotes}표</b></div><div style="background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:4px; font-weight:bold;">정족수: (${requiredVotes}/${totalMembers}명)</div></div><div style="display: flex; gap: 10px;">${btnHtml}</div></div>`;
     }).join('');
 }
 async function submitVote(agendaId, voteType) { showToast("⏳ 표결 전달 중..."); try { const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); const data = await res.json(); if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await initializeApp(); switchTab('home'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("네트워크 오류"); } }
@@ -295,7 +295,6 @@ function renderRanking() {
     container.innerHTML = `<div style="background: white; border-radius: 16px; padding: 20px 15px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee;"><h3 style="margin-top: 0; color: #333d4b;">🌍 전국구 통합 랭킹 Top 10</h3><p style="font-size:12px; color:#8b95a1; margin-bottom:20px;">모든 클럽의 주가가 합산된 실시간 순위보드입니다.</p>${top10.map((p, i) => createTotalRankCard(p, i)).join('')}</div>`;
 }
 
-// 🛡️ [보안 패치] 클라이언트 단에서 서버로 today_str를 전송하지 않습니다.
 async function doDailyAttendance() { 
     showToast("⏳ 출석 처리 중...");
     try {
@@ -311,7 +310,6 @@ function watchAd(type) {
     adInterval = setInterval(() => { timeLeft--; if (timeLeft > 0) { document.getElementById('ad-timer').textContent = `광고 시청 중... (${timeLeft}초)`; } else { clearInterval(adInterval); document.getElementById('ad-timer').textContent = "✅ 시청 완료!"; btn.textContent = "보상 받기 🎁"; btn.style.background = "#3182f6"; btn.style.color = "white"; btn.disabled = false; btn.onclick = () => claimAdReward(false); } }, 1000);
 }
 
-// 🛡️ [보안 패치] today_str 전송 제거
 async function claimAdReward(isVipPass = false) { 
     document.getElementById('ad-modal').style.display = 'none'; showToast("⏳ 보상 수령 중...");
     try {
@@ -320,7 +318,6 @@ async function claimAdReward(isVipPass = false) {
     } catch(err) { alert("서버 오류"); }
 }
 
-// 🛡️ [보안 패치] today_str 전송 제거
 async function claimWeeklyTickets() { 
     showToast("⏳ 처리 중...");
     try {
