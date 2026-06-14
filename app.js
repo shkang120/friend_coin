@@ -143,7 +143,7 @@ function switchTab(tabName) {
 function getCalendarHtml(room) {
     const firstDay = new Date(calYear, calMonth, 1).getDay();
     const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
-    const realToday = getFormattedDate(new Date()); // 실제 오늘 날짜 (YYYY-MM-DD)
+    const realToday = getFormattedDate(new Date()); 
     
     let gridHtml = '<div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:5px; text-align:center; font-size:12px; margin-bottom:10px;">';
     const days = ['일','월','화','수','목','금','토'];
@@ -152,17 +152,30 @@ function getCalendarHtml(room) {
     
     for(let i=1; i<=daysInMonth; i++) {
         const dStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
-        // 다중일(시작일~종료일) 포함 여부 계산
-        const hasEvent = (room.events || []).some(e => {
+        
+        // 🛠️ [패치] 해당 날짜에 포함되는 일정들을 모두 찾아서 배열로 만듭니다.
+        const dayEvents = (room.events || []).filter(e => {
             const start = e.start_date || e.date; 
             const end = e.end_date || start;
             return dStr >= start && dStr <= end;
         });
         
+        const hasEvent = dayEvents.length > 0;
         const isSelected = calSelectedDate === dStr;
         const isToday = realToday === dStr;
         
-        const dotHtml = hasEvent ? `<div style="width:4px; height:4px; background:#ff3b30; border-radius:50%; margin:2px auto 0;"></div>` : '';
+        // 🛠️ [패치] 최대 3개까지 각기 다른 색상의 점(Dot)을 예쁘게 찍어줍니다.
+        let dotHtml = '';
+        if (hasEvent) {
+            let dots = '';
+            const dotsCount = Math.min(dayEvents.length, 3);
+            const dotColors = ['#ff3b30', '#3182f6', '#34c759']; // 차례대로 빨강, 파랑, 초록
+            for(let j=0; j<dotsCount; j++) {
+                dots += `<div style="width:4px; height:4px; background:${dotColors[j]}; border-radius:50%;"></div>`;
+            }
+            dotHtml = `<div style="display:flex; justify-content:center; gap:3px; margin-top:2px;">${dots}</div>`;
+        }
+        
         const bg = isSelected ? '#3182f6' : (hasEvent ? '#fff3f3' : 'transparent');
         const color = isSelected ? 'white' : (isToday && !isSelected ? '#3182f6' : '#333d4b');
         const border = isToday && !isSelected ? 'border:2px solid #3182f6;' : 'border:2px solid transparent;';
@@ -173,7 +186,6 @@ function getCalendarHtml(room) {
 
     let selectedEventsHtml = '';
     if (calSelectedDate) {
-        // 선택한 날짜에 포함되는 모든 일정 필터링
         const dayEvents = (room.events || []).filter(e => {
             const start = e.start_date || e.date;
             const end = e.end_date || start;
@@ -182,9 +194,14 @@ function getCalendarHtml(room) {
         
         selectedEventsHtml = `<div style="background:#f9fafb; padding:10px; border-radius:10px; border:1px solid #e5e8eb;">
             <div style="font-weight:bold; font-size:13px; color:#333d4b; margin-bottom:10px;">📅 ${calSelectedDate} 일정</div>
-            ${dayEvents.map(e => {
+            ${dayEvents.map((e, index) => {
                 const dateTag = (e.start_date !== e.end_date && e.end_date) ? `<span style="font-size:10px; background:#e8f5e9; color:#2e7d32; padding:2px 4px; border-radius:4px;">${e.start_date.slice(5)} ~ ${e.end_date.slice(5)}</span>` : '';
-                return `<div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:8px; border-radius:6px; margin-bottom:6px; border:1px solid #eee;">
+                
+                // 🛠️ [패치] 목록의 띠(Border)도 캘린더 점 색상과 완벽하게 매칭시켜 줍니다.
+                const dotColors = ['#ff3b30', '#3182f6', '#34c759'];
+                const indicatorColor = index < 3 ? dotColors[index] : '#8b95a1'; // 4번째 이상은 회색
+                
+                return `<div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:8px; border-radius:6px; margin-bottom:6px; border:1px solid #eee; border-left:4px solid ${indicatorColor};">
                     <div style="font-size:13px; color:#333d4b;"><b>${escapeHtml(e.title)}</b> ${dateTag} <span style="font-size:11px; color:#8b95a1;">(${escapeHtml(e.creator_name)})</span></div>
                     <button onclick="deleteEvent('${e.id}')" style="background:none; border:none; color:#ff3b30; font-size:12px; cursor:pointer;">❌</button>
                 </div>`
@@ -194,7 +211,6 @@ function getCalendarHtml(room) {
         </div>`;
     }
 
-    // 🛠️ [패치] 네이티브 Date Picker를 이용한 다이렉트 날짜/월 이동
     return `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #e5e8eb; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
@@ -231,7 +247,6 @@ window.handleDatePickerChange = function(val) {
     renderHome();
 };
 
-// 📅 다중일정 생성 전용 모달창
 window.openAddEventModal = function(dateStr) {
     let modal = document.getElementById('event-modal');
     if(!modal) {
@@ -323,7 +338,6 @@ function renderHome() {
 
 function enterRoom(code) { 
     currentRoomCode = code; 
-    // 🛠️ [패치] 방을 나갔다 들어올 때 무조건 현재 날짜로 초기화
     const now = new Date();
     calYear = now.getFullYear();
     calMonth = now.getMonth();
@@ -500,9 +514,8 @@ function renderProfile() {
     const container = document.getElementById('my-profile-info'); if(!container || !myProfile) return;
     const isDelisted = myProfile.status === 'delisted'; const changeAmount = myProfile.price - myProfile.basePrice; const changeRate = ((changeAmount / myProfile.basePrice) * 100).toFixed(1);
     const colorClass = changeAmount > 0 ? '#ff3b30' : (changeAmount < 0 ? '#3182f6' : '#8b95a1'); const sign = changeAmount > 0 ? '+' : '';
-    const vipBanner = myProfile.isVIP ? `<div style="background: linear-gradient(135deg, #d4af37, #f3e5f5); padding: 15px; border-radius: 12px; color: white; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div style="color:#333d4b;">👑 VIP 멤버십 적용 중</div><div style="font-size: 12px; background: rgba(255,255,255,0.4); color: #333d4b; padding: 6px 10px; border-radius: 6px;">설정 ⚙️</div></div>` : `<div style="background: #333d4b; padding: 15px; border-radius: 12px; color: #d4af37; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div>💎 프리미엄 가입하기</div><div style="font-size: 12px; background: rgba(255,255,255,0.1); padding: 6px 10px; border-radius: 6px; color:white;">알아보기 👉</div></div>`;
+    const vipBanner = myProfile.isVIP ? `<div style="background: linear-gradient(135deg, #d4af37, #f3e5f5); padding: 15px; border-radius: 12px; color: white; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div style="color:#333d4b;">👑 VIP 멤버십 적용 중</div><div style="font-size: 12px; background: rgba(255,255,255,0.4); color: #333d4b; padding: 6px 10px; border-radius: 6px;">설정 ⚙️</div></div>` : `<div style="background: #333d4b; padding: 15px; border-radius: 12px; color: #d4af37; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div>💎 프리미 가입하기</div><div style="font-size: 12px; background: rgba(255,255,255,0.1); padding: 6px 10px; border-radius: 6px; color:white;">알아보기 👉</div></div>`;
     
-    // 🛠️ [패치] 백엔드와 완벽하게 일치하는 형식(YYYY-MM-DD)으로 비교합니다.
     const todayStr = getFormattedDate(new Date()); 
     const hasDailyDone = myProfile.lastDailyAttendance === todayStr;
     const dailyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasDailyDone ? '#e5e8eb' : '#e8f5e9'}; color: ${hasDailyDone ? '#8b95a1' : '#2e7d32'}; font-weight: bold; border: none; cursor: ${hasDailyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="doDailyAttendance()" ${hasDailyDone ? 'disabled' : ''}>${hasDailyDone ? '✅ 출석 완료' : '📅 매일 출석 (+50p)'}</button>`;
