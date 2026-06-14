@@ -48,13 +48,6 @@ class ChatData(BaseModel):
     sender_name: str
     message: str
 
-class AgendaData(BaseModel):
-    room_code: str
-    creator_email: str
-    target_email: str
-    agenda_type: str
-    reason: str
-
 class VoteData(BaseModel):
     room_code: str
     agenda_id: str
@@ -69,6 +62,19 @@ class RespondEvalData(BaseModel):
     email: str
     eval_id: str
     action: str
+
+# 📅 캘린더용 데이터 모델 추가
+class EventAddData(BaseModel):
+    room_code: str
+    date: str
+    title: str
+    creator_name: str
+    creator_email: str
+
+class EventDeleteData(BaseModel):
+    room_code: str
+    event_id: str
+    deleter_email: str
 
 api_cooldowns = {
     "chat": {},     
@@ -106,7 +112,6 @@ def get_user_data(authorization: str = Header(None)):
 
     profile = user_data.get("profile", {})
     
-    # ⚖️ [패치] 악평 승인 대기 3일 경과 시 자동 수락 로직
     pending_list = profile.get("pending_evals", [])
     new_pending = []
     profile_modified = False
@@ -115,7 +120,6 @@ def get_user_data(authorization: str = Header(None)):
         if "timestamp" in e:
             created = datetime.fromisoformat(e["timestamp"])
             if datetime.utcnow() >= created + timedelta(days=3):
-                # 3일 잠수 시 자동 승인 처리
                 base_p = profile.get("basePrice", 20000)
                 change_amount = base_p * (e["intensity"] * 0.01)
                 profile["price"] = profile.get("price", 20000) - change_amount
@@ -166,7 +170,6 @@ def get_user_data(authorization: str = Header(None)):
     my_rooms = []
     for room in my_rooms_cursor:
         room_modified = False
-        # ⚖️ [패치] 재판 3일 무응답 방치 시 원고 승소(찬성) 자동 가결 로직
         for a in room.get("agendas", []):
             if a.get("status") == "active" and a.get("created_at"):
                 created = datetime.fromisoformat(a["created_at"])
@@ -217,7 +220,14 @@ def get_user_data(authorization: str = Header(None)):
                 prof = m_data["profile"]
                 prof["email"] = member_email
                 members_profiles.append(prof)
-        my_rooms.append({"room_code": room["_id"], "room_name": room["name"], "members": members_profiles, "agendas": room.get("agendas", []), "messages": room.get("messages", [])})
+        my_rooms.append({
+            "room_code": room["_id"], 
+            "room_name": room["name"], 
+            "members": members_profiles, 
+            "agendas": room.get("agendas", []), 
+            "messages": room.get("messages", []),
+            "events": room.get("events", []) # 📅 캘린더 데이터 로드[cite: 1]
+        })
 
     all_users = list(db["users"].find({}, {"profile": 1}))
     sorted_users = sorted(all_users, key=lambda x: x.get("profile", {}).get("price", 0), reverse=True)[:10]
@@ -409,7 +419,7 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
             "reason": f"⚖️ [악평 이의제기 방어 재판] 피고인이 {target_eval['evaluator_name']}님의 악평(-{target_eval['intensity']}%)에 정식 탄핵 요청을 제기했습니다.\n[악평 사유]: {target_eval['reason']}",
             "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active",
             "associated_eval": target_eval,
-            "created_at": datetime.utcnow().isoformat() # ⚖️ [패치] 재판 자동 가결을 위한 생성 시간 도장 추가
+            "created_at": datetime.utcnow().isoformat() 
         }
 
         profile["pending_evals"] = [e for e in pending_list if e["id"] != data.eval_id]
@@ -429,7 +439,7 @@ def create_room(data: RoomData, authorization: str = Header(None)):
     if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     alphabet = string.ascii_uppercase + string.digits
     code = ''.join(secrets.choice(alphabet) for _ in range(6))
-    db["rooms"].insert_one({"_id": code, "name": data.room_name, "members": [email], "agendas": [], "messages": []})
+    db["rooms"].insert_one({"_id": code, "name": data.room_name, "members": [email], "agendas": [], "messages": [], "events": []})
     return {"status": "success", "room_code": code}
 
 @app.post("/api/room/join")
@@ -449,7 +459,6 @@ def leave_room(data: RoomData, authorization: str = Header(None)):
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room: return {"status": "error", "message": "방이 존재하지 않습니다."}
 
-    # ⚖️ [패치] 꼼수 방지: 도망자 출국 금지 로직
     room_members = room.get("members", [])
     user = db["users"].find_one({"_id": email})
     profile = user.get("profile", {})
@@ -476,28 +485,43 @@ def send_chat(data: ChatData, authorization: str = Header(None)):
     if is_spamming(email, "chat", 1): return {"status": "error", "message": "채팅 도배 방지! 천천히 입력해 주세요."}
 
     room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
+    if not room or email not in room.get("members", []):
+        return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
 
     chat_msg = {"sender_email": email, "sender_name": data.sender_name, "message": data.message}
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": chat_msg}})
     return {"status": "success"}
 
-@app.post("/api/agenda/create")
-def create_agenda(data: AgendaData, authorization: str = Header(None)):
+# 📅 캘린더 전용 API (일정 추가)
+@app.post("/api/room/event/add")
+def add_room_event(data: EventAddData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.creator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
-
-    if is_spamming(email, "agenda", 3): return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
 
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
 
-    agenda_id = str(uuid.uuid4())
-    target = db["users"].find_one({"_id": data.target_email})
-    target_name = target.get("profile", {}).get("name", "알 수 없음") if target else "알 수 없음"
-    agenda = {"id": agenda_id, "creator_email": email, "target_email": data.target_email, "target_name": target_name, "type": data.agenda_type, "reason": data.reason, "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active", "created_at": datetime.utcnow().isoformat()} # ⚖️ [패치] 생성 시간 도장
-    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"agendas": agenda}})
-    return {"status": "success", "message": "주주총회 안건이 상정되었습니다!"}
+    event = {
+        "id": str(uuid.uuid4()),
+        "date": data.date,
+        "title": data.title,
+        "creator_email": email,
+        "creator_name": data.creator_name
+    }
+    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"events": event}})
+    return {"status": "success"}
+
+# 📅 캘린더 전용 API (일정 삭제)
+@app.post("/api/room/event/delete")
+def delete_room_event(data: EventDeleteData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.deleter_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+
+    room = db["rooms"].find_one({"_id": data.room_code})
+    if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
+
+    db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"events": {"id": data.event_id}}})
+    return {"status": "success"}
 
 @app.post("/api/agenda/vote")
 def vote_agenda(data: VoteData, authorization: str = Header(None)):
@@ -505,7 +529,8 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
     if not email or email != data.voter_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
 
     room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []): return {"status": "error", "message": "방이 없거나 해당 클럽의 멤버가 아닙니다."}
+    if not room or email not in room.get("members", []):
+        return {"status": "error", "message": "방이 없거나 해당 클럽의 멤버가 아닙니다."}
 
     agendas = room.get("agendas", [])
     target_agenda = None

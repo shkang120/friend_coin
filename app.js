@@ -30,6 +30,11 @@ let currentRoomCode = null; let currentAdRewardType = null; let adInterval = nul
 
 let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 };
 
+// 📅 캘린더 전용 상태 변수
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+let calSelectedDate = null;
+
 const DEFAULT_AVATARS = [
     'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aneka&backgroundColor=c0aede',
     'https://api.dicebear.com/7.x/bottts/svg?seed=Oliver&backgroundColor=ffd5dc', 'https://api.dicebear.com/7.x/bottts/svg?seed=Sophie&backgroundColor=d1d4f9',
@@ -126,6 +131,86 @@ function switchTab(tabName) {
     if (tabName === 'home') renderHome(); if (tabName === 'meeting') renderMeeting(); if (tabName === 'ranking') renderRanking(); if (tabName === 'noti') renderNoti(); if (tabName === 'profile') renderProfile();
 }
 
+// 📅 캘린더 생성 함수
+function getCalendarHtml(room) {
+    const firstDay = new Date(calYear, calMonth, 1).getDay();
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    
+    let gridHtml = '<div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:5px; text-align:center; font-size:12px; margin-bottom:10px;">';
+    const days = ['일','월','화','수','목','금','토'];
+    days.forEach(d => gridHtml += `<div style="font-weight:bold; color:#8b95a1;">${d}</div>`);
+    for(let i=0; i<firstDay; i++) gridHtml += `<div></div>`;
+    
+    for(let i=1; i<=daysInMonth; i++) {
+        const dStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+        const hasEvent = room.events && room.events.some(e => e.date === dStr);
+        const isSelected = calSelectedDate === dStr;
+        const dotHtml = hasEvent ? `<div style="width:4px; height:4px; background:#ff3b30; border-radius:50%; margin:2px auto 0;"></div>` : '';
+        const bg = isSelected ? '#3182f6' : (hasEvent ? '#fff3f3' : 'transparent');
+        const color = isSelected ? 'white' : '#333d4b';
+        gridHtml += `<div onclick="selectCalDate('${dStr}')" style="padding:5px; border-radius:8px; cursor:pointer; background:${bg}; color:${color}; font-weight:${hasEvent||isSelected?'bold':'normal'}; transition:0.2s;">${i}${dotHtml}</div>`;
+    }
+    gridHtml += '</div>';
+
+    let selectedEventsHtml = '';
+    if (calSelectedDate) {
+        const dayEvents = (room.events || []).filter(e => e.date === calSelectedDate);
+        selectedEventsHtml = `<div style="background:#f9fafb; padding:10px; border-radius:10px; border:1px solid #e5e8eb;">
+            <div style="font-weight:bold; font-size:13px; color:#333d4b; margin-bottom:10px;">📅 ${calSelectedDate} 일정</div>
+            ${dayEvents.map(e => `<div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:8px; border-radius:6px; margin-bottom:6px; border:1px solid #eee;">
+                <div style="font-size:13px; color:#333d4b;"><b>${escapeHtml(e.title)}</b> <span style="font-size:11px; color:#8b95a1;">(${escapeHtml(e.creator_name)})</span></div>
+                <button onclick="deleteEvent('${e.id}')" style="background:none; border:none; color:#ff3b30; font-size:12px; cursor:pointer;">❌</button>
+            </div>`).join('')}
+            ${dayEvents.length === 0 ? `<div style="font-size:12px; color:#8b95a1; text-align:center; margin-bottom:10px;">등록된 약속이 없습니다.</div>` : ''}
+            <button onclick="addEvent('${calSelectedDate}')" style="width:100%; padding:8px; background:#3182f6; color:white; border:none; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">+ 일정 추가</button>
+        </div>`;
+    }
+
+    return `
+        <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #e5e8eb; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <div style="font-size:14px; font-weight:bold; color:#333d4b;">🗓️ 클럽 공유 캘린더</div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <button onclick="changeCalMonth(-1)" style="background:none; border:none; cursor:pointer; color:#8b95a1;">◀</button>
+                    <div style="font-size:13px; font-weight:bold; color:#333d4b;">${calYear}년 ${calMonth+1}월</div>
+                    <button onclick="changeCalMonth(1)" style="background:none; border:none; cursor:pointer; color:#8b95a1;">▶</button>
+                </div>
+            </div>
+            ${gridHtml}
+            ${selectedEventsHtml}
+        </div>
+    `;
+}
+
+// 📅 캘린더 상호작용 함수
+window.changeCalMonth = function(offset) {
+    calMonth += offset;
+    if(calMonth < 0) { calMonth = 11; calYear--; }
+    if(calMonth > 11) { calMonth = 0; calYear++; }
+    renderHome();
+};
+window.selectCalDate = function(dStr) {
+    calSelectedDate = dStr;
+    renderHome();
+};
+window.addEvent = async function(dateStr) {
+    const title = prompt(`[${dateStr}] 추가할 약속을 입력하세요 (예: 강남역 고기집):`);
+    if(!title || !title.trim()) return;
+    showToast("⏳ 일정 등록 중...");
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/room/event/add`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, date: dateStr, title: title.trim(), creator_name: myProfile.name, creator_email: myEmail }) });
+        const data = await res.json(); if(data.status === 'success') { await initializeApp(); } else { alert(data.message); }
+    } catch(err) { alert("통신 에러"); }
+};
+window.deleteEvent = async function(eventId) {
+    if(!confirm("이 일정을 삭제하시겠습니까?")) return;
+    showToast("⏳ 삭제 중...");
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/room/event/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, event_id: eventId, deleter_email: myEmail }) });
+        const data = await res.json(); if(data.status === 'success') { await initializeApp(); } else { alert(data.message); }
+    } catch(err) { alert("통신 에러"); }
+};
+
 function renderHome() {
     const list = document.getElementById('friend-list'); if(!list) return;
     if (!currentRoomCode) { 
@@ -135,14 +220,33 @@ function renderHome() {
         list.innerHTML = html;
     } else { 
         const room = myRooms.find(r => r.room_code === currentRoomCode); if (!room) { currentRoomCode = null; renderHome(); return; }
-        let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:#f2f4f6; padding:15px; border-radius:16px;"><button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비로</button><div style="text-align:right;"><div style="font-weight:bold; color:#333d4b; font-size:16px;">${escapeHtml(room.room_name)}</div><div style="font-size:12px; color:#8b95a1;">초대 코드: <span style="color:#3182f6;">${room.room_code}</span></div></div></div><div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"><div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div><button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button></div><div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">${room.messages && room.messages.length > 0 ? room.messages.map(m => { const isMe = m.sender_email === myEmail; return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${escapeHtml(m.message)}</div></div>`; }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}</div><div style="display:flex; gap:8px;"><input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()"><button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button></div></div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="color:#333d4b; margin:0; font-size:15px;">참여자 목록 (${room.members.length}명)</h3><button onclick="openCreateAgendaModal()" style="background:#ff3b30; color:white; border:none; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">⚖️ 재판 열기</button></div>`;
+        
+        let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:#f2f4f6; padding:15px; border-radius:16px;"><button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비로</button><div style="text-align:right;"><div style="font-weight:bold; color:#333d4b; font-size:16px;">${escapeHtml(room.room_name)}</div><div style="font-size:12px; color:#8b95a1;">초대 코드: <span style="color:#3182f6;">${room.room_code}</span></div></div></div>`;
+        
+        // 채팅 라운지
+        html += `<div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"><div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div><button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button></div><div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">${room.messages && room.messages.length > 0 ? room.messages.map(m => { const isMe = m.sender_email === myEmail; return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${escapeHtml(m.message)}</div></div>`; }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}</div><div style="display:flex; gap:8px;"><input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()"><button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button></div></div>`;
+        
+        // 캘린더 주입
+        html += getCalendarHtml(room);
+
+        // ⚖️ 수동 재판 버튼 제거됨
+        html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="color:#333d4b; margin:0; font-size:15px;">참여자 목록 (${room.members.length}명)</h3></div>`;
+        
         html += room.members.map(f => { const isMe = f.email === myEmail; const isDelisted = f.status === 'delisted'; const clickEvent = !isMe ? `onclick="openFriendDetail('${f.email}')"` : ""; const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6; cursor:pointer;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer; transition: 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.05);"); return `<div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}><div style="display: flex; align-items: center; gap: 15px;">${getAvatarHtml(f, 'small')}<div><div style="font-size: 16px; font-weight: bold;"><span style="color: ${f.nameColor || '#333d4b'};">${escapeHtml(f.name)}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} ${isDelisted ? '<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px;">💀상장폐지</span>' : ''}</div>${getBadgeHtml(f)}</div></div><div style="font-size: 16px; font-weight: bold; color: #333d4b;">${isDelisted ? '-' : Math.floor(f.price || 0).toLocaleString()} p</div></div>`; }).join('');
         html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer;">🚪 이 클럽에서 나가기</button>`;
         list.innerHTML = html; setTimeout(() => { const chatBox = document.getElementById('chat-box'); if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; }, 10);
     }
 }
 
-function enterRoom(code) { currentRoomCode = code; renderHome(); }
+function enterRoom(code) { 
+    currentRoomCode = code; 
+    const now = new Date();
+    calYear = now.getFullYear();
+    calMonth = now.getMonth();
+    calSelectedDate = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    renderHome(); 
+}
+
 function exitRoomView() { currentRoomCode = null; renderHome(); }
 
 async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가시겠습니까?")) return; try { const res = await fetch(`${BACKEND_URL}/api/room/leave`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: currentRoomCode }) }); const data = await res.json(); if(data.status === 'success') { showToast("클럽에서 퇴장했습니다."); currentRoomCode = null; await initializeApp(); } else { alert(data.message); } } catch(err) { alert("오류 발생"); } }
@@ -152,7 +256,8 @@ async function refreshChat() { await initializeApp(); }
 function openFriendDetail(friendEmail) {
     const room = myRooms.find(r => r.room_code === currentRoomCode); const friend = room.members.find(m => m.email === friendEmail); if (!friend) return;
     currentSelectedFriend = friend;
-    if (friend.status === 'delisted') { if(confirm(`상장폐지된 코인입니다. 부활(회생) 재판을 발의하시겠습니까?`)) { openCreateAgendaModal('revival', friendEmail); } return; }
+    // ⚖️ 수동 회생 재판 제거됨에 따른 알림만 표출
+    if (friend.status === 'delisted') { alert(`💀 상장폐지된 코인은 더 이상 평가하거나 수동으로 회생시킬 수 없습니다.`); return; }
 
     let modal = document.getElementById('eval-modal');
     if(!modal) { modal = document.createElement('div'); modal.id = 'eval-modal'; modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;"; document.body.appendChild(modal); }
@@ -242,30 +347,6 @@ async function submitEvaluation(evalType, intensity) {
     } catch(err) { alert("네트워크 오류 발생"); }
 }
 
-function openCreateAgendaModal(defaultType = 'delist', targetEmail = '') {
-    const room = myRooms.find(r => r.room_code === currentRoomCode); if (!room) return;
-    let modal = document.getElementById('agenda-create-modal');
-    if(!modal) { modal = document.createElement('div'); modal.id = 'agenda-create-modal'; modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;"; document.body.appendChild(modal); }
-    const memberOptions = room.members.filter(m => m.email !== myEmail).map(m => `<option value="${m.email}" ${m.email === targetEmail ? 'selected' : ''}>${escapeHtml(m.name)} (${m.status === 'delisted' ? '상폐상태' : Math.floor(m.price)+'p'})</option>`).join('');
-    modal.innerHTML = `
-        <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:left; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
-            <h3 style="margin-top:0; color:#333d4b; text-align:center; font-size:18px;">⚖️ 주주총회 재판 기소장</h3>
-            <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">1. 재판 대상자</label><select id="agenda-target-select" style="width:100%; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:15px; background:white; outline:none;">${memberOptions}</select>
-            <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">2. 목적</label><select id="agenda-type-select" style="width:100%; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:15px; background:white; outline:none;"><option value="delist" ${defaultType === 'delist' ? 'selected' : ''}>🚨 자동/수동 상장폐지 심사 건</option><option value="revival" ${defaultType === 'revival' ? 'selected' : ''}>🌱 갱생 및 코인 회생 재상장 건</option></select>
-            <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">3. 기소 사유</label><textarea id="agenda-reason-input" placeholder="사유를 명시해 주세요." style="width:100%; height:80px; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:20px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none;"></textarea>
-            <div style="display:flex; gap:10px;"><button onclick="document.getElementById('agenda-create-modal').style.display='none'" style="flex:1; padding:12px; background:#f2f4f6; border:none; border-radius:10px; font-weight:bold; color:#8b95a1; cursor:pointer;">취소</button><button onclick="submitCreateAgenda()" style="flex:1; padding:12px; background:#333d4b; border:none; border-radius:10px; font-weight:bold; color:white; cursor:pointer;">재판 시작 ⚖️</button></div>
-        </div>
-    `;
-    modal.style.display = 'flex';
-}
-async function submitCreateAgenda() {
-    const targetSelect = document.getElementById('agenda-target-select'); if(!targetSelect) { alert("대상이 없습니다!"); return; }
-    const targetEmail = targetSelect.value; const agendaType = document.getElementById('agenda-type-select').value; const reason = document.getElementById('agenda-reason-input').value.trim();
-    if(!reason) { alert("사유를 입력하세요!"); return; }
-    document.getElementById('agenda-create-modal').style.display = 'none'; showToast("⏳ 안건 상정 중...");
-    try { const res = await fetch(`${BACKEND_URL}/api/agenda/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, creator_email: myEmail, target_email: targetEmail, agenda_type: agendaType, reason: reason }) }); const data = await res.json(); if(data.status === 'success') { alert(data.message); myProfile.stats.trialCount = (myProfile.stats.trialCount || 0) + 1; saveData(); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("서버 통신 실패"); }
-}
-
 function renderMeeting() {
     const list = document.getElementById('meeting-list'); if(!list) return;
     if (!currentRoomCode) { list.innerHTML = '<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">로비에서는 재판이 열리지 않습니다.</div>'; return; }
@@ -344,7 +425,7 @@ function renderProfile() {
     const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${isAdTicketMax ? '#e5e8eb' : '#f3e5f5'}; color: ${isAdTicketMax ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${isAdTicketMax ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="watchAd('extra_ticket')" ${isAdTicketMax ? 'disabled' : ''}>🎬 광고 보고 평가권 추가 (${adTicketCount}/1회)</button>`;
 
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
-    if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다.<br>라운지 채팅창에서 친구들에게 회생 구제 요청 재판 발의를 부탁해 보세요!</div>`; }
+    if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
 
     container.innerHTML = `
         ${vipBanner}
