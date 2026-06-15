@@ -83,10 +83,12 @@ class EventDeleteData(BaseModel):
     event_id: str
     deleter_email: str
 
+# 🛡️ [보안 패치] 방 입장(join) 시도에 대한 쿨타임 저장소 추가
 api_cooldowns = {
     "chat": {},     
     "evaluate": {}, 
-    "agenda": {}    
+    "agenda": {},
+    "join": {}      # 무차별 대입 공격 방지용 
 }
 
 def is_spamming(email: str, action_type: str, cooldown_seconds: int) -> bool:
@@ -120,7 +122,6 @@ def get_user_data(authorization: str = Header(None)):
     profile = user_data.get("profile", {})
     profile_modified = False
 
-    # 🎟️ [패치] 주간 평가권 리필 로직 (서버 단에서 안전하게 처리)
     kst_now = datetime.utcnow() + timedelta(hours=9)
     days_since_monday = kst_now.weekday()
     if kst_now.weekday() == 0 and kst_now.hour < 8:
@@ -265,7 +266,6 @@ def save_user_data(data: UserData, authorization: str = Header(None)):
         db_profile["profileImage"] = data.profile.get("profileImage", db_profile.get("profileImage"))
         db_profile["nameColor"] = data.profile.get("nameColor", db_profile.get("nameColor"))
         db_profile["isVIP"] = data.profile.get("isVIP", db_profile.get("isVIP"))
-        # 🏅 [패치] 뱃지 저장 로직 누락 방지
         db_profile["badges"] = data.profile.get("badges", db_profile.get("badges", []))
         final_profile = db_profile
     else: final_profile = data.profile
@@ -458,8 +458,11 @@ def check_nickname(nickname: str):
 def create_room(data: RoomData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
-    alphabet = string.ascii_uppercase + string.digits
-    code = ''.join(secrets.choice(alphabet) for _ in range(6))
+    
+    # 🛡️ [보안 패치 1] 방 코드 길이를 8자리로 확장하고 대소문자 혼용 (경우의 수 218조 개)
+    alphabet = string.ascii_letters + string.digits
+    code = ''.join(secrets.choice(alphabet) for _ in range(8))
+    
     db["rooms"].insert_one({"_id": code, "name": data.room_name, "members": [email], "agendas": [], "messages": [], "events": []})
     return {"status": "success", "room_code": code}
 
@@ -467,6 +470,11 @@ def create_room(data: RoomData, authorization: str = Header(None)):
 def join_room(data: RoomData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    
+    # 🛡️ [보안 패치 2] 무차별 대입 공격(Brute Force) 방지용 쿨타임 (2초)
+    if is_spamming(email, "join", 2): 
+        return {"status": "error", "message": "방 입장 시도가 너무 빠릅니다. 잠시 후 시도해 주세요."}
+        
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room: return {"status": "error", "message": "존재하지 않는 코드입니다."}
     if email not in room.get("members", []): db["rooms"].update_one({"_id": data.room_code}, {"$push": {"members": email}})
@@ -559,8 +567,6 @@ def create_agenda(data: AgendaData, authorization: str = Header(None)):
     agenda = {"id": agenda_id, "creator_email": email, "target_email": data.target_email, "target_name": target_name, "type": data.agenda_type, "reason": data.reason, "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active", "created_at": datetime.utcnow().isoformat()} 
     
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"agendas": agenda}})
-    
-    # ⚖️ [패치] 재판 개최 횟수(trialCount) 통계 증가는 서버가 직접 기록합니다.
     db["users"].update_one({"_id": email}, {"$inc": {"profile.stats.trialCount": 1}})
     
     return {"status": "success", "message": "주주총회 안건이 상정되었습니다!"}
