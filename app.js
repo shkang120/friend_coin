@@ -14,12 +14,39 @@ function getCurrentTime() {
     return `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
-// 🛠️ [패치] 백엔드(YYYY-MM-DD)와 완벽하게 일치하는 날짜 포맷 생성기
 function getFormattedDate(d) {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const date = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${date}`;
+}
+
+// 📈 [패치] 전일 종가를 역추적해서 찾아내는 핵심 도우미 함수
+function getYesterdayClosePrice(profile) {
+    if (!profile || !profile.priceHistory || !profile.timeHistory || profile.priceHistory.length === 0) return profile.basePrice || 20000;
+    
+    // 한국 시간(KST) 기준으로 오늘 날짜(MM.DD) 구하기
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const kstNow = new Date(utc + (9 * 3600000));
+    const todayStr = String(kstNow.getMonth() + 1).padStart(2, '0') + '.' + String(kstNow.getDate()).padStart(2, '0');
+    
+    let yesterdayPrice = profile.priceHistory[0]; // 기본값: 최초 시작가
+    
+    // 시간 기록을 맨 뒤(최신)부터 거꾸로 스캔
+    for (let i = profile.timeHistory.length - 1; i >= 0; i--) {
+        const timeStr = profile.timeHistory[i];
+        if (timeStr === "시작") {
+            yesterdayPrice = profile.priceHistory[i];
+            break;
+        }
+        // 오늘 날짜(MM.DD)로 시작하지 않는 첫 번째 기록이 바로 '전일 종가'
+        if (timeStr && !timeStr.startsWith(todayStr)) {
+            yesterdayPrice = profile.priceHistory[i];
+            break;
+        }
+    }
+    return yesterdayPrice;
 }
 
 const defaultProfile = { 
@@ -38,7 +65,6 @@ let currentRoomCode = null; let currentAdRewardType = null; let adInterval = nul
 
 let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 };
 
-// 📅 캘린더 전용 상태 변수
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 let calSelectedDate = getFormattedDate(new Date());
@@ -139,7 +165,6 @@ function switchTab(tabName) {
     if (tabName === 'home') renderHome(); if (tabName === 'meeting') renderMeeting(); if (tabName === 'ranking') renderRanking(); if (tabName === 'noti') renderNoti(); if (tabName === 'profile') renderProfile();
 }
 
-// 📅 캘린더 생성 및 렌더링 함수
 function getCalendarHtml(room) {
     const firstDay = new Date(calYear, calMonth, 1).getDay();
     const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
@@ -152,8 +177,6 @@ function getCalendarHtml(room) {
     
     for(let i=1; i<=daysInMonth; i++) {
         const dStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
-        
-        // 🛠️ [패치] 해당 날짜에 포함되는 일정들을 모두 찾아서 배열로 만듭니다.
         const dayEvents = (room.events || []).filter(e => {
             const start = e.start_date || e.date; 
             const end = e.end_date || start;
@@ -164,12 +187,11 @@ function getCalendarHtml(room) {
         const isSelected = calSelectedDate === dStr;
         const isToday = realToday === dStr;
         
-        // 🛠️ [패치] 최대 3개까지 각기 다른 색상의 점(Dot)을 예쁘게 찍어줍니다.
         let dotHtml = '';
         if (hasEvent) {
             let dots = '';
             const dotsCount = Math.min(dayEvents.length, 3);
-            const dotColors = ['#ff3b30', '#3182f6', '#34c759']; // 차례대로 빨강, 파랑, 초록
+            const dotColors = ['#ff3b30', '#3182f6', '#34c759']; 
             for(let j=0; j<dotsCount; j++) {
                 dots += `<div style="width:4px; height:4px; background:${dotColors[j]}; border-radius:50%;"></div>`;
             }
@@ -196,10 +218,8 @@ function getCalendarHtml(room) {
             <div style="font-weight:bold; font-size:13px; color:#333d4b; margin-bottom:10px;">📅 ${calSelectedDate} 일정</div>
             ${dayEvents.map((e, index) => {
                 const dateTag = (e.start_date !== e.end_date && e.end_date) ? `<span style="font-size:10px; background:#e8f5e9; color:#2e7d32; padding:2px 4px; border-radius:4px;">${e.start_date.slice(5)} ~ ${e.end_date.slice(5)}</span>` : '';
-                
-                // 🛠️ [패치] 목록의 띠(Border)도 캘린더 점 색상과 완벽하게 매칭시켜 줍니다.
                 const dotColors = ['#ff3b30', '#3182f6', '#34c759'];
-                const indicatorColor = index < 3 ? dotColors[index] : '#8b95a1'; // 4번째 이상은 회색
+                const indicatorColor = index < 3 ? dotColors[index] : '#8b95a1';
                 
                 return `<div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:8px; border-radius:6px; margin-bottom:6px; border:1px solid #eee; border-left:4px solid ${indicatorColor};">
                     <div style="font-size:13px; color:#333d4b;"><b>${escapeHtml(e.title)}</b> ${dateTag} <span style="font-size:11px; color:#8b95a1;">(${escapeHtml(e.creator_name)})</span></div>
@@ -227,7 +247,6 @@ function getCalendarHtml(room) {
     `;
 }
 
-// 📅 캘린더 상호작용 함수
 window.changeCalMonth = function(offset) {
     calMonth += offset;
     if(calMonth < 0) { calMonth = 11; calYear--; }
@@ -330,7 +349,24 @@ function renderHome() {
 
         html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="color:#333d4b; margin:0; font-size:15px;">참여자 목록 (${room.members.length}명)</h3></div>`;
         
-        html += room.members.map(f => { const isMe = f.email === myEmail; const isDelisted = f.status === 'delisted'; const clickEvent = !isMe ? `onclick="openFriendDetail('${f.email}')"` : ""; const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6; cursor:pointer;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer; transition: 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.05);"); return `<div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}><div style="display: flex; align-items: center; gap: 15px;">${getAvatarHtml(f, 'small')}<div><div style="font-size: 16px; font-weight: bold;"><span style="color: ${f.nameColor || '#333d4b'};">${escapeHtml(f.name)}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} ${isDelisted ? '<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px;">💀상장폐지</span>' : ''}</div>${getBadgeHtml(f)}</div></div><div style="font-size: 16px; font-weight: bold; color: #333d4b;">${isDelisted ? '-' : Math.floor(f.price || 0).toLocaleString()} p</div></div>`; }).join('');
+        // 📈 [패치] 친구 목록에서 전일비(어제 종가 대비 등락률)를 빨간색/파란색으로 표시합니다.
+        html += room.members.map(f => { 
+            const isMe = f.email === myEmail; 
+            const isDelisted = f.status === 'delisted'; 
+            const clickEvent = !isMe ? `onclick="openFriendDetail('${f.email}')"` : ""; 
+            const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6; cursor:pointer;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer; transition: 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.05);"); 
+            
+            const yPrice = getYesterdayClosePrice(f);
+            const cAmt = f.price - yPrice;
+            const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0;
+            const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1');
+            const cSign = cAmt > 0 ? '+' : '';
+            
+            const priceHtml = isDelisted ? '-' : `${Math.floor(f.price || 0).toLocaleString()} p<br><span style="font-size:11px; color:${cColor}; font-weight:normal;">${cSign}${Math.floor(cAmt).toLocaleString()}p (${cSign}${cRate}%)</span>`;
+
+            return `<div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}><div style="display: flex; align-items: center; gap: 15px;">${getAvatarHtml(f, 'small')}<div><div style="font-size: 16px; font-weight: bold;"><span style="color: ${f.nameColor || '#333d4b'};">${escapeHtml(f.name)}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} ${isDelisted ? '<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px;">💀상장폐지</span>' : ''}</div>${getBadgeHtml(f)}</div></div><div style="text-align: right; font-size: 16px; font-weight: bold; color: #333d4b;">${priceHtml}</div></div>`; 
+        }).join('');
+        
         html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer;">🚪 이 클럽에서 나가기</button>`;
         list.innerHTML = html; setTimeout(() => { const chatBox = document.getElementById('chat-box'); if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; }, 10);
     }
@@ -366,11 +402,19 @@ function openFriendDetail(friendEmail) {
     evalState.type = null; 
     evalState.intensity = null;
 
+    // 📈 [패치] 친구 상세 모달창에도 전일 종가 대비 등락률 적용
+    const yPrice = getYesterdayClosePrice(friend);
+    const cAmt = friend.price - yPrice;
+    const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0;
+    const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1');
+    const cSign = cAmt > 0 ? '+' : '';
+
     modal.innerHTML = `
         <div style="background:white; padding:30px 25px; border-radius:20px; width:85%; max-width:340px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;">
             <div style="margin-bottom:15px;">${getAvatarHtml(friend, 'large')}</div>
             <h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${escapeHtml(friend.name)}</h2>
-            <div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:15px;">${Math.floor(friend.price).toLocaleString()} p</div>
+            <div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:5px;">${Math.floor(friend.price).toLocaleString()} p</div>
+            <div style="font-size:14px; font-weight:bold; color:${cColor}; margin-bottom:15px;">${cSign}${Math.floor(cAmt).toLocaleString()} p (${cSign}${cRate}%)</div>
             <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendFriendChartCanvas" style="width:100%; height:110px;"></canvas></div>
             <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
             
@@ -469,7 +513,15 @@ function renderRanking() {
     const createTotalRankCard = (p, index) => {
         const medals = ['🥇', '🥈', '🥉']; const rankIcon = index < 3 ? medals[index] : `<span style="display:inline-block; width: 24px; text-align:center; color:#8b95a1; font-size:14px; font-weight:bold;">${index+1}</span>`;
         const isMe = p.name === myProfile.name; const bg = isMe ? "background:#f0f8ff;" : "";
-        return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid #f9fafb; border-radius:8px; ${bg}"><div style="display: flex; align-items: center; font-size: 15px; font-weight: bold;"><span style="font-size: 18px; margin-right: 10px; width:20px; text-align:center;">${rankIcon}</span>${getAvatarHtml(p, 'small')}<span style="margin-left:10px; color: ${p.nameColor || '#333d4b'};">${escapeHtml(p.name)}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''}</div><div style="font-weight: bold; color: #333d4b;">${Math.floor(p.price||0).toLocaleString()} p</div></div>`;
+        
+        // 📈 [패치] 랭킹에도 전일비 적용
+        const yPrice = getYesterdayClosePrice(p);
+        const cAmt = p.price - yPrice;
+        const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0;
+        const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1');
+        const cSign = cAmt > 0 ? '+' : '';
+        
+        return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid #f9fafb; border-radius:8px; ${bg}"><div style="display: flex; align-items: center; font-size: 15px; font-weight: bold;"><span style="font-size: 18px; margin-right: 10px; width:20px; text-align:center;">${rankIcon}</span>${getAvatarHtml(p, 'small')}<span style="margin-left:10px; color: ${p.nameColor || '#333d4b'};">${escapeHtml(p.name)}</span> ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''}</div><div style="text-align: right; font-weight: bold; color: #333d4b;">${Math.floor(p.price||0).toLocaleString()} p<br><span style="font-size:10px; color:${cColor}; font-weight:normal;">${cSign}${Math.floor(cAmt).toLocaleString()} (${cSign}${cRate}%)</span></div></div>`;
     };
     container.innerHTML = `<div style="background: white; border-radius: 16px; padding: 20px 15px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee;"><h3 style="margin-top: 0; color: #333d4b;">🌍 전국구 통합 랭킹 Top 10</h3><p style="font-size:12px; color:#8b95a1; margin-bottom:20px;">모든 클럽의 주가가 합산된 실시간 순위보드입니다.</p>${top10.map((p, i) => createTotalRankCard(p, i)).join('')}</div>`;
 }
@@ -512,10 +564,16 @@ function applyVIPColor() { const color = document.getElementById('vip-color-pick
 
 function renderProfile() {
     const container = document.getElementById('my-profile-info'); if(!container || !myProfile) return;
-    const isDelisted = myProfile.status === 'delisted'; const changeAmount = myProfile.price - myProfile.basePrice; const changeRate = ((changeAmount / myProfile.basePrice) * 100).toFixed(1);
-    const colorClass = changeAmount > 0 ? '#ff3b30' : (changeAmount < 0 ? '#3182f6' : '#8b95a1'); const sign = changeAmount > 0 ? '+' : '';
-    const vipBanner = myProfile.isVIP ? `<div style="background: linear-gradient(135deg, #d4af37, #f3e5f5); padding: 15px; border-radius: 12px; color: white; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div style="color:#333d4b;">👑 VIP 멤버십 적용 중</div><div style="font-size: 12px; background: rgba(255,255,255,0.4); color: #333d4b; padding: 6px 10px; border-radius: 6px;">설정 ⚙️</div></div>` : `<div style="background: #333d4b; padding: 15px; border-radius: 12px; color: #d4af37; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div>💎 프리미 가입하기</div><div style="font-size: 12px; background: rgba(255,255,255,0.1); padding: 6px 10px; border-radius: 6px; color:white;">알아보기 👉</div></div>`;
+    const isDelisted = myProfile.status === 'delisted'; 
     
+    // 📈 [패치] 내 프로필 화면 전일비 적용
+    const yesterdayPrice = getYesterdayClosePrice(myProfile);
+    const changeAmount = myProfile.price - yesterdayPrice; 
+    const changeRate = yesterdayPrice > 0 ? ((changeAmount / yesterdayPrice) * 100).toFixed(1) : 0;
+    const colorClass = changeAmount > 0 ? '#ff3b30' : (changeAmount < 0 ? '#3182f6' : '#8b95a1'); 
+    const sign = changeAmount > 0 ? '+' : '';
+    
+    const vipBanner = myProfile.isVIP ? `<div style="background: linear-gradient(135deg, #d4af37, #f3e5f5); padding: 15px; border-radius: 12px; color: white; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div style="color:#333d4b;">👑 VIP 멤버십 적용 중</div><div style="font-size: 12px; background: rgba(255,255,255,0.4); color: #333d4b; padding: 6px 10px; border-radius: 6px;">설정 ⚙️</div></div>` : `<div style="background: #333d4b; padding: 15px; border-radius: 12px; color: #d4af37; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div>💎 프리미엄 가입하기</div><div style="font-size: 12px; background: rgba(255,255,255,0.1); padding: 6px 10px; border-radius: 6px; color:white;">알아보기 👉</div></div>`;
     const todayStr = getFormattedDate(new Date()); 
     const hasDailyDone = myProfile.lastDailyAttendance === todayStr;
     const dailyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasDailyDone ? '#e5e8eb' : '#e8f5e9'}; color: ${hasDailyDone ? '#8b95a1' : '#2e7d32'}; font-weight: bold; border: none; cursor: ${hasDailyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="doDailyAttendance()" ${hasDailyDone ? 'disabled' : ''}>${hasDailyDone ? '✅ 출석 완료' : '📅 매일 출석 (+50p)'}</button>`;
