@@ -21,37 +21,26 @@ function getFormattedDate(d) {
     return `${year}-${month}-${date}`;
 }
 
-// 📈 [패치] 전일 종가를 역추적해서 찾아내는 핵심 도우미 함수
 function getYesterdayClosePrice(profile) {
     if (!profile || !profile.priceHistory || !profile.timeHistory || profile.priceHistory.length === 0) return profile.basePrice || 20000;
     
-    // 한국 시간(KST) 기준으로 오늘 날짜(MM.DD) 구하기
     const now = new Date();
     const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
     const kstNow = new Date(utc + (9 * 3600000));
     const todayStr = String(kstNow.getMonth() + 1).padStart(2, '0') + '.' + String(kstNow.getDate()).padStart(2, '0');
     
-    let yesterdayPrice = profile.priceHistory[0]; // 기본값: 최초 시작가
-    
-    // 시간 기록을 맨 뒤(최신)부터 거꾸로 스캔
+    let yesterdayPrice = profile.priceHistory[0]; 
     for (let i = profile.timeHistory.length - 1; i >= 0; i--) {
         const timeStr = profile.timeHistory[i];
-        if (timeStr === "시작") {
-            yesterdayPrice = profile.priceHistory[i];
-            break;
-        }
-        // 오늘 날짜(MM.DD)로 시작하지 않는 첫 번째 기록이 바로 '전일 종가'
-        if (timeStr && !timeStr.startsWith(todayStr)) {
-            yesterdayPrice = profile.priceHistory[i];
-            break;
-        }
+        if (timeStr === "시작") { yesterdayPrice = profile.priceHistory[i]; break; }
+        if (timeStr && !timeStr.startsWith(todayStr)) { yesterdayPrice = profile.priceHistory[i]; break; }
     }
     return yesterdayPrice;
 }
 
 const defaultProfile = { 
     name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active',
-    goodTickets: 2, badTickets: 2, lastRefillTime: null, lastDailyAttendance: null, weeklyTicketsClaimed: false,
+    goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false,
     lastDailyAdBonus: null, dailyAdTicketsDate: null, dailyAdTicketsCount: 0, 
     badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 },
     isVIP: false, nameColor: "#333d4b",
@@ -149,14 +138,8 @@ function saveData() {
     fetch(`${BACKEND_URL}/api/save`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ profile: myProfile, noti: myNotifications }) }).catch(err => console.error(err));
 }
 
-function checkRefill() {
-    if(!myProfile) return; const now = new Date(); const day = now.getDay(); let daysToSubtract = day - 1; if (daysToSubtract < 0) daysToSubtract = 6; if (day === 1 && now.getHours() < 8) daysToSubtract = 7; const recentMonday8AM = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysToSubtract, 8, 0, 0, 0).getTime();
-    if (myProfile.weeklyTicketsClaimed === undefined) { myProfile.goodTickets = 2; myProfile.badTickets = 2; myProfile.weeklyTicketsClaimed = false; myProfile.lastDailyAttendance = null; myProfile.lastRefillTime = Date.now(); saveData(); } 
-    else if (!myProfile.lastRefillTime || myProfile.lastRefillTime < recentMonday8AM) { myProfile.goodTickets = 2; myProfile.badTickets = 2; myProfile.weeklyTicketsClaimed = false; myProfile.lastRefillTime = Date.now(); showToast("🔄 새로운 한 주! 평가권 리필 완료."); saveData(); }
-}
-
 function switchTab(tabName) {
-    if(!myProfile) return; checkRefill(); checkBadges();
+    if(!myProfile) return; checkBadges();
     document.querySelectorAll('.view').forEach(v => { v.classList.remove('view-active'); });
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     const targetView = document.getElementById(tabName + '-view'); if (targetView) targetView.classList.add('view-active');
@@ -349,7 +332,6 @@ function renderHome() {
 
         html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="color:#333d4b; margin:0; font-size:15px;">참여자 목록 (${room.members.length}명)</h3></div>`;
         
-        // 📈 [패치] 친구 목록에서 전일비(어제 종가 대비 등락률)를 빨간색/파란색으로 표시합니다.
         html += room.members.map(f => { 
             const isMe = f.email === myEmail; 
             const isDelisted = f.status === 'delisted'; 
@@ -402,7 +384,6 @@ function openFriendDetail(friendEmail) {
     evalState.type = null; 
     evalState.intensity = null;
 
-    // 📈 [패치] 친구 상세 모달창에도 전일 종가 대비 등락률 적용
     const yPrice = getYesterdayClosePrice(friend);
     const cAmt = friend.price - yPrice;
     const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0;
@@ -514,7 +495,6 @@ function renderRanking() {
         const medals = ['🥇', '🥈', '🥉']; const rankIcon = index < 3 ? medals[index] : `<span style="display:inline-block; width: 24px; text-align:center; color:#8b95a1; font-size:14px; font-weight:bold;">${index+1}</span>`;
         const isMe = p.name === myProfile.name; const bg = isMe ? "background:#f0f8ff;" : "";
         
-        // 📈 [패치] 랭킹에도 전일비 적용
         const yPrice = getYesterdayClosePrice(p);
         const cAmt = p.price - yPrice;
         const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0;
@@ -566,7 +546,6 @@ function renderProfile() {
     const container = document.getElementById('my-profile-info'); if(!container || !myProfile) return;
     const isDelisted = myProfile.status === 'delisted'; 
     
-    // 📈 [패치] 내 프로필 화면 전일비 적용
     const yesterdayPrice = getYesterdayClosePrice(myProfile);
     const changeAmount = myProfile.price - yesterdayPrice; 
     const changeRate = yesterdayPrice > 0 ? ((changeAmount / yesterdayPrice) * 100).toFixed(1) : 0;
@@ -666,7 +645,7 @@ function finishSetup() {
     if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
     if (myProfile && !myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice, myProfile.price]; myProfile.timeHistory = ["시작", getCurrentTime()]; } 
     else if (myProfile && !myProfile.timeHistory) { myProfile.timeHistory = myProfile.priceHistory.map(() => ""); }
-    checkRefill(); checkBadges(); updateTicker(); switchTab('home'); 
+    checkBadges(); updateTicker(); switchTab('home'); 
 }
 
 window.onload = () => { if (!localStorage.getItem('fc_id_token')) { showLoginScreen(); } else { initializeApp(); } };

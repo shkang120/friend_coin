@@ -26,13 +26,12 @@ MONGO_URL = os.getenv("MONGO_URL")
 client = MongoClient(MONGO_URL)
 db = client["friend_coin_db"] 
 
-# 🛡️ [심화 보안 패치 1] Field(max_length=...)를 추가하여 DB 용량 폭파 테러 완벽 방어
 class EvalData(BaseModel):
     evaluator_email: str
     target_email: str
     eval_type: str
     intensity: int
-    reason: str = Field("", max_length=500) # 평가 사유 500자 제한
+    reason: str = Field("", max_length=500)
 
 class UserData(BaseModel):
     profile: dict
@@ -40,21 +39,21 @@ class UserData(BaseModel):
 
 class RoomData(BaseModel):
     email: str
-    room_name: str = Field("", max_length=30) # 방 이름 30자 제한
+    room_name: str = Field("", max_length=30)
     room_code: str = ""
 
 class ChatData(BaseModel):
     room_code: str
     sender_email: str
     sender_name: str
-    message: str = Field(..., max_length=1000) # 채팅 도배 방지 1000자 제한
+    message: str = Field(..., max_length=1000)
 
 class AgendaData(BaseModel):
     room_code: str
     creator_email: str
     target_email: str
     agenda_type: str
-    reason: str = Field(..., max_length=1000) # 재판 사유 1000자 제한
+    reason: str = Field(..., max_length=1000) 
 
 class VoteData(BaseModel):
     room_code: str
@@ -75,7 +74,7 @@ class EventAddData(BaseModel):
     room_code: str
     start_date: str
     end_date: str
-    title: str = Field(..., max_length=50) # 캘린더 일정 제목 50자 제한
+    title: str = Field(..., max_length=50) 
     creator_name: str
     creator_email: str
 
@@ -119,10 +118,24 @@ def get_user_data(authorization: str = Header(None)):
         return {"isNewUser": True, "profile": {}, "noti": [], "my_rooms": [], "global_ranking": []}
 
     profile = user_data.get("profile", {})
+    profile_modified = False
+
+    # 🎟️ [패치] 주간 평가권 리필 로직 (서버 단에서 안전하게 처리)
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    days_since_monday = kst_now.weekday()
+    if kst_now.weekday() == 0 and kst_now.hour < 8:
+        days_since_monday = 7
+    recent_monday = (kst_now - timedelta(days=days_since_monday)).strftime("%Y-%m-%d")
+    
+    if profile.get("lastRefillMonday") != recent_monday:
+        profile["goodTickets"] = 2
+        profile["badTickets"] = 2
+        profile["weeklyTicketsClaimed"] = False
+        profile["lastRefillMonday"] = recent_monday
+        profile_modified = True
     
     pending_list = profile.get("pending_evals", [])
     new_pending = []
-    profile_modified = False
     
     for e in pending_list:
         if "timestamp" in e:
@@ -135,7 +148,6 @@ def get_user_data(authorization: str = Header(None)):
                 if "priceHistory" not in profile:
                     profile["priceHistory"] = [base_p]; profile["timeHistory"] = ["시작"]
                 profile["priceHistory"].append(profile["price"])
-                kst_now = datetime.utcnow() + timedelta(hours=9)
                 profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
                 
                 if "noti" not in user_data: user_data["noti"] = []
@@ -206,7 +218,6 @@ def get_user_data(authorization: str = Header(None)):
                             if "priceHistory" not in t_prof:
                                 t_prof["priceHistory"] = [base_p]; t_prof["timeHistory"] = ["시작"]
                             t_prof["priceHistory"].append(t_prof["price"])
-                            kst_now = datetime.utcnow() + timedelta(hours=9)
                             t_prof["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
                             
                             t_noti.insert(0, f"[👎재판 패소] 3일 무응답으로 악평 정당화 자동 확정 (-{assoc.get('intensity', 0)}% 적용)")
@@ -254,6 +265,8 @@ def save_user_data(data: UserData, authorization: str = Header(None)):
         db_profile["profileImage"] = data.profile.get("profileImage", db_profile.get("profileImage"))
         db_profile["nameColor"] = data.profile.get("nameColor", db_profile.get("nameColor"))
         db_profile["isVIP"] = data.profile.get("isVIP", db_profile.get("isVIP"))
+        # 🏅 [패치] 뱃지 저장 로직 누락 방지
+        db_profile["badges"] = data.profile.get("badges", db_profile.get("badges", []))
         final_profile = db_profile
     else: final_profile = data.profile
     db["users"].update_one({"_id": email}, {"$set": {"profile": final_profile, "noti": data.noti}}, upsert=True)
@@ -530,6 +543,28 @@ def delete_room_event(data: EventDeleteData, authorization: str = Header(None)):
     db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"events": {"id": data.event_id}}})
     return {"status": "success"}
 
+@app.post("/api/agenda/create")
+def create_agenda(data: AgendaData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.creator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+
+    if is_spamming(email, "agenda", 3): return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
+
+    room = db["rooms"].find_one({"_id": data.room_code})
+    if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
+
+    agenda_id = str(uuid.uuid4())
+    target = db["users"].find_one({"_id": data.target_email})
+    target_name = target.get("profile", {}).get("name", "알 수 없음") if target else "알 수 없음"
+    agenda = {"id": agenda_id, "creator_email": email, "target_email": data.target_email, "target_name": target_name, "type": data.agenda_type, "reason": data.reason, "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active", "created_at": datetime.utcnow().isoformat()} 
+    
+    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"agendas": agenda}})
+    
+    # ⚖️ [패치] 재판 개최 횟수(trialCount) 통계 증가는 서버가 직접 기록합니다.
+    db["users"].update_one({"_id": email}, {"$inc": {"profile.stats.trialCount": 1}})
+    
+    return {"status": "success", "message": "주주총회 안건이 상정되었습니다!"}
+
 @app.post("/api/agenda/vote")
 def vote_agenda(data: VoteData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -599,13 +634,12 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
     db["rooms"].update_one({"_id": data.room_code}, {"$set": {"agendas": agendas}})
     return {"status": status_msg, "message": message}
 
-# 🛡️ [심화 보안 패치 2] 이미지 업로드 크기 및 파일 타입 제한 (메모리 폭파 방지)
 @app.post("/api/upload")
 async def upload_image(image: UploadFile = File(...)):
     if not image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="이미지 파일만 업로드할 수 있습니다.")
     
-    MAX_SIZE = 5 * 1024 * 1024 # 5MB 제한
+    MAX_SIZE = 5 * 1024 * 1024 
     contents = await image.read()
     if len(contents) > MAX_SIZE:
         raise HTTPException(status_code=400, detail="파일 크기는 5MB를 초과할 수 없습니다.")
