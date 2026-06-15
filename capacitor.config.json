@@ -1,0 +1,12 @@
+{
+  "appId": "com.friendcoin.app",
+  "appName": "친구 코인",
+  "webDir": "www",
+  "server": {
+    "url": "https://friend-coin.vercel.app",
+    "cleartext": true
+  },
+  "android": {
+    "overrideUserAgent": "Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36"
+  }
+}
