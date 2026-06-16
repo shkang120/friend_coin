@@ -71,7 +71,7 @@ const defaultProfile = {
     priceHistory: [], timeHistory: [],
     pending_evals: [], 
     defense_count: 0, defense_month: "",
-    roomAliases: {} // ★ 나만의 방 이름 저장소
+    roomAliases: {} 
 };
 
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = [];   
@@ -92,6 +92,20 @@ const DEFAULT_AVATARS = [
 ];
 
 function showToast(msg) { const toast = document.getElementById('toast'); if(toast) { toast.textContent = msg; toast.classList.add('show'); setTimeout(() => { toast.classList.remove('show'); }, 3000); } }
+
+// ★ [패치 1] 초대 링크 복사 함수
+window.copyInviteLink = function(code) {
+    // Vercel 기본 도메인에 쿼리 파라미터를 붙입니다.
+    const link = window.location.origin + '/?join=' + code;
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(link).then(() => showToast("🔗 카톡에 붙여넣기 하세요! 링크 복사 완료!"));
+    } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = link; document.body.appendChild(textArea);
+        textArea.select(); document.execCommand("Copy"); textArea.remove();
+        showToast("🔗 카톡에 붙여넣기 하세요! 링크 복사 완료!");
+    }
+};
 
 function getAvatarHtml(person, size = 'small') {
     const sizePx = size === 'large' ? '100px' : '40px'; const radius = size === 'large' ? '24px' : '14px'; 
@@ -180,7 +194,6 @@ function switchTab(tabName) {
     forceSync();
 }
 
-// ★ [패치] 나만의 방 별명 변경 함수
 window.changeRoomAlias = function(roomCode, originalName) {
     if (!myProfile.roomAliases) myProfile.roomAliases = {};
     const currentName = myProfile.roomAliases[roomCode] || originalName;
@@ -331,7 +344,6 @@ window.deleteEvent = async function(eventId) {
     } catch(err) { alert("통신 에러"); }
 };
 
-// ★ [패치] 아바타 겹침 효과 & 커스텀 방 이름 적용
 function renderHome() {
     const list = document.getElementById('friend-list'); if(!list) return;
     if (!currentRoomCode) { 
@@ -339,16 +351,12 @@ function renderHome() {
         if (myRooms.length === 0) { html += `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">가입된 투자 클럽이 없습니다.</div>`; } 
         else { 
             html += myRooms.map(r => {
-                // 1. 방 이름 처리 (별명이 있으면 별명, 없으면 원본)
                 const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? myProfile.roomAliases[r.room_code] : r.room_name;
                 const aliasTag = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? '<span style="font-size:10px; font-weight:normal; color:#8b95a1; background:#f2f4f6; padding:2px 4px; border-radius:4px; margin-left:4px;">내 별명</span>' : '';
-                
-                // 2. 겹치는 아바타 생성 (최대 4개)
                 const avatars = r.members.slice(0, 4).map((m, i) => {
                     const inner = m.profileImage ? `<img src="${m.profileImage}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:12px; background:#f9fafb;">${m.status==='delisted'?'💀':m.emoji||'👤'}</div>`;
                     return `<div style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:${i===0?'0':'-8px'}; position:relative; z-index:${10-i}; overflow:hidden; display:inline-block; vertical-align:middle; box-shadow:0 1px 3px rgba(0,0,0,0.1); background:white;">${inner}</div>`;
                 }).join('');
-                // 3. 남은 인원수 동그라미
                 const extraMembers = r.members.length > 4 ? `<div style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:-8px; position:relative; z-index:5; background:#f2f4f6; color:#8b95a1; font-size:10px; font-weight:bold; display:inline-flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,0.1); vertical-align:middle;">+${r.members.length-4}</div>` : '';
 
                 return `<div onclick="enterRoom('${r.room_code}')" class="info-card" style="cursor:pointer; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; border:2px solid transparent; transition:0.2s;" onmouseover="this.style.borderColor='#3182f6'" onmouseout="this.style.borderColor='transparent'">
@@ -369,13 +377,16 @@ function renderHome() {
         const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[room.room_code]) ? myProfile.roomAliases[room.room_code] : room.room_name;
         
         let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:#f2f4f6; padding:15px; border-radius:16px;">
-            <button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비로</button>
+            <button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비</button>
             <div style="text-align:right;">
                 <div style="font-weight:bold; color:#333d4b; font-size:16px; display:flex; align-items:center; justify-content:flex-end; gap:5px;">
                     ${escapeHtml(displayRoomName)}
                     <button onclick="changeRoomAlias('${room.room_code}', '${escapeHtml(room.room_name)}')" style="background:none; border:none; cursor:pointer; font-size:15px; padding:0; outline:none;" title="방 별명 변경">✏️</button>
                 </div>
-                <div style="font-size:12px; color:#8b95a1; margin-top:2px;">초대 코드: <span style="color:#3182f6;">${room.room_code}</span></div>
+                <div style="font-size:12px; color:#8b95a1; margin-top:4px; display:flex; align-items:center; justify-content:flex-end; gap:5px;">
+                    초대 코드: <span style="color:#3182f6; font-weight:bold;">${room.room_code}</span>
+                    <button onclick="copyInviteLink('${room.room_code}')" style="background:#e8f5e9; color:#2e7d32; border:none; padding:3px 8px; border-radius:6px; font-size:10px; font-weight:bold; cursor:pointer;">🔗 복사</button>
+                </div>
             </div>
         </div>`;
         
@@ -420,6 +431,26 @@ function enterRoom(code) {
 }
 
 function exitRoomView() { currentRoomCode = null; renderHome(); }
+
+// ★ [패치 1] 원클릭 입장 로직을 위해 매개변수 허용
+async function joinExistingRoom(codeParam = null) { 
+    const code = codeParam || prompt("초대 코드를 입력하세요:"); 
+    if(!code || code.trim() === "") return; 
+    
+    try { 
+        const res = await fetch(`${BACKEND_URL}/api/room/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: code.trim().toUpperCase() }) }); 
+        const data = await res.json(); 
+        if(data.status === 'error') { 
+            if (!codeParam) alert(data.message); // 직접 입력했을 때만 에러창 띄움 (원클릭 입장 시 이미 있는 방이면 무시)
+            return; 
+        } 
+        if (!codeParam) alert(`🚪 입장 성공!`); 
+        
+        // 원클릭 파라미터가 있었다면 주소창에서 깔끔하게 지워줌
+        window.history.replaceState({}, document.title, window.location.pathname);
+        await forceSync(); 
+    } catch(err) { alert("서버 오류"); } 
+}
 
 async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가시겠습니까?")) return; try { const res = await fetch(`${BACKEND_URL}/api/room/leave`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: currentRoomCode }) }); const data = await res.json(); if(data.status === 'success') { showToast("클럽에서 퇴장했습니다."); currentRoomCode = null; await forceSync(); } else { alert(data.message); } } catch(err) { alert("오류 발생"); } }
 async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await forceSync(); } catch(err) { console.error(err); } }
@@ -609,7 +640,6 @@ function renderMeeting() {
             btnHtml = `<div style="width:100%; text-align:center; padding:10px; font-size:13px; font-weight:bold; color:#8b95a1; background:#f9fafb; border-radius:10px;">종료된 재판 기록입니다.</div>`;
         }
 
-        // 총회 탭에도 커스텀 이름 적용
         const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[a.room_code]) ? myProfile.roomAliases[a.room_code] : a.room_name;
 
         return `
@@ -652,8 +682,6 @@ async function submitVote(roomCode, agendaId, voteType) {
 }
 
 async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await forceSync(); } } catch(err) { alert("서버 오류"); } }
-async function joinExistingRoom() { const code = prompt("초대 코드를 입력하세요:"); if(!code || code.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: code.trim().toUpperCase() }) }); const data = await res.json(); if(data.status === 'error') { alert(data.message); return; } alert(`🚪 입장 성공!`); await forceSync(); } catch(err) { alert("서버 오류"); } }
-
 function renderRanking() {
     const container = document.getElementById('ranking-content'); if (!container || !myProfile || globalRanking.length === 0) return;
     const top10 = globalRanking.slice(0, 10);
@@ -851,9 +879,7 @@ function startAutoSync() {
 
 function finishSetup() { 
     if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; } 
-    // ★ 기존 유저를 위한 roomAliases 안전장치
     if (myProfile && !myProfile.roomAliases) myProfile.roomAliases = {}; 
-    
     if (myProfile && !myProfile.badges) myProfile.badges = []; 
     if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
     if (myProfile && !myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice, myProfile.price]; myProfile.timeHistory = ["시작", getCurrentTime()]; } 
@@ -861,6 +887,13 @@ function finishSetup() {
     checkBadges(); updateTicker(); switchTab('home'); 
     
     startAutoSync();
+
+    // ★ [패치 1] 앱이 처음 켜졌을 때 URL에 ?join=코드 가 있다면 자동으로 방에 입장시킵니다.
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinCode = urlParams.get('join');
+    if (joinCode) {
+        setTimeout(() => joinExistingRoom(joinCode), 500); 
+    }
 }
 
 window.onload = () => { if (!localStorage.getItem('fc_id_token')) { showLoginScreen(); } else { initializeApp(); } };
