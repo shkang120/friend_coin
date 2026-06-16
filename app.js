@@ -470,11 +470,9 @@ async function submitEvaluation(evalType, intensity) {
     } catch(err) { alert("네트워크 오류 발생"); }
 }
 
-// ★ [기획 수정 패치] 모든 방의 주주총회를 하나로 모아서, 시간순(마감 임박순) 정렬!
 function renderMeeting() {
     const list = document.getElementById('meeting-list'); if(!list) return;
     
-    // 1. 내가 소속된 모든 클럽의 재판 데이터 싹쓸이 모으기
     let allAgendas = [];
     myRooms.forEach(room => {
         if (room.agendas) {
@@ -495,10 +493,7 @@ function renderMeeting() {
         return; 
     }
 
-    // 2. 정렬 로직 적용
-    // 진행 중인 재판(active): 생성 시간이 가장 오래된 것(남은 시간이 가장 적은 것)이 위로 오도록 오름차순 정렬
     const actives = allAgendas.filter(a => a.status === 'active').sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    // 종료된 재판(closed): 가장 최근에 끝난 것이 위로 오도록 내림차순 정렬 (최대 10개 표시)
     const closed = allAgendas.filter(a => a.status !== 'active').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 10); 
     
     const displayAgendas = [...actives, ...closed];
@@ -535,7 +530,6 @@ function renderMeeting() {
         let btnHtml = ''; let stampHtml = ''; let opacityStyle = ''; let timeRemainingHtml = '';
 
         if (a.status === 'active') {
-            // 남은 시간 계산 (UI 표시)
             const createdTime = new Date(a.created_at).getTime();
             const expireTime = createdTime + (24 * 60 * 60 * 1000);
             const nowTime = new Date().getTime();
@@ -559,8 +553,9 @@ function renderMeeting() {
             btnHtml = `<div style="width:100%; text-align:center; padding:10px; font-size:13px; font-weight:bold; color:#8b95a1; background:#f9fafb; border-radius:10px;">종료된 재판 기록입니다.</div>`;
         }
 
+        // ★ [패치] 클릭 시 해당 방으로 전환하며, 탭(화면) 자체를 '목록(로비)' 탭으로 착! 바꿔버리도록 수정!
         return `
-        <div class="info-card" style="border-left: 5px solid ${titleColor}; position:relative; overflow:hidden; ${opacityStyle}; cursor:pointer;" onclick="if(!currentRoomCode) { enterRoom('${a.room_code}'); switchTab('meeting'); }">
+        <div class="info-card" style="border-left: 5px solid ${titleColor}; position:relative; overflow:hidden; ${opacityStyle}; cursor:pointer;" onclick="enterRoom('${a.room_code}'); switchTab('home');">
             ${stampHtml}
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <span style="background:#f2f4f6; color:#4e5968; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">🏢 ${escapeHtml(a.room_name)}</span>
@@ -582,9 +577,8 @@ function renderMeeting() {
     }).join('');
 }
 
-// ★ [패치] 투표 시 어느 방의 안건인지 식별하도록 파라미터 추가
 async function submitVote(roomCode, agendaId, voteType) { 
-    event.stopPropagation(); // 카드 클릭 시 방으로 순간이동되는 것을 방지
+    event.stopPropagation(); 
     showToast("⏳ 표결 전달 중..."); 
     try { 
         const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { 
