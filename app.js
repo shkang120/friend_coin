@@ -3,7 +3,8 @@ const BACKEND_URL = "https://friend-coin.onrender.com"; // ★ 본인의 진짜 
 let myEmail = localStorage.getItem('fc_email') || null; 
 let myUsername = localStorage.getItem('fc_username') || null;
 let loginIntent = ''; 
-let autoSyncInterval = null; // ★ 실시간 동기화 타이머
+let autoSyncInterval = null; 
+let isSyncing = false; // ★ 중복 동기화 방지 안전장치
 
 if (!document.getElementById('stamp-style')) {
     const style = document.createElement('style');
@@ -161,6 +162,7 @@ function saveData() {
     fetch(`${BACKEND_URL}/api/save`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ profile: myProfile, noti: myNotifications }) }).catch(err => console.error(err));
 }
 
+// ★ [패치] 탭 전환 시 "강제 즉시 갱신" 발동
 function switchTab(tabName) {
     if(!myProfile) return; checkBadges();
     document.querySelectorAll('.view').forEach(v => { v.classList.remove('view-active'); });
@@ -168,7 +170,16 @@ function switchTab(tabName) {
     const targetView = document.getElementById(tabName + '-view'); if (targetView) targetView.classList.add('view-active');
     const tabIndex = { 'home': 0, 'meeting': 1, 'ranking': 2, 'noti': 3, 'profile': 4 }[tabName];
     const navItems = document.querySelectorAll('.nav-item'); if (navItems[tabIndex]) navItems[tabIndex].classList.add('active');
-    if (tabName === 'home') renderHome(); if (tabName === 'meeting') renderMeeting(); if (tabName === 'ranking') renderRanking(); if (tabName === 'noti') renderNoti(); if (tabName === 'profile') renderProfile();
+    
+    // 우선 로컬 메모리에 있는 화면을 번개처럼 먼저 띄우고
+    if (tabName === 'home') renderHome(); 
+    if (tabName === 'meeting') renderMeeting(); 
+    if (tabName === 'ranking') renderRanking(); 
+    if (tabName === 'noti') renderNoti(); 
+    if (tabName === 'profile') renderProfile();
+
+    // 뒷단에서 서버에 즉시 물어봐서 0.2초 안에 화면을 최신화!
+    forceSync();
 }
 
 function getCalendarHtml(room) {
@@ -253,33 +264,13 @@ function getCalendarHtml(room) {
     `;
 }
 
-window.changeCalMonth = function(offset) {
-    calMonth += offset;
-    if(calMonth < 0) { calMonth = 11; calYear--; }
-    if(calMonth > 11) { calMonth = 0; calYear++; }
-    renderHome();
-};
-window.selectCalDate = function(dStr) {
-    calSelectedDate = dStr;
-    renderHome();
-};
-window.handleDatePickerChange = function(val) {
-    if(!val) return;
-    const d = new Date(val);
-    calYear = d.getFullYear();
-    calMonth = d.getMonth();
-    calSelectedDate = val;
-    renderHome();
-};
+window.changeCalMonth = function(offset) { calMonth += offset; if(calMonth < 0) { calMonth = 11; calYear--; } if(calMonth > 11) { calMonth = 0; calYear++; } renderHome(); };
+window.selectCalDate = function(dStr) { calSelectedDate = dStr; renderHome(); };
+window.handleDatePickerChange = function(val) { if(!val) return; const d = new Date(val); calYear = d.getFullYear(); calMonth = d.getMonth(); calSelectedDate = val; renderHome(); };
 
 window.openAddEventModal = function(dateStr) {
     let modal = document.getElementById('event-modal');
-    if(!modal) {
-        modal = document.createElement('div');
-        modal.id = 'event-modal';
-        modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;";
-        document.body.appendChild(modal);
-    }
+    if(!modal) { modal = document.createElement('div'); modal.id = 'event-modal'; modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;"; document.body.appendChild(modal); }
     modal.innerHTML = `
         <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:left; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
             <h3 style="margin-top:0; color:#333d4b; text-align:center; font-size:18px;">🗓️ 일정 추가</h3>
@@ -296,7 +287,6 @@ window.openAddEventModal = function(dateStr) {
                     <input type="date" id="event-end-input" value="${dateStr}" style="width:100%; padding:10px; border:1px solid #e5e8eb; border-radius:10px; box-sizing:border-box; outline:none; font-family:sans-serif; font-size:13px;">
                 </div>
             </div>
-            
             <div style="display:flex; gap:10px;">
                 <button onclick="document.getElementById('event-modal').style.display='none'" style="flex:1; padding:12px; background:#f2f4f6; border:none; border-radius:10px; font-weight:bold; color:#8b95a1; cursor:pointer;">취소</button>
                 <button onclick="submitNewEvent()" style="flex:1; padding:12px; background:#3182f6; border:none; border-radius:10px; font-weight:bold; color:white; cursor:pointer;">추가하기</button>
@@ -307,28 +297,17 @@ window.openAddEventModal = function(dateStr) {
 };
 
 window.submitNewEvent = async function() {
-    const title = document.getElementById('event-title-input').value.trim();
-    const start = document.getElementById('event-start-input').value;
-    const end = document.getElementById('event-end-input').value;
-    if(!title) { alert("일정 내용을 입력하세요!"); return; }
-    if(start > end) { alert("종료일이 시작일보다 빠를 수 없습니다!"); return; }
-    
-    document.getElementById('event-modal').style.display = 'none';
-    showToast("⏳ 일정 등록 중...");
+    const title = document.getElementById('event-title-input').value.trim(); const start = document.getElementById('event-start-input').value; const end = document.getElementById('event-end-input').value;
+    if(!title) { alert("일정 내용을 입력하세요!"); return; } if(start > end) { alert("종료일이 시작일보다 빠를 수 없습니다!"); return; }
+    document.getElementById('event-modal').style.display = 'none'; showToast("⏳ 일정 등록 중...");
     try {
-        const res = await fetch(`${BACKEND_URL}/api/room/event/add`, { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, 
-            body: JSON.stringify({ room_code: currentRoomCode, start_date: start, end_date: end, title: title, creator_name: myProfile.name, creator_email: myEmail }) 
-        });
-        const data = await res.json(); 
-        if(data.status === 'success') { await initializeApp(); switchTab('home'); } else { alert(data.message); }
+        const res = await fetch(`${BACKEND_URL}/api/room/event/add`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, start_date: start, end_date: end, title: title, creator_name: myProfile.name, creator_email: myEmail }) });
+        const data = await res.json(); if(data.status === 'success') { await initializeApp(); switchTab('home'); } else { alert(data.message); }
     } catch(err) { alert("통신 에러"); }
 };
 
 window.deleteEvent = async function(eventId) {
-    if(!confirm("이 일정을 삭제하시겠습니까?")) return;
-    showToast("⏳ 삭제 중...");
+    if(!confirm("이 일정을 삭제하시겠습니까?")) return; showToast("⏳ 삭제 중...");
     try {
         const res = await fetch(`${BACKEND_URL}/api/room/event/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, event_id: eventId, deleter_email: myEmail }) });
         const data = await res.json(); if(data.status === 'success') { await initializeApp(); } else { alert(data.message); }
@@ -373,14 +352,11 @@ function renderHome() {
         html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer;">🚪 이 클럽에서 나가기</button>`;
         list.innerHTML = html; 
         
-        // 채팅창 포커스 및 스크롤 유지 로직 (자동 동기화 방해 방지)
-        setTimeout(() => { 
-            const chatBox = document.getElementById('chat-box'); 
-            if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; 
-        }, 10);
+        setTimeout(() => { const chatBox = document.getElementById('chat-box'); if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; }, 10);
     }
 }
 
+// ★ [패치] 방 입장 버튼을 눌렀을 때도 "강제 즉시 갱신"
 function enterRoom(code) { 
     currentRoomCode = code; 
     const now = new Date();
@@ -388,13 +364,14 @@ function enterRoom(code) {
     calMonth = now.getMonth();
     calSelectedDate = getFormattedDate(now);
     renderHome(); 
+    forceSync(); 
 }
 
 function exitRoomView() { currentRoomCode = null; renderHome(); }
 
 async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가시겠습니까?")) return; try { const res = await fetch(`${BACKEND_URL}/api/room/leave`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: currentRoomCode }) }); const data = await res.json(); if(data.status === 'success') { showToast("클럽에서 퇴장했습니다."); currentRoomCode = null; await initializeApp(); } else { alert(data.message); } } catch(err) { alert("오류 발생"); } }
-async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await refreshChat(); } catch(err) { console.error(err); } }
-async function refreshChat() { await initializeApp(); }
+async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await forceSync(); } catch(err) { console.error(err); } }
+async function refreshChat() { await forceSync(); }
 
 function openFriendDetail(friendEmail) {
     const room = myRooms.find(r => r.room_code === currentRoomCode); const friend = room.members.find(m => m.email === friendEmail); if (!friend) return;
@@ -518,8 +495,7 @@ function renderMeeting() {
     const totalMembers = room.members.length; 
     const requiredVotes = Math.floor(totalMembers / 2) + 1;
 
-    list.innerHTML = `<div style="display:flex; justify-content:flex-end; margin-bottom:10px;"><button onclick="initializeApp()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button></div>` + 
-    displayAgendas.map(a => {
+    list.innerHTML = displayAgendas.map(a => {
         let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; 
         if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; } 
         else if (a.type === 'defense') { titleColor = '#f39c12'; titleText = '⚖️ 악평 이의제기 방어 법정'; }
@@ -583,10 +559,10 @@ function renderMeeting() {
     }).join('');
 }
 
-async function submitVote(agendaId, voteType) { showToast("⏳ 표결 전달 중..."); try { const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); const data = await res.json(); if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await initializeApp(); switchTab('meeting'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("네트워크 오류"); } }
+async function submitVote(agendaId, voteType) { showToast("⏳ 표결 전달 중..."); try { const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); const data = await res.json(); if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await forceSync(); switchTab('meeting'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await forceSync(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("네트워크 오류"); } }
 
-async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await initializeApp(); } } catch(err) { alert("서버 오류"); } }
-async function joinExistingRoom() { const code = prompt("초대 코드를 입력하세요:"); if(!code || code.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: code.trim().toUpperCase() }) }); const data = await res.json(); if(data.status === 'error') { alert(data.message); return; } alert(`🚪 입장 성공!`); await initializeApp(); } catch(err) { alert("서버 오류"); } }
+async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await forceSync(); } } catch(err) { alert("서버 오류"); } }
+async function joinExistingRoom() { const code = prompt("초대 코드를 입력하세요:"); if(!code || code.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: code.trim().toUpperCase() }) }); const data = await res.json(); if(data.status === 'error') { alert(data.message); return; } alert(`🚪 입장 성공!`); await forceSync(); } catch(err) { alert("서버 오류"); } }
 
 function renderRanking() {
     const container = document.getElementById('ranking-content'); if (!container || !myProfile || globalRanking.length === 0) return;
@@ -717,7 +693,6 @@ async function handleCredentialResponse(response) {
     localStorage.setItem('fc_id_token', idToken); localStorage.setItem('fc_email', tempEmail);
     const overlay = document.getElementById('login-overlay'); if(overlay) overlay.innerHTML = `<div style="font-size:20px; font-weight:bold; color:#333d4b;">서버 연결 중... ⏳</div>`; 
     try {
-        // ★ 패치 1: 로그인 시에도 캐시를 철저히 무력화합니다.
         const serverResponse = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${idToken}`, "Cache-Control": "no-cache" } }); 
         const serverData = await serverResponse.json();
         if (loginIntent === 'login' && serverData.isNewUser) { alert("가입 정보가 없습니다. 새로 시작하기를 이용해 주세요."); localStorage.clear(); location.reload(); return; }
@@ -735,7 +710,6 @@ async function initializeApp() {
         const token = localStorage.getItem('fc_id_token'); if(!token) { showLoginScreen(); return; }
         const homeView = document.getElementById('friend-list'); if(homeView && (!myProfile)) { homeView.innerHTML = `<div style="text-align:center; padding:60px 20px; color:#3182f6; font-weight:bold; font-size:16px;">💤 서버 데이터 불러오는 중...</div>`; }
         
-        // ★ 패치 1: 앱 실행 시 캐시를 무력화합니다.
         const serverResponse = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${token}`, "Cache-Control": "no-cache" } }); 
         const serverData = await serverResponse.json(); 
         if (serverData.status === 'unauthenticated' || serverData.isNewUser) { showLoginScreen(); return; } 
@@ -744,45 +718,50 @@ async function initializeApp() {
     } catch(err) { console.error(err); alert("서버 연결에 실패했습니다."); } 
 }
 
-// ★ 패치 2: 5초마다 조용히 데이터를 가져와서 화면을 실시간으로 새로고침합니다.
-function startAutoSync() {
-    if (autoSyncInterval) clearInterval(autoSyncInterval);
-    autoSyncInterval = setInterval(async () => {
-        if (!localStorage.getItem('fc_id_token') || !myProfile) return;
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}`, "Cache-Control": "no-cache" } });
-            const data = await res.json();
-            if(data.status === 'unauthenticated' || data.isNewUser) return;
-            
-            myProfile = data.profile; myNotifications = data.noti || []; myRooms = data.my_rooms || []; globalRanking = data.global_ranking || [];
-            
-            // 💡 스마트 새로고침: 채팅을 치고 있을 때 화면이 튕기지 않도록 내용과 스크롤을 기억해둡니다.
+// ★ [핵심 패치] 어떤 동작을 하든 즉시 서버에 찔러서 최신 데이터를 화면에 덮어씌웁니다.
+async function forceSync() {
+    if (!localStorage.getItem('fc_id_token') || isSyncing) return;
+    isSyncing = true;
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}`, "Cache-Control": "no-cache" } });
+        const data = await res.json();
+        if(data.status === 'unauthenticated' || data.isNewUser) { isSyncing = false; return; }
+        
+        myProfile = data.profile; myNotifications = data.noti || []; myRooms = data.my_rooms || []; globalRanking = data.global_ranking || [];
+        
+        const activeView = document.querySelector('.view-active');
+        if(activeView) {
+            // 채팅 중 튕김 방지
             const chatInput = document.getElementById('chat-input');
             const isChatFocused = chatInput && document.activeElement === chatInput;
             const currentChatText = chatInput ? chatInput.value : '';
             
             const chatBox = document.getElementById('chat-box');
             const isAtBottom = chatBox ? (chatBox.scrollHeight - chatBox.scrollTop <= chatBox.clientHeight + 30) : true;
-            
-            // 현재 보고 있는 화면만 조용히 다시 그립니다.
-            const activeView = document.querySelector('.view-active');
-            if(activeView) {
-                if(activeView.id === 'home-view') renderHome();
-                if(activeView.id === 'meeting-view') renderMeeting();
-                if(activeView.id === 'ranking-view') renderRanking();
-                if(activeView.id === 'noti-view') renderNoti();
-                if(activeView.id === 'profile-view') renderProfile();
-            }
 
-            // 💡 복구: 채팅 포커스와 스크롤을 원래대로 돌려놓습니다.
-            if (isChatFocused) {
+            // 현재 보고 있는 화면을 최신 데이터로 강제 새로고침
+            if(activeView.id === 'home-view') renderHome();
+            if(activeView.id === 'meeting-view') renderMeeting();
+            if(activeView.id === 'ranking-view') renderRanking();
+            if(activeView.id === 'noti-view') renderNoti();
+            if(activeView.id === 'profile-view') renderProfile();
+
+            // 채팅 포커스 복구
+            if (isChatFocused && document.getElementById('chat-input')) {
                 const newChatInput = document.getElementById('chat-input');
-                if (newChatInput) { newChatInput.focus(); newChatInput.value = currentChatText; }
+                if(newChatInput) { newChatInput.focus(); newChatInput.value = currentChatText; }
             }
             const newChatBox = document.getElementById('chat-box');
             if (newChatBox && isAtBottom) { newChatBox.scrollTop = newChatBox.scrollHeight; }
-        } catch(e) {}
-    }, 5000); 
+        }
+    } catch(e) {}
+    isSyncing = false;
+}
+
+// 뒷단에서 여전히 5초마다 조용히 최신화를 진행합니다.
+function startAutoSync() {
+    if (autoSyncInterval) clearInterval(autoSyncInterval);
+    autoSyncInterval = setInterval(forceSync, 5000); 
 }
 
 function finishSetup() { 
@@ -793,7 +772,6 @@ function finishSetup() {
     else if (myProfile && !myProfile.timeHistory) { myProfile.timeHistory = myProfile.priceHistory.map(() => ""); }
     checkBadges(); updateTicker(); switchTab('home'); 
     
-    // ★ 동기화 엔진 가동!
     startAutoSync();
 }
 
