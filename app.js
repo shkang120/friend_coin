@@ -4,6 +4,29 @@ let myEmail = localStorage.getItem('fc_email') || null;
 let myUsername = localStorage.getItem('fc_username') || null;
 let loginIntent = ''; 
 
+// 💥 [패치] 판결 도장 애니메이션 CSS를 자바스크립트로 자동 주입
+if (!document.getElementById('stamp-style')) {
+    const style = document.createElement('style');
+    style.id = 'stamp-style';
+    style.innerHTML = `
+        @keyframes stampDrop {
+            0% { transform: scale(3) rotate(-30deg); opacity: 0; }
+            50% { transform: scale(0.9) rotate(-10deg); opacity: 1; }
+            100% { transform: scale(1) rotate(-15deg); opacity: 0.9; }
+        }
+        .verdict-stamp {
+            position: absolute; top: 15px; right: 15px;
+            border: 4px solid; padding: 5px 15px;
+            font-size: 22px; font-weight: 900; border-radius: 8px;
+            font-family: 'Times New Roman', serif; letter-spacing: 2px;
+            animation: stampDrop 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+            z-index: 10; pointer-events: none; background: rgba(255,255,255,0.85);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    `;
+    document.head.appendChild(style);
+}
+
 function escapeHtml(text) {
     if (!text) return "";
     return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -468,20 +491,97 @@ async function submitEvaluation(evalType, intensity) {
     } catch(err) { alert("네트워크 오류 발생"); }
 }
 
+// 👨‍⚖️ [패치] 주주총회 UI를 실시간 게이지와 도장 효과로 대대적 개편!
 function renderMeeting() {
     const list = document.getElementById('meeting-list'); if(!list) return;
     if (!currentRoomCode) { list.innerHTML = '<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">로비에서는 재판이 열리지 않습니다.</div>'; return; }
-    const room = myRooms.find(r => r.room_code === currentRoomCode); const activeAgendas = room.agendas ? room.agendas.filter(a => a.status === 'active') : [];
-    if (activeAgendas.length === 0) { list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">🕊️ [${escapeHtml(room.room_name)}] 방은 현재 평온합니다.<br>진행 중인 재판이 없습니다.</div>`; return; }
-    const totalMembers = room.members.length; const requiredVotes = Math.floor(totalMembers / 2) + 1;
-    list.innerHTML = activeAgendas.map(a => {
-        let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; } else if (a.type === 'defense') { titleColor = '#f39c12'; titleText = '⚖️ 악평 이의제기 방어 법정'; }
-        const targetPerson = room.members.find(f => f.email === a.target_email); const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; const hasVoted = a.votedUsers && a.votedUsers.includes(myEmail);
-        let btnHtml = hasVoted ? `<button style="width:100%; background:#e5e8eb; color:#8b95a1; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:not-allowed;" disabled>⚖️ 투표 완료</button>` : `<button class="btn-vote-disagree" style="flex:1; background:#f2f4f6; color:#4e5968;" onclick="submitVote('${a.id}', 'disagree')">반대(기각)</button><button class="btn-vote-agree" style="flex:1; background:${titleColor};" onclick="submitVote('${a.id}', 'agree')">찬성(판결)</button>`;
-        return `<div class="info-card" style="border-left: 5px solid ${titleColor};"><div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">피고인: <b>${escapeHtml(a.target_name)}</b></div></div></div><div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 재판 안건 사유:</b><br>${escapeHtml(a.reason)}</div><div style="font-size:11px; color:#ff3b30; margin-bottom:8px; font-weight:bold; text-align:center;">⏳ 24시간 이내 미결정 시 원고 승소(가결)로 강제 처리됩니다.</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#8b95a1; margin-bottom:12px; background:#fff; padding:4px;"><div>👍 찬성: <b style="color:#ff3b30;">${a.agreeVotes}표</b></div><div>👎 반대: <b style="color:#3182f6;">${a.disagreeVotes}표</b></div><div style="background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:4px; font-weight:bold;">정족수: (${requiredVotes}/${totalMembers}명)</div></div><div style="display: flex; gap: 10px;">${btnHtml}</div></div>`;
+    
+    const room = myRooms.find(r => r.room_code === currentRoomCode);
+    
+    let displayAgendas = [];
+    if (room.agendas) {
+        // 진행 중인 재판(active)과 최근 종료된 재판 5개를 가져와 최신순 정렬
+        const actives = room.agendas.filter(a => a.status === 'active').reverse();
+        const closed = room.agendas.filter(a => a.status !== 'active').reverse().slice(0, 5); 
+        displayAgendas = [...actives, ...closed];
+    }
+
+    if (displayAgendas.length === 0) { 
+        list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">🕊️ [${escapeHtml(room.room_name)}] 방은 현재 평온합니다.<br>진행 중이거나 최근 종료된 재판이 없습니다.</div>`; 
+        return; 
+    }
+
+    const totalMembers = room.members.length; 
+    const requiredVotes = Math.floor(totalMembers / 2) + 1;
+
+    list.innerHTML = displayAgendas.map(a => {
+        let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; 
+        if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; } 
+        else if (a.type === 'defense') { titleColor = '#f39c12'; titleText = '⚖️ 악평 이의제기 방어 법정'; }
+        
+        const targetPerson = room.members.find(f => f.email === a.target_email); 
+        const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; 
+        const hasVoted = a.votedUsers && a.votedUsers.includes(myEmail);
+        
+        // 투표 퍼센트 계산
+        const agreePct = Math.min((a.agreeVotes / totalMembers) * 100, 100);
+        const disagreePct = Math.min((a.disagreeVotes / totalMembers) * 100, 100);
+        const requiredPct = (requiredVotes / totalMembers) * 100;
+
+        // 📊 다이나믹 게이지 바 HTML
+        const gaugeHtml = `
+            <div style="position:relative; width:100%; height:14px; background:#e5e8eb; border-radius:7px; margin:15px 0; overflow:hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);">
+                <div style="position:absolute; left:0; top:0; height:100%; width:${agreePct}%; background:${titleColor}; transition:width 0.8s ease-out;"></div>
+                <div style="position:absolute; right:0; top:0; height:100%; width:${disagreePct}%; background:#3182f6; transition:width 0.8s ease-out;"></div>
+                <div style="position:absolute; left:${requiredPct}%; top:0; height:100%; width:3px; background:#333d4b; z-index:5;"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:bold; margin-top:-10px; margin-bottom:15px;">
+                <span style="color:${titleColor};">찬성 ${a.agreeVotes}표</span>
+                <span style="color:#333d4b;">정족수 ${requiredVotes}표</span>
+                <span style="color:#3182f6;">반대 ${a.disagreeVotes}표</span>
+            </div>
+        `;
+
+        let btnHtml = '';
+        let stampHtml = '';
+        let opacityStyle = '';
+
+        if (a.status === 'active') {
+            btnHtml = hasVoted ? 
+                `<button style="width:100%; background:#e5e8eb; color:#8b95a1; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:not-allowed;" disabled>⚖️ 투표 대기 중</button>` : 
+                `<button class="btn-vote-disagree" style="flex:1; background:#f2f4f6; color:#3182f6; border:1px solid #d6ebff; font-weight:bold; padding:12px; border-radius:10px; cursor:pointer;" onclick="submitVote('${a.id}', 'disagree')">반대 (기각)</button>
+                 <button class="btn-vote-agree" style="flex:1; background:${titleColor}; color:white; border:none; font-weight:bold; padding:12px; border-radius:10px; cursor:pointer;" onclick="submitVote('${a.id}', 'agree')">찬성 (판결)</button>`;
+        } else {
+            // 종료된 재판은 흐리게 처리하고 도장 쾅!
+            opacityStyle = 'opacity: 0.65; filter: grayscale(20%);';
+            const isResolved = a.status === 'resolved';
+            const stampColor = isResolved ? titleColor : '#3182f6';
+            const stampText = isResolved ? '가결 확정' : '기각 무효';
+            stampHtml = `<div class="verdict-stamp" style="border-color:${stampColor}; color:${stampColor};">${stampText}</div>`;
+            btnHtml = `<div style="width:100%; text-align:center; padding:10px; font-size:13px; font-weight:bold; color:#8b95a1; background:#f9fafb; border-radius:10px;">종료된 재판 기록입니다.</div>`;
+        }
+
+        return `
+        <div class="info-card" style="border-left: 5px solid ${titleColor}; position:relative; overflow:hidden; ${opacityStyle}">
+            ${stampHtml}
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                ${avatarHtml}
+                <div>
+                    <div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div>
+                    <div style="font-size:13px; color:#333d4b;">피고인: <b>${escapeHtml(a.target_name)}</b></div>
+                </div>
+            </div>
+            <div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;">
+                <b>📝 재판 안건 사유:</b><br>${escapeHtml(a.reason)}
+            </div>
+            ${a.status === 'active' ? `<div style="font-size:11px; color:#ff3b30; margin-bottom:8px; font-weight:bold; text-align:center;">⏳ 24시간 이내 미결정 시 원고 승소(가결)로 강제 처리됩니다.</div>` : ''}
+            ${gaugeHtml}
+            <div style="display: flex; gap: 10px;">${btnHtml}</div>
+        </div>`;
     }).join('');
 }
-async function submitVote(agendaId, voteType) { showToast("⏳ 표결 전달 중..."); try { const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); const data = await res.json(); if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await initializeApp(); switchTab('home'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("네트워크 오류"); } }
+
+async function submitVote(agendaId, voteType) { showToast("⏳ 표결 전달 중..."); try { const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); const data = await res.json(); if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await initializeApp(); switchTab('meeting'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await initializeApp(); switchTab('meeting'); } else { alert(data.message); } } catch(err) { alert("네트워크 오류"); } }
 
 async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await initializeApp(); } } catch(err) { alert("서버 오류"); } }
 async function joinExistingRoom() { const code = prompt("초대 코드를 입력하세요:"); if(!code || code.trim() === "") return; try { const res = await fetch(`${BACKEND_URL}/api/room/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: code.trim().toUpperCase() }) }); const data = await res.json(); if(data.status === 'error') { alert(data.message); return; } alert(`🚪 입장 성공!`); await initializeApp(); } catch(err) { alert("서버 오류"); } }
