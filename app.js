@@ -70,7 +70,8 @@ const defaultProfile = {
     isVIP: false, nameColor: "#333d4b",
     priceHistory: [], timeHistory: [],
     pending_evals: [], 
-    defense_count: 0, defense_month: "" 
+    defense_count: 0, defense_month: "",
+    roomAliases: {} // ★ 나만의 방 이름 저장소
 };
 
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = [];   
@@ -178,6 +179,25 @@ function switchTab(tabName) {
 
     forceSync();
 }
+
+// ★ [패치] 나만의 방 별명 변경 함수
+window.changeRoomAlias = function(roomCode, originalName) {
+    if (!myProfile.roomAliases) myProfile.roomAliases = {};
+    const currentName = myProfile.roomAliases[roomCode] || originalName;
+    const newName = prompt(`나만의 클럽 별명을 설정하세요.\n(원래 이름: ${originalName})\n\n※ 내용을 싹 비워두시면 원래 이름으로 복구됩니다.`, currentName);
+    
+    if (newName === null) return; 
+    
+    if (newName.trim() === "" || newName.trim() === originalName) {
+        delete myProfile.roomAliases[roomCode];
+        showToast("원래 이름으로 복구되었습니다.");
+    } else {
+        myProfile.roomAliases[roomCode] = newName.trim();
+        showToast("방 별명이 변경되었습니다! ✨");
+    }
+    saveData();
+    renderHome();
+};
 
 function getCalendarHtml(room) {
     const firstDay = new Date(calYear, calMonth, 1).getDay();
@@ -311,17 +331,53 @@ window.deleteEvent = async function(eventId) {
     } catch(err) { alert("통신 에러"); }
 };
 
+// ★ [패치] 아바타 겹침 효과 & 커스텀 방 이름 적용
 function renderHome() {
     const list = document.getElementById('friend-list'); if(!list) return;
     if (!currentRoomCode) { 
         let html = `<div style="display:flex; gap:10px; margin-bottom:20px;"><button onclick="createNewRoom()" style="flex:1; padding:15px; background:#333d4b; color:white; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1);">+ 새 클럽 개설</button><button onclick="joinExistingRoom()" style="flex:1; padding:15px; background:#e8f5e9; color:#2e7d32; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.05);">🔑 코드로 입장</button></div><h3 style="color:#333d4b; margin-top:0; font-size:16px;">내 투자 클럽 목록</h3>`;
         if (myRooms.length === 0) { html += `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">가입된 투자 클럽이 없습니다.</div>`; } 
-        else { html += myRooms.map(r => `<div onclick="enterRoom('${r.room_code}')" class="info-card" style="cursor:pointer; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; border:2px solid transparent; transition:0.2s;" onmouseover="this.style.borderColor='#3182f6'" onmouseout="this.style.borderColor='transparent'"><div><div style="font-weight:bold; font-size:16px; color:#333d4b; margin-bottom:4px;">${escapeHtml(r.room_name)}</div><div style="font-size:12px; color:#8b95a1;">👥 ${r.members.length}명 | 🔑 코드: <span style="color:#3182f6; font-weight:bold;">${r.room_code}</span></div></div><div style="color:#3182f6; font-size:20px;">👉</div></div>`).join(''); }
+        else { 
+            html += myRooms.map(r => {
+                // 1. 방 이름 처리 (별명이 있으면 별명, 없으면 원본)
+                const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? myProfile.roomAliases[r.room_code] : r.room_name;
+                const aliasTag = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? '<span style="font-size:10px; font-weight:normal; color:#8b95a1; background:#f2f4f6; padding:2px 4px; border-radius:4px; margin-left:4px;">내 별명</span>' : '';
+                
+                // 2. 겹치는 아바타 생성 (최대 4개)
+                const avatars = r.members.slice(0, 4).map((m, i) => {
+                    const inner = m.profileImage ? `<img src="${m.profileImage}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:12px; background:#f9fafb;">${m.status==='delisted'?'💀':m.emoji||'👤'}</div>`;
+                    return `<div style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:${i===0?'0':'-8px'}; position:relative; z-index:${10-i}; overflow:hidden; display:inline-block; vertical-align:middle; box-shadow:0 1px 3px rgba(0,0,0,0.1); background:white;">${inner}</div>`;
+                }).join('');
+                // 3. 남은 인원수 동그라미
+                const extraMembers = r.members.length > 4 ? `<div style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:-8px; position:relative; z-index:5; background:#f2f4f6; color:#8b95a1; font-size:10px; font-weight:bold; display:inline-flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,0.1); vertical-align:middle;">+${r.members.length-4}</div>` : '';
+
+                return `<div onclick="enterRoom('${r.room_code}')" class="info-card" style="cursor:pointer; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; border:2px solid transparent; transition:0.2s;" onmouseover="this.style.borderColor='#3182f6'" onmouseout="this.style.borderColor='transparent'">
+                    <div>
+                        <div style="font-weight:bold; font-size:16px; color:#333d4b; margin-bottom:6px;">${escapeHtml(displayRoomName)}${aliasTag}</div>
+                        <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#8b95a1;">
+                            <div style="display:flex; align-items:center;">${avatars}${extraMembers}</div>
+                            <span>👥 ${r.members.length}명 &nbsp;|&nbsp; 🔑 <span style="color:#3182f6; font-weight:bold;">${r.room_code}</span></span>
+                        </div>
+                    </div>
+                    <div style="color:#3182f6; font-size:20px;">👉</div>
+                </div>`;
+            }).join(''); 
+        }
         list.innerHTML = html;
     } else { 
         const room = myRooms.find(r => r.room_code === currentRoomCode); if (!room) { currentRoomCode = null; renderHome(); return; }
+        const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[room.room_code]) ? myProfile.roomAliases[room.room_code] : room.room_name;
         
-        let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:#f2f4f6; padding:15px; border-radius:16px;"><button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비로</button><div style="text-align:right;"><div style="font-weight:bold; color:#333d4b; font-size:16px;">${escapeHtml(room.room_name)}</div><div style="font-size:12px; color:#8b95a1;">초대 코드: <span style="color:#3182f6;">${room.room_code}</span></div></div></div>`;
+        let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:#f2f4f6; padding:15px; border-radius:16px;">
+            <button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비로</button>
+            <div style="text-align:right;">
+                <div style="font-weight:bold; color:#333d4b; font-size:16px; display:flex; align-items:center; justify-content:flex-end; gap:5px;">
+                    ${escapeHtml(displayRoomName)}
+                    <button onclick="changeRoomAlias('${room.room_code}', '${escapeHtml(room.room_name)}')" style="background:none; border:none; cursor:pointer; font-size:15px; padding:0; outline:none;" title="방 별명 변경">✏️</button>
+                </div>
+                <div style="font-size:12px; color:#8b95a1; margin-top:2px;">초대 코드: <span style="color:#3182f6;">${room.room_code}</span></div>
+            </div>
+        </div>`;
         
         html += `<div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"><div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div><button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button></div><div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">${room.messages && room.messages.length > 0 ? room.messages.map(m => { const isMe = m.sender_email === myEmail; return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${escapeHtml(m.message)}</div></div>`; }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}</div><div style="display:flex; gap:8px;"><input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()"><button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button></div></div>`;
         
@@ -553,12 +609,14 @@ function renderMeeting() {
             btnHtml = `<div style="width:100%; text-align:center; padding:10px; font-size:13px; font-weight:bold; color:#8b95a1; background:#f9fafb; border-radius:10px;">종료된 재판 기록입니다.</div>`;
         }
 
-        // ★ [패치] 클릭 시 해당 방으로 전환하며, 탭(화면) 자체를 '목록(로비)' 탭으로 착! 바꿔버리도록 수정!
+        // 총회 탭에도 커스텀 이름 적용
+        const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[a.room_code]) ? myProfile.roomAliases[a.room_code] : a.room_name;
+
         return `
         <div class="info-card" style="border-left: 5px solid ${titleColor}; position:relative; overflow:hidden; ${opacityStyle}; cursor:pointer;" onclick="enterRoom('${a.room_code}'); switchTab('home');">
             ${stampHtml}
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <span style="background:#f2f4f6; color:#4e5968; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">🏢 ${escapeHtml(a.room_name)}</span>
+                <span style="background:#f2f4f6; color:#4e5968; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">🏢 ${escapeHtml(displayRoomName)}</span>
                 ${timeRemainingHtml}
             </div>
             <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
@@ -793,6 +851,9 @@ function startAutoSync() {
 
 function finishSetup() { 
     if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; } 
+    // ★ 기존 유저를 위한 roomAliases 안전장치
+    if (myProfile && !myProfile.roomAliases) myProfile.roomAliases = {}; 
+    
     if (myProfile && !myProfile.badges) myProfile.badges = []; 
     if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
     if (myProfile && !myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice, myProfile.price]; myProfile.timeHistory = ["시작", getCurrentTime()]; } 
