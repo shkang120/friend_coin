@@ -213,7 +213,6 @@ def get_user_data(authorization: str = Header(None)):
                                 t_prof["narackStartTime"] = datetime.utcnow().isoformat()
                                 t_prof["narackLastHitEmail"] = assoc.get("evaluator_email")
                                 
-                            # ★ [패치 3] 무응답 패소 시, 원고(평가자)에게 소송 위자료 1,000p 몰수 입금
                             evaluator_email = assoc.get("evaluator_email")
                             if evaluator_email:
                                 eval_user = db["users"].find_one({"_id": evaluator_email})
@@ -399,7 +398,6 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
         common_room = db["rooms"].find_one({"members": {"$all": [email, target_eval["evaluator_email"]]}})
         if not common_room: return {"status": "error", "message": "공격한 유저와 같은 투자 클럽(방)에 소속되어 있지 않아 방어 재판을 개최할 수 없습니다."}
         
-        # ★ [패치 3] 재판 소송 비용 1,000p 선차감
         if profile.get("price", 20000) < 1000:
             return {"status": "error", "message": "계좌에 1,000p 이상이 있어야 재판을 발의할 수 있습니다."}
         
@@ -550,7 +548,6 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
 
                 message = f"⚖️ [재판 패소] 배심원단이 악평을 정당하다고 판결했습니다! {target_agenda['target_name']}님의 주가가 하락합니다."
                 
-                # ★ [패치 3] 피고인이 패소했으므로, 1,000p는 평가자(원고)에게 위자료로 입금
                 evaluator_email = assoc["evaluator_email"]
                 eval_user = db["users"].find_one({"_id": evaluator_email})
                 if eval_user:
@@ -573,16 +570,16 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
         if target_agenda["type"] == "defense":
             message = f"⚖️ [재판 승소] 배심원단이 기각하여 {target_agenda['target_name']}님이 방어에 성공했습니다! 악평은 무효 소멸됩니다."
             
-            # ★ [패치 3] 피고인이 승소했으므로, 차감되었던 1,000p를 다시 환급
+            # ★ [패치] 피고인이 승소했으므로, 차감되었던 1,000p + 승소 수당 100p = 총 1,100p 환급!
             target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
             if target_user:
                 t_prof = target_user.get("profile", {})
-                t_prof["price"] = t_prof.get("price", 20000) + 1000
+                t_prof["price"] = t_prof.get("price", 20000) + 1100
                 if "priceHistory" not in t_prof: t_prof["priceHistory"] = [t_prof.get("basePrice", 20000)]; t_prof["timeHistory"] = ["시작"]
                 t_prof["priceHistory"].append(t_prof["price"])
                 t_prof["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
                 t_noti = target_user.get("noti", [])
-                t_noti.insert(0, f"⚖️ [재판 승소] 방어에 성공하여 소송 비용 1,000p를 전액 환급받았습니다!")
+                t_noti.insert(0, f"⚖️ [재판 승소] 방어에 성공하여 소송 비용 환급 및 승소 위자료를 포함해 총 1,100p를 지급받았습니다! 🎉")
                 db["users"].update_one({"_id": target_agenda["target_email"]}, {"$set": {"profile": t_prof, "noti": t_noti}})
         else:
             message = f"⚖️ 반대표가 많아 안건이 최종 기각되었습니다."

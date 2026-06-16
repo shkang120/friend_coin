@@ -6,7 +6,6 @@ let loginIntent = '';
 let autoSyncInterval = null; 
 let isSyncing = false; 
 
-// ★ [패치 2] 로딩 스피너 및 도장 애니메이션 CSS 자동 주입
 if (!document.getElementById('global-loader')) {
     const loader = document.createElement('div');
     loader.id = 'global-loader';
@@ -73,7 +72,6 @@ function renderNoti() {
     container.innerHTML = html;
 }
 
-// ★ [패치 3] 재판 이의제기 시 1,000p 차감 경고문 추가
 async function respondPendingEval(evalId, action) {
     const token = localStorage.getItem('fc_id_token');
     if(action === 'defend') {
@@ -81,7 +79,7 @@ async function respondPendingEval(evalId, action) {
         const curMonth = new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, '0');
         let count = myProfile.defense_month === curMonth ? (myProfile.defense_count || 0) : 0;
         if(count >= 3) { alert("🚨 이번 달 방어 재판권(3회)을 모두 소모하셨습니다! 이 악평은 무조건 승인해야 합니다."); return; }
-        if(!confirm(`⚖️ 이 악평에 대해 해명 재판을 발의하시겠습니까?\n\n💸 [소송 비용] 1,000p가 즉시 차감됩니다.\n방어 성공 시 100% 환급되며, 패소 시 상대방에게 위자료로 지급됩니다.\n(이번 달 남은 기회: ${3 - count}회)`)) return;
+        if(!confirm(`⚖️ 이 악평에 대해 해명 재판을 발의하시겠습니까?\n\n💸 [소송 비용] 1,000p가 즉시 차감됩니다.\n방어 성공 시 1,100p(위자료 포함)로 환급되며, 패소 시 상대방에게 지급됩니다.\n(이번 달 남은 기회: ${3 - count}회)`)) return;
     }
     showLoading();
     try {
@@ -245,12 +243,27 @@ function selectEvalIntensity(intensity) { evalState.intensity = intensity; const
 
 function submitEvaluationFinal() { if (!evalState.type) { alert("평가 종류(호평/악평)를 선택해주세요."); return; } if (!evalState.intensity) { alert("변동폭(1%, 2%, 3%)을 선택해주세요."); return; } submitEvaluation(evalState.type, evalState.intensity); }
 
+// ★ [패치] 악평 시 상장폐지(나락) 막타 사전 경고 시스템 추가!
 async function submitEvaluation(evalType, intensity) {
     if (!currentSelectedFriend) return;
     if (evalType === 'good' && myProfile.goodTickets <= 0) { alert("남은 호평권이 없습니다!"); return; }
     if (evalType === 'bad' && myProfile.badTickets <= 0) { alert("남은 악평권이 없습니다!"); return; }
     const reasonInput = document.getElementById('eval-reason-input'); const reasonText = reasonInput ? reasonInput.value.trim() : "";
     if (!reasonText) { alert("평가 사유를 반드시 작성해 주세요!"); if(reasonInput) reasonInput.focus(); return; }
+    
+    // 치명타 계산 로직
+    if (evalType === 'bad') {
+        const basePrice = currentSelectedFriend.basePrice || 20000;
+        const dropAmount = basePrice * (intensity * 0.01);
+        const expectedPrice = currentSelectedFriend.price - dropAmount;
+        const maxPrice = currentSelectedFriend.maxPrice || 20000;
+        
+        if (expectedPrice <= maxPrice * 0.3) {
+            const proceed = confirm(`🚨 [경고] 치명타 임박!\n\n이 악평이 수락되면 상대방은 최고가 대비 -70% 이하로 주가가 폭락하여 즉시 '상장폐지 심사' 위기에 빠집니다.\n\n정말로 이대로 쏘시겠습니까? 😈`);
+            if (!proceed) return;
+        }
+    }
+
     document.getElementById('eval-modal').style.display = 'none'; showLoading();
     try {
         const res = await fetch(`${BACKEND_URL}/api/evaluate`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity, reason: reasonText }) });
