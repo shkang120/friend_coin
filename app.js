@@ -3,8 +3,8 @@ const BACKEND_URL = "https://friend-coin.onrender.com"; // ★ 본인의 진짜 
 let myEmail = localStorage.getItem('fc_email') || null; 
 let myUsername = localStorage.getItem('fc_username') || null;
 let loginIntent = ''; 
+let autoSyncInterval = null; // ★ 실시간 동기화 타이머
 
-// 💥 [패치] 판결 도장 애니메이션 CSS를 자바스크립트로 자동 주입
 if (!document.getElementById('stamp-style')) {
     const style = document.createElement('style');
     style.id = 'stamp-style';
@@ -371,7 +371,13 @@ function renderHome() {
         }).join('');
         
         html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer;">🚪 이 클럽에서 나가기</button>`;
-        list.innerHTML = html; setTimeout(() => { const chatBox = document.getElementById('chat-box'); if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; }, 10);
+        list.innerHTML = html; 
+        
+        // 채팅창 포커스 및 스크롤 유지 로직 (자동 동기화 방해 방지)
+        setTimeout(() => { 
+            const chatBox = document.getElementById('chat-box'); 
+            if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; 
+        }, 10);
     }
 }
 
@@ -491,7 +497,6 @@ async function submitEvaluation(evalType, intensity) {
     } catch(err) { alert("네트워크 오류 발생"); }
 }
 
-// 👨‍⚖️ [패치] 주주총회 UI를 실시간 게이지와 도장 효과로 대대적 개편!
 function renderMeeting() {
     const list = document.getElementById('meeting-list'); if(!list) return;
     if (!currentRoomCode) { list.innerHTML = '<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">로비에서는 재판이 열리지 않습니다.</div>'; return; }
@@ -500,7 +505,6 @@ function renderMeeting() {
     
     let displayAgendas = [];
     if (room.agendas) {
-        // 진행 중인 재판(active)과 최근 종료된 재판 5개를 가져와 최신순 정렬
         const actives = room.agendas.filter(a => a.status === 'active').reverse();
         const closed = room.agendas.filter(a => a.status !== 'active').reverse().slice(0, 5); 
         displayAgendas = [...actives, ...closed];
@@ -514,7 +518,8 @@ function renderMeeting() {
     const totalMembers = room.members.length; 
     const requiredVotes = Math.floor(totalMembers / 2) + 1;
 
-    list.innerHTML = displayAgendas.map(a => {
+    list.innerHTML = `<div style="display:flex; justify-content:flex-end; margin-bottom:10px;"><button onclick="initializeApp()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button></div>` + 
+    displayAgendas.map(a => {
         let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; 
         if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; } 
         else if (a.type === 'defense') { titleColor = '#f39c12'; titleText = '⚖️ 악평 이의제기 방어 법정'; }
@@ -523,12 +528,10 @@ function renderMeeting() {
         const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; 
         const hasVoted = a.votedUsers && a.votedUsers.includes(myEmail);
         
-        // 투표 퍼센트 계산
         const agreePct = Math.min((a.agreeVotes / totalMembers) * 100, 100);
         const disagreePct = Math.min((a.disagreeVotes / totalMembers) * 100, 100);
         const requiredPct = (requiredVotes / totalMembers) * 100;
 
-        // 📊 다이나믹 게이지 바 HTML
         const gaugeHtml = `
             <div style="position:relative; width:100%; height:14px; background:#e5e8eb; border-radius:7px; margin:15px 0; overflow:hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);">
                 <div style="position:absolute; left:0; top:0; height:100%; width:${agreePct}%; background:${titleColor}; transition:width 0.8s ease-out;"></div>
@@ -552,7 +555,6 @@ function renderMeeting() {
                 `<button class="btn-vote-disagree" style="flex:1; background:#f2f4f6; color:#3182f6; border:1px solid #d6ebff; font-weight:bold; padding:12px; border-radius:10px; cursor:pointer;" onclick="submitVote('${a.id}', 'disagree')">반대 (기각)</button>
                  <button class="btn-vote-agree" style="flex:1; background:${titleColor}; color:white; border:none; font-weight:bold; padding:12px; border-radius:10px; cursor:pointer;" onclick="submitVote('${a.id}', 'agree')">찬성 (판결)</button>`;
         } else {
-            // 종료된 재판은 흐리게 처리하고 도장 쾅!
             opacityStyle = 'opacity: 0.65; filter: grayscale(20%);';
             const isResolved = a.status === 'resolved';
             const stampColor = isResolved ? titleColor : '#3182f6';
@@ -715,7 +717,9 @@ async function handleCredentialResponse(response) {
     localStorage.setItem('fc_id_token', idToken); localStorage.setItem('fc_email', tempEmail);
     const overlay = document.getElementById('login-overlay'); if(overlay) overlay.innerHTML = `<div style="font-size:20px; font-weight:bold; color:#333d4b;">서버 연결 중... ⏳</div>`; 
     try {
-        const serverResponse = await fetch(`${BACKEND_URL}/api/data`, { headers: { "Authorization": `Bearer ${idToken}` } }); const serverData = await serverResponse.json();
+        // ★ 패치 1: 로그인 시에도 캐시를 철저히 무력화합니다.
+        const serverResponse = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${idToken}`, "Cache-Control": "no-cache" } }); 
+        const serverData = await serverResponse.json();
         if (loginIntent === 'login' && serverData.isNewUser) { alert("가입 정보가 없습니다. 새로 시작하기를 이용해 주세요."); localStorage.clear(); location.reload(); return; }
         myEmail = tempEmail;
         if (serverData.isNewUser) { showNicknameSetupScreen(responsePayload.picture); } 
@@ -730,11 +734,55 @@ async function initializeApp() {
     try { 
         const token = localStorage.getItem('fc_id_token'); if(!token) { showLoginScreen(); return; }
         const homeView = document.getElementById('friend-list'); if(homeView && (!myProfile)) { homeView.innerHTML = `<div style="text-align:center; padding:60px 20px; color:#3182f6; font-weight:bold; font-size:16px;">💤 서버 데이터 불러오는 중...</div>`; }
-        const serverResponse = await fetch(`${BACKEND_URL}/api/data`, { headers: { "Authorization": `Bearer ${token}` } }); const serverData = await serverResponse.json(); 
+        
+        // ★ 패치 1: 앱 실행 시 캐시를 무력화합니다.
+        const serverResponse = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${token}`, "Cache-Control": "no-cache" } }); 
+        const serverData = await serverResponse.json(); 
         if (serverData.status === 'unauthenticated' || serverData.isNewUser) { showLoginScreen(); return; } 
         myProfile = serverData.profile; myEmail = localStorage.getItem('fc_email'); myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; 
         const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup(); 
     } catch(err) { console.error(err); alert("서버 연결에 실패했습니다."); } 
+}
+
+// ★ 패치 2: 5초마다 조용히 데이터를 가져와서 화면을 실시간으로 새로고침합니다.
+function startAutoSync() {
+    if (autoSyncInterval) clearInterval(autoSyncInterval);
+    autoSyncInterval = setInterval(async () => {
+        if (!localStorage.getItem('fc_id_token') || !myProfile) return;
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}`, "Cache-Control": "no-cache" } });
+            const data = await res.json();
+            if(data.status === 'unauthenticated' || data.isNewUser) return;
+            
+            myProfile = data.profile; myNotifications = data.noti || []; myRooms = data.my_rooms || []; globalRanking = data.global_ranking || [];
+            
+            // 💡 스마트 새로고침: 채팅을 치고 있을 때 화면이 튕기지 않도록 내용과 스크롤을 기억해둡니다.
+            const chatInput = document.getElementById('chat-input');
+            const isChatFocused = chatInput && document.activeElement === chatInput;
+            const currentChatText = chatInput ? chatInput.value : '';
+            
+            const chatBox = document.getElementById('chat-box');
+            const isAtBottom = chatBox ? (chatBox.scrollHeight - chatBox.scrollTop <= chatBox.clientHeight + 30) : true;
+            
+            // 현재 보고 있는 화면만 조용히 다시 그립니다.
+            const activeView = document.querySelector('.view-active');
+            if(activeView) {
+                if(activeView.id === 'home-view') renderHome();
+                if(activeView.id === 'meeting-view') renderMeeting();
+                if(activeView.id === 'ranking-view') renderRanking();
+                if(activeView.id === 'noti-view') renderNoti();
+                if(activeView.id === 'profile-view') renderProfile();
+            }
+
+            // 💡 복구: 채팅 포커스와 스크롤을 원래대로 돌려놓습니다.
+            if (isChatFocused) {
+                const newChatInput = document.getElementById('chat-input');
+                if (newChatInput) { newChatInput.focus(); newChatInput.value = currentChatText; }
+            }
+            const newChatBox = document.getElementById('chat-box');
+            if (newChatBox && isAtBottom) { newChatBox.scrollTop = newChatBox.scrollHeight; }
+        } catch(e) {}
+    }, 5000); 
 }
 
 function finishSetup() { 
@@ -744,6 +792,9 @@ function finishSetup() {
     if (myProfile && !myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice, myProfile.price]; myProfile.timeHistory = ["시작", getCurrentTime()]; } 
     else if (myProfile && !myProfile.timeHistory) { myProfile.timeHistory = myProfile.priceHistory.map(() => ""); }
     checkBadges(); updateTicker(); switchTab('home'); 
+    
+    // ★ 동기화 엔진 가동!
+    startAutoSync();
 }
 
 window.onload = () => { if (!localStorage.getItem('fc_id_token')) { showLoginScreen(); } else { initializeApp(); } };
