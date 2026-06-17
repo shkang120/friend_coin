@@ -5,6 +5,7 @@ let myUsername = localStorage.getItem('fc_username') || null;
 let loginIntent = ''; 
 let autoSyncInterval = null; 
 let isSyncing = false; 
+let globalMegaphone = ""; // ★ 전 서버 확성기 메시지 저장용
 
 if (!document.getElementById('global-loader')) {
     const loader = document.createElement('div');
@@ -39,7 +40,7 @@ function getYesterdayClosePrice(profile) {
     return yesterdayPrice;
 }
 
-const defaultProfile = { name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active', goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false, lastDailyAdBonus: null, dailyAdTicketsDate: null, dailyAdTicketsCount: 0, badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 }, isVIP: false, nameColor: "#333d4b", priceHistory: [], timeHistory: [], pending_evals: [], defense_count: 0, defense_month: "", roomAliases: {} };
+const defaultProfile = { name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active', goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false, lastDailyAdBonus: null, dailyAdTicketsDate: null, dailyAdTicketsCount: 0, badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 }, isVIP: false, nameColor: "#333d4b", priceHistory: [], timeHistory: [], pending_evals: [], defense_count: 0, defense_month: "", roomAliases: {}, shieldCount: 0 };
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = []; let currentRoomCode = null; let currentAdRewardType = null; let adInterval = null; let currentSelectedFriend = null; let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 }; let calYear = new Date().getFullYear(); let calMonth = new Date().getMonth(); let calSelectedDate = getFormattedDate(new Date());
 
 const DEFAULT_AVATARS = [ 'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aneka&backgroundColor=c0aede', 'https://api.dicebear.com/7.x/bottts/svg?seed=Oliver&backgroundColor=ffd5dc', 'https://api.dicebear.com/7.x/bottts/svg?seed=Sophie&backgroundColor=d1d4f9', 'https://api.dicebear.com/7.x/bottts/svg?seed=Jack&backgroundColor=ffdfbf', 'https://api.dicebear.com/7.x/bottts/svg?seed=Mia&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Leo&backgroundColor=c0aede', 'https://api.dicebear.com/7.x/bottts/svg?seed=Chloe&backgroundColor=ffd5dc', 'https://api.dicebear.com/7.x/bottts/svg?seed=Sam&backgroundColor=d1d4f9', 'https://api.dicebear.com/7.x/bottts/svg?seed=Zoe&backgroundColor=ffdfbf' ];
@@ -99,7 +100,14 @@ function checkBadges() {
     globalRanking.forEach(p => { p.dynamicBadges = []; if (p.isVIP) p.dynamicBadges.push('👑VIP'); if (top1 && p.name === top1.name) p.dynamicBadges.push('👑1위'); if (topGainer && p.name === topGainer.name && (p.price - p.basePrice) > 0) p.dynamicBadges.push('🚀떡상왕'); });
 }
 
-function updateTicker() { const tickerEl = document.getElementById('ticker-text'); if(!tickerEl || !myProfile || globalRanking.length === 0) return; tickerEl.innerHTML = `[글로벌 시황] 👑 전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p) &nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; [공지] 프라이빗 투자 클럽 내부 채팅방 기능 업데이트!`; }
+// ★ [패치 1] 확성기 데이터 티커에 적용
+function updateTicker() { 
+    const tickerEl = document.getElementById('ticker-text'); if(!tickerEl || !myProfile || globalRanking.length === 0) return; 
+    const rankText = `👑 전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p)`;
+    const megaText = globalMegaphone ? `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; ${escapeHtml(globalMegaphone)}` : `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; [공지] 아이템 상점 오픈! 무지개 반사로 악평을 방어하세요!`;
+    tickerEl.innerHTML = `[글로벌 시황] ${rankText}${megaText}`; 
+}
+
 function saveData() { checkBadges(); updateTicker(); if (!myEmail) return; fetch(`${BACKEND_URL}/api/save`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ profile: myProfile, noti: myNotifications }) }).catch(err => console.error(err)); }
 
 function switchTab(tabName) {
@@ -243,7 +251,6 @@ function selectEvalIntensity(intensity) { evalState.intensity = intensity; const
 
 function submitEvaluationFinal() { if (!evalState.type) { alert("평가 종류(호평/악평)를 선택해주세요."); return; } if (!evalState.intensity) { alert("변동폭(1%, 2%, 3%)을 선택해주세요."); return; } submitEvaluation(evalState.type, evalState.intensity); }
 
-// ★ [패치] 악평 시 상장폐지(나락) 막타 사전 경고 시스템 추가!
 async function submitEvaluation(evalType, intensity) {
     if (!currentSelectedFriend) return;
     if (evalType === 'good' && myProfile.goodTickets <= 0) { alert("남은 호평권이 없습니다!"); return; }
@@ -251,15 +258,13 @@ async function submitEvaluation(evalType, intensity) {
     const reasonInput = document.getElementById('eval-reason-input'); const reasonText = reasonInput ? reasonInput.value.trim() : "";
     if (!reasonText) { alert("평가 사유를 반드시 작성해 주세요!"); if(reasonInput) reasonInput.focus(); return; }
     
-    // 치명타 계산 로직
     if (evalType === 'bad') {
         const basePrice = currentSelectedFriend.basePrice || 20000;
         const dropAmount = basePrice * (intensity * 0.01);
         const expectedPrice = currentSelectedFriend.price - dropAmount;
         const maxPrice = currentSelectedFriend.maxPrice || 20000;
-        
         if (expectedPrice <= maxPrice * 0.3) {
-            const proceed = confirm(`🚨 [경고] 치명타 임박!\n\n이 악평이 수락되면 상대방은 최고가 대비 -70% 이하로 주가가 폭락하여 즉시 '상장폐지 심사' 위기에 빠집니다.\n\n정말로 이대로 쏘시겠습니까? 😈`);
+            const proceed = confirm(`🚨 [경고] 치명타 임박!\n\n이 악평이 수락되면 상대방은 최고가 대비 -70% 이하로 폭락하여 즉시 '상장폐지 심사' 위기에 빠집니다.\n\n정말로 쏘시겠습니까? 😈`);
             if (!proceed) return;
         }
     }
@@ -376,6 +381,31 @@ function closeVIPModal() { document.getElementById('vip-modal').style.display = 
 function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("💎 VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); }
 function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
 
+// ★ [패치 1] 상점 UI 구매 함수
+window.buyShopItem = async function(itemType, cost) {
+    if (myProfile.price < cost) { alert("잔고가 부족합니다!"); return; }
+    let extraData = "";
+    if (itemType === 'megaphone') {
+        extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자):");
+        if (!extraData || extraData.trim() === "") return;
+        if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; }
+    } else {
+        if (!confirm(`3,000p를 지불하고 '무지개 반사' 방어권을 구매하시겠습니까?`)) return;
+    }
+    
+    showLoading();
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/shop/buy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` },
+            body: JSON.stringify({ email: myEmail, item_type: itemType, extra_data: extraData })
+        });
+        const data = await res.json();
+        if (data.status === 'success') { showToast(data.message); await forceSync(); } else { alert(data.message); }
+    } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
+}
+
+// ★ [패치 1] 프로필 탭에 상점 UI 추가
 function renderProfile() {
     const container = document.getElementById('my-profile-info'); if(!container || !myProfile) return;
     const isDelisted = myProfile.status === 'delisted'; 
@@ -391,6 +421,29 @@ function renderProfile() {
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
     if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
 
+    const shopHtml = `
+        <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #e5e8eb;">
+            <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between;">
+                🛒 포인트 상점
+                <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
+            </h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px; margin-bottom:10px;">
+                <div>
+                    <div style="font-weight:bold; font-size:14px; color:#333d4b;">🛡️ 무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div>
+                    <div style="font-size:11px; color:#8b95a1; margin-top:4px;">악평 피격 시 1회 자동 방어 및 소멸</div>
+                </div>
+                <button onclick="buyShopItem('shield', 3000)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">3,000p</button>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
+                <div>
+                    <div style="font-weight:bold; font-size:14px; color:#333d4b;">📢 글로벌 확성기</div>
+                    <div style="font-size:11px; color:#8b95a1; margin-top:4px;">전국구 뉴스 티커에 내 메시지 띄우기</div>
+                </div>
+                <button onclick="buyShopItem('megaphone', 1500)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">1,500p</button>
+            </div>
+        </div>
+    `;
+
     container.innerHTML = `
         ${vipBanner}
         <div style="position: relative; display: inline-block;">${getAvatarHtml(myProfile, 'large')}<button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✏️</button></div>
@@ -404,6 +457,7 @@ function renderProfile() {
         <div style="font-size: 32px; font-weight: bold; color: #333d4b; margin-top: 20px;">${isDelisted ? '💀' : Math.floor(myProfile.price).toLocaleString()} p</div>
         <div style="font-weight: bold; color: ${colorClass}; margin-bottom: 20px;">${isDelisted ? '' : sign + Math.floor(changeAmount).toLocaleString() + ' p (' + sign + changeRate + '%)'}</div>
         <div style="background: white; padding: 15px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); border: 1px solid #f2f4f6;"><canvas id="priceChart" style="width:100%; height:150px;"></canvas></div>
+        ${shopHtml}
         ${actionBtn}
         <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px; margin-bottom: 100px;" onclick="handleLogout()">🚪 로그아웃</button>
     `;
@@ -437,7 +491,7 @@ async function handleCredentialResponse(response) {
         if (loginIntent === 'login' && serverData.isNewUser) { alert("가입 정보가 없습니다. 새로 시작하기를 이용해 주세요."); localStorage.clear(); location.reload(); return; }
         myEmail = tempEmail;
         if (serverData.isNewUser) { showNicknameSetupScreen(responsePayload.picture); } 
-        else { myProfile = serverData.profile; myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; if(overlay) overlay.remove(); finishSetup(); }
+        else { myProfile = serverData.profile; myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; globalMegaphone = serverData.megaphone_msg || ""; if(overlay) overlay.remove(); finishSetup(); }
     } catch(err) { alert("연결 실패"); localStorage.clear(); location.reload(); }
 }
 function handleLogout() { localStorage.clear(); location.reload(); }
@@ -452,7 +506,7 @@ async function initializeApp() {
         const serverResponse = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${token}`, "Cache-Control": "no-cache" } }); 
         const serverData = await serverResponse.json(); 
         if (serverData.status === 'unauthenticated' || serverData.isNewUser) { showLoginScreen(); return; } 
-        myProfile = serverData.profile; myEmail = localStorage.getItem('fc_email'); myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; 
+        myProfile = serverData.profile; myEmail = localStorage.getItem('fc_email'); myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; globalMegaphone = serverData.megaphone_msg || "";
         const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup(); 
     } catch(err) { console.error(err); alert("서버 연결에 실패했습니다."); } finally { hideLoading(); }
 }
@@ -464,7 +518,7 @@ async function forceSync() {
         const res = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}`, "Cache-Control": "no-cache" } });
         const data = await res.json();
         if(data.status === 'unauthenticated' || data.isNewUser) { isSyncing = false; return; }
-        myProfile = data.profile; myNotifications = data.noti || []; myRooms = data.my_rooms || []; globalRanking = data.global_ranking || [];
+        myProfile = data.profile; myNotifications = data.noti || []; myRooms = data.my_rooms || []; globalRanking = data.global_ranking || []; globalMegaphone = data.megaphone_msg || "";
         const activeView = document.querySelector('.view-active');
         if(activeView) {
             const chatInput = document.getElementById('chat-input'); const isChatFocused = chatInput && document.activeElement === chatInput; const currentChatText = chatInput ? chatInput.value : '';
@@ -472,6 +526,7 @@ async function forceSync() {
             if(activeView.id === 'home-view') renderHome(); if(activeView.id === 'meeting-view') renderMeeting(); if(activeView.id === 'ranking-view') renderRanking(); if(activeView.id === 'noti-view') renderNoti(); if(activeView.id === 'profile-view') renderProfile();
             if (isChatFocused && document.getElementById('chat-input')) { const newChatInput = document.getElementById('chat-input'); if(newChatInput) { newChatInput.focus(); newChatInput.value = currentChatText; } }
             const newChatBox = document.getElementById('chat-box'); if (newChatBox && isAtBottom) { newChatBox.scrollTop = newChatBox.scrollHeight; }
+            updateTicker();
         }
     } catch(e) {}
     isSyncing = false;
@@ -482,6 +537,7 @@ function startAutoSync() { if (autoSyncInterval) clearInterval(autoSyncInterval)
 function finishSetup() { 
     if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; } 
     if (myProfile && !myProfile.roomAliases) myProfile.roomAliases = {}; 
+    if (myProfile && myProfile.shieldCount === undefined) myProfile.shieldCount = 0;
     if (myProfile && !myProfile.badges) myProfile.badges = []; 
     if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
     if (myProfile && !myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice, myProfile.price]; myProfile.timeHistory = ["시작", getCurrentTime()]; } 

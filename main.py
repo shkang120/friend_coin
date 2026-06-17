@@ -83,6 +83,12 @@ class EventDeleteData(BaseModel):
     event_id: str
     deleter_email: str
 
+# ★ 상점 데이터 모델
+class ShopData(BaseModel):
+    email: str
+    item_type: str
+    extra_data: str = ""
+
 api_cooldowns = { "chat": {}, "evaluate": {}, "agenda": {}, "join": {} }
 
 def is_spamming(email: str, action_type: str, cooldown_seconds: int) -> bool:
@@ -176,20 +182,15 @@ def get_user_data(authorization: str = Header(None)):
     my_rooms = []
     for room in my_rooms_cursor:
         room_modified = False
-        
         for a in room.get("agendas", []):
             if a.get("status") == "active" and a.get("created_at"):
                 created = datetime.fromisoformat(a["created_at"])
                 if datetime.utcnow() >= created + timedelta(hours=24):
-                    a["status"] = "resolved"
-                    a["agreeVotes"] = 999 
-                    room_modified = True
-                    
+                    a["status"] = "resolved"; a["agreeVotes"] = 999; room_modified = True
                     target_user = db["users"].find_one({"_id": a["target_email"]})
                     if target_user:
                         t_prof = target_user.get("profile", {})
                         t_noti = target_user.get("noti", [])
-                        
                         if a["type"] == "delist":
                             t_prof["status"] = "delisted"; t_prof["price"] = 0
                             t_noti.insert(0, f"🚨 24시간 무응답으로 {a['target_name']}님의 상장폐지 재판이 자동 가결되었습니다.")
@@ -201,11 +202,9 @@ def get_user_data(authorization: str = Header(None)):
                             base_p = t_prof.get("basePrice", 20000)
                             change_amount = base_p * (assoc.get("intensity", 0) * 0.01)
                             t_prof["price"] = t_prof.get("price", 20000) - change_amount
-                            
                             if "priceHistory" not in t_prof: t_prof["priceHistory"] = [base_p]; t_prof["timeHistory"] = ["시작"]
                             t_prof["priceHistory"].append(t_prof["price"])
                             t_prof["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
-                            
                             t_noti.insert(0, f"[👎재판 패소] 24시간 무응답으로 악평 확정 (-{assoc.get('intensity', 0)}% 적용)")
                             
                             max_p = t_prof.get("maxPrice", 20000)
@@ -225,9 +224,7 @@ def get_user_data(authorization: str = Header(None)):
                                     e_noti = eval_user.get("noti", [])
                                     e_noti.insert(0, f"💸 [위자료 입금] 24시간 무응답으로 {a['target_name']}님의 방어 재판이 기각되어 위자료 1,000p를 획득했습니다.")
                                     db["users"].update_one({"_id": evaluator_email}, {"$set": {"profile": e_prof, "noti": e_noti}})
-                                
                         db["users"].update_one({"_id": a["target_email"]}, {"$set": {"profile": t_prof, "noti": t_noti}})
-                        
         if room_modified: db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"agendas": room.get("agendas")}})
             
         members_profiles = []
@@ -243,7 +240,45 @@ def get_user_data(authorization: str = Header(None)):
     sorted_users = sorted(all_users, key=lambda x: x.get("profile", {}).get("price", 0), reverse=True)[:10]
     global_ranking = [u.get("profile") for u in sorted_users if "profile" in u]
 
-    return {"isNewUser": False, "profile": profile, "noti": user_data.get("noti", []), "my_rooms": my_rooms, "global_ranking": global_ranking}
+    # ★ 확성기 메시지 반환
+    sys_data = db["system"].find_one({"_id": "global"})
+    megaphone_msg = sys_data.get("megaphone", "") if sys_data else ""
+
+    return {"isNewUser": False, "profile": profile, "noti": user_data.get("noti", []), "my_rooms": my_rooms, "global_ranking": global_ranking, "megaphone_msg": megaphone_msg}
+
+@app.post("/api/shop/buy")
+def buy_shop_item(data: ShopData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    user = db["users"].find_one({"_id": email})
+    if not user: return {"status": "error", "message": "유저 없음"}
+    
+    profile = user["profile"]
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    
+    if data.item_type == "shield":
+        if profile.get("price", 20000) < 3000: return {"status": "error", "message": "잔고가 부족합니다 (3,000p 필요)."}
+        profile["price"] -= 3000
+        profile["shieldCount"] = profile.get("shieldCount", 0) + 1
+        
+        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
+        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
+        db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
+        return {"status": "success", "message": "🛡️ 무지개 반사 구매 완료! (악평 1회 자동 방어)"}
+        
+    elif data.item_type == "megaphone":
+        if profile.get("price", 20000) < 1500: return {"status": "error", "message": "잔고가 부족합니다 (1,500p 필요)."}
+        if not data.extra_data.strip(): return {"status": "error", "message": "메시지를 입력하세요."}
+        
+        profile["price"] -= 1500
+        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
+        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
+        
+        db["system"].update_one({"_id": "global"}, {"$set": {"megaphone": f"📢 [{profile.get('name')}] {data.extra_data}"}}, upsert=True)
+        db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
+        return {"status": "success", "message": "📢 확성기 사용 완료! 전국구 티커에 등록되었습니다."}
+        
+    return {"status": "error", "message": "알 수 없는 아이템입니다."}
 
 @app.post("/api/save")
 def save_user_data(data: UserData, authorization: str = Header(None)):
@@ -347,6 +382,24 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
         return {"status": "success", "message": "👍 호평이 즉시 반영되었습니다."}
 
     else:
+        # ★ [패치 1] 무지개 반사 발동 로직
+        if target["profile"].get("shieldCount", 0) > 0:
+            if evaluator["profile"].get("badTickets", 0) <= 0: return {"status": "error", "message": "악평권 부족"}
+            evaluator["profile"]["badTickets"] -= 1; evaluator["profile"]["stats"]["badGiven"] = evaluator["profile"]["stats"].get("badGiven", 0) + 1
+            db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": evaluator["profile"]}})
+            
+            target["profile"]["shieldCount"] -= 1
+            target_noti = target.get("noti", [])
+            target_noti.insert(0, f"🛡️ [무지개 반사 발동!] {evaluator_name}님의 악평(-{data.intensity}%)을 방어권으로 튕겨냈습니다!")
+            db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"], "noti": target_noti}})
+            
+            eval_noti = evaluator.get("noti", [])
+            eval_noti.insert(0, f"💥 [공격 실패] {target['profile']['name']}님이 '무지개 반사'를 사용하여 악평이 무효화되었습니다!")
+            db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"noti": eval_noti}})
+            
+            return {"status": "success", "message": f"💥 앗! 상대방이 '무지개 반사'를 사용하여 악평이 튕겨나갔습니다!"}
+
+        # 무지개 반사가 없을 때 일반 악평 발송
         if evaluator["profile"].get("badTickets", 0) <= 0: return {"status": "error", "message": "악평권 부족"}
         evaluator["profile"]["badTickets"] -= 1; evaluator["profile"]["stats"]["badGiven"] = evaluator["profile"]["stats"].get("badGiven", 0) + 1
         db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": evaluator["profile"]}})
@@ -570,7 +623,6 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
         if target_agenda["type"] == "defense":
             message = f"⚖️ [재판 승소] 배심원단이 기각하여 {target_agenda['target_name']}님이 방어에 성공했습니다! 악평은 무효 소멸됩니다."
             
-            # ★ [패치] 피고인이 승소했으므로, 차감되었던 1,000p + 승소 수당 100p = 총 1,100p 환급!
             target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
             if target_user:
                 t_prof = target_user.get("profile", {})
