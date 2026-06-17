@@ -167,7 +167,6 @@ window.deleteEvent = async function(eventId) {
     } catch(err) { alert("통신 에러"); } finally { hideLoading(); }
 };
 
-// ★ [패치 2] 주사위 배팅 기능 추가
 window.rollDice = async function() {
     if (myProfile.price < 500) { alert("도박장 입장 최소 금액은 500p입니다!"); return; }
     const guess = prompt("🎲 주사위 도박장 (배팅금: 500p)\n\n'홀' 또는 '짝'을 입력하세요:");
@@ -177,13 +176,8 @@ window.rollDice = async function() {
 
     showLoading();
     try {
-        const res = await fetch(`${BACKEND_URL}/api/room/gamble`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` },
-            body: JSON.stringify({ room_code: currentRoomCode, email: myEmail, guess: guess })
-        });
-        const data = await res.json();
-        if (data.status === 'success') { showToast(data.message); await forceSync(); } else { alert(data.message); }
+        const res = await fetch(`${BACKEND_URL}/api/room/gamble`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, email: myEmail, guess: guess }) });
+        const data = await res.json(); if (data.status === 'success') { showToast(data.message); await forceSync(); } else { alert(data.message); }
     } catch(e) { alert("오류"); } finally { hideLoading(); }
 };
 
@@ -214,7 +208,6 @@ function renderHome() {
             </div>
         </div>`;
         
-        // ★ [패치 2] 시스템 메시지 강조 디자인 및 도박 버튼 🎲 추가
         html += `<div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div>
@@ -222,11 +215,8 @@ function renderHome() {
             </div>
             <div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">
             ${room.messages && room.messages.length > 0 ? room.messages.map(m => { 
-                if(m.sender_email === 'system') {
-                    return `<div style="text-align:center; margin:8px 0;"><span style="font-size:11px; background:#fff3e0; color:#e65100; padding:6px 10px; border-radius:12px; font-weight:bold; display:inline-block;">${escapeHtml(m.message)}</span></div>`;
-                }
-                const isMe = m.sender_email === myEmail; 
-                return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${escapeHtml(m.message)}</div></div>`; 
+                if(m.sender_email === 'system') { return `<div style="text-align:center; margin:8px 0;"><span style="font-size:11px; background:#fff3e0; color:#e65100; padding:6px 10px; border-radius:12px; font-weight:bold; display:inline-block;">${escapeHtml(m.message)}</span></div>`; }
+                const isMe = m.sender_email === myEmail; return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${escapeHtml(m.message)}</div></div>`; 
             }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}
             </div>
             <div style="display:flex; gap:8px;">
@@ -269,7 +259,6 @@ async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가�
 async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await forceSync(); } catch(err) { console.error(err); } }
 async function refreshChat() { showLoading(); await forceSync(); hideLoading(); }
 
-// ★ [패치 3] 영구 추방 재판 발의 버튼 
 function openFriendDetail(friendEmail) {
     const room = myRooms.find(r => r.room_code === currentRoomCode); const friend = room.members.find(m => m.email === friendEmail); if (!friend) return; currentSelectedFriend = friend;
     if (friend.status === 'delisted') { alert(`💀 상장폐지된 코인은 더 이상 평가할 수 없습니다.`); return; }
@@ -289,19 +278,18 @@ function openFriendDetail(friendEmail) {
         <div style="text-align:left; margin-bottom:20px;"><div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">3. 사유 작성</div><textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea></div>
         
         <button onclick="submitEvaluationFinal()" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; font-size:15px; cursor:pointer; margin-bottom:10px; transition:0.2s;">🚀 평가 보내기</button>
-        <button onclick="kickUser('${friend.email}', '${escapeHtml(friend.name)}')" style="width:100%; padding:12px; background:#fce4ec; color:#c62828; border:1px solid #ffcdd2; border-radius:12px; font-weight:bold; cursor:pointer; font-size:13px; margin-bottom:10px;">🚨 이 유저 영구 추방 재판 발의 (1,000p)</button>
+        <button onclick="kickUser('${friend.email}', '${escapeHtml(friend.name)}')" style="width:100%; padding:12px; background:#f2f4f6; color:#4e5968; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; font-size:13px; margin-bottom:10px;">🚪 이 유저 내보내기 투표 발의</button>
         <button onclick="document.getElementById('eval-modal').style.display='none'" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">취소</button>
     </div>`;
     modal.style.display = 'flex'; setTimeout(() => drawFriendPriceChart(friend), 50);
 }
 
-// ★ [패치 3] 추방 기능 로직
+// ★ [패치 3] 포인트 차감 없는 내보내기 로직
 window.kickUser = async function(targetEmail, targetName) {
-    if (myProfile.price < 1000) { alert("잔고가 부족합니다 (1,000p 필요)"); return; }
-    if (targetEmail === myEmail) { alert("자신을 추방할 수 없습니다."); return; }
-    const reason = prompt(`🚨 [${targetName}] 님을 클럽에서 영구 추방하는 재판을 엽니다.\n소송 비용 1,000p가 선차감되며, 부결 시 상대방에게 뺏깁니다.\n\n추방 사유를 작성해주세요:`);
+    if (targetEmail === myEmail) { alert("자신을 내보낼 수 없습니다."); return; }
+    const reason = prompt(`🚪 [${targetName}] 님을 클럽에서 내보내는 투표를 발의합니다.\n포인트 소모는 없습니다.\n\n내보내려는 사유를 간단히 적어주세요:`);
     if (!reason || reason.trim() === "") return;
-    if(!confirm(`정말 1,000p를 걸고 추방 재판을 여시겠습니까?`)) return;
+    if(!confirm(`정말로 이 유저를 내보내는 투표를 시작하시겠습니까?`)) return;
 
     document.getElementById('eval-modal').style.display = 'none'; showLoading();
     try {
@@ -360,7 +348,8 @@ function renderMeeting() {
         let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; 
         if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; } 
         else if (a.type === 'defense') { titleColor = '#f39c12'; titleText = '⚖️ 악평 이의제기 방어 법정'; }
-        else if (a.type === 'kick') { titleColor = '#8e44ad'; titleText = '🚨 클럽 영구 추방 재판'; } // ★ 영구 추방 디자인
+        // ★ [패치] 보라색의 부드러운 내보내기 텍스트로 변경
+        else if (a.type === 'kick') { titleColor = '#8e44ad'; titleText = '🚪 클럽 내보내기 투표'; }
         
         const targetPerson = a.members.find(f => f.email === a.target_email); const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; const hasVoted = a.votedUsers && a.votedUsers.includes(myEmail);
         const totalMembers = a.totalMembers; const requiredVotes = Math.floor(totalMembers / 2) + 1;
@@ -374,10 +363,10 @@ function renderMeeting() {
             const createdTime = new Date(a.created_at).getTime(); const expireTime = createdTime + (24 * 60 * 60 * 1000); const nowTime = new Date().getTime();
             let diffMs = expireTime - nowTime; if (diffMs < 0) diffMs = 0; const diffHrs = Math.floor(diffMs / (1000 * 60 * 60)); const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
             timeRemainingHtml = `<span style="background:#fff3f3; color:#ff3b30; padding:3px 8px; border-radius:10px; font-size:11px; font-weight:bold;">⏳ 마감까지 ${diffHrs}시간 ${diffMins}분</span>`;
-            btnHtml = hasVoted ? `<button style="width:100%; background:#e5e8eb; color:#8b95a1; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:not-allowed;" disabled>⚖️ 투표 완료</button>` : `<button class="btn-vote-disagree" style="flex:1; background:#f2f4f6; color:#3182f6; border:1px solid #d6ebff; font-weight:bold; padding:12px; border-radius:10px; cursor:pointer;" onclick="submitVote('${a.room_code}', '${a.id}', 'disagree')">반대 (기각)</button><button class="btn-vote-agree" style="flex:1; background:${titleColor}; color:white; border:none; font-weight:bold; padding:12px; border-radius:10px; cursor:pointer;" onclick="submitVote('${a.room_code}', '${a.id}', 'agree')">찬성 (판결)</button>`;
+            btnHtml = hasVoted ? `<button style="width:100%; background:#e5e8eb; color:#8b95a1; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:not-allowed;" disabled>⚖️ 투표 완료</button>` : `<button class="btn-vote-disagree" style="flex:1; background:#f2f4f6; color:#3182f6; border:1px solid #d6ebff; font-weight:bold; padding:12px; border-radius:10px; cursor:pointer;" onclick="submitVote('${a.room_code}', '${a.id}', 'disagree')">반대 (기각)</button><button class="btn-vote-agree" style="flex:1; background:${titleColor}; color:white; border:none; font-weight:bold; padding:12px; border-radius:10px; cursor:pointer;" onclick="submitVote('${a.room_code}', '${a.id}', 'agree')">찬성 (가결)</button>`;
         } else {
             opacityStyle = 'opacity: 0.65; filter: grayscale(20%);'; const isResolved = a.status === 'resolved'; const stampColor = isResolved ? titleColor : '#3182f6'; const stampText = isResolved ? '가결 확정' : '기각 무효';
-            stampHtml = `<div class="verdict-stamp" style="border-color:${stampColor}; color:${stampColor};">${stampText}</div>`; btnHtml = `<div style="width:100%; text-align:center; padding:10px; font-size:13px; font-weight:bold; color:#8b95a1; background:#f9fafb; border-radius:10px;">종료된 재판 기록입니다.</div>`;
+            stampHtml = `<div class="verdict-stamp" style="border-color:${stampColor}; color:${stampColor};">${stampText}</div>`; btnHtml = `<div style="width:100%; text-align:center; padding:10px; font-size:13px; font-weight:bold; color:#8b95a1; background:#f9fafb; border-radius:10px;">종료된 재판/투표 기록입니다.</div>`;
         }
 
         const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[a.room_code]) ? myProfile.roomAliases[a.room_code] : a.room_name;
@@ -386,8 +375,8 @@ function renderMeeting() {
         <div class="info-card" style="border-left: 5px solid ${titleColor}; position:relative; overflow:hidden; ${opacityStyle}; cursor:pointer;" onclick="enterRoom('${a.room_code}'); switchTab('home');">
             ${stampHtml}
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"><span style="background:#f2f4f6; color:#4e5968; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">🏢 ${escapeHtml(displayRoomName)}</span>${timeRemainingHtml}</div>
-            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">피고인: <b>${escapeHtml(a.target_name)}</b></div></div></div>
-            <div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 재판 안건 사유:</b><br>${escapeHtml(a.reason)}</div>
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">${avatarHtml}<div><div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div><div style="font-size:13px; color:#333d4b;">대상자: <b>${escapeHtml(a.target_name)}</b></div></div></div>
+            <div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;"><b>📝 사유:</b><br>${escapeHtml(a.reason)}</div>
             ${gaugeHtml}<div style="display: flex; gap: 10px;">${btnHtml}</div>
         </div>`;
     }).join('');

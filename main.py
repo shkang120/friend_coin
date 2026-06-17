@@ -89,7 +89,6 @@ class ShopData(BaseModel):
     item_type: str
     extra_data: str = ""
 
-# ★ [패치 2] 도박장 데이터 모델
 class GambleData(BaseModel):
     room_code: str
     email: str
@@ -231,22 +230,17 @@ def get_user_data(authorization: str = Header(None)):
                                     e_noti = eval_user.get("noti", [])
                                     e_noti.insert(0, f"💸 [위자료 입금] 24시간 무응답으로 {a['target_name']}님의 방어 재판이 기각되어 위자료 1,000p를 획득했습니다.")
                                     db["users"].update_one({"_id": evaluator_email}, {"$set": {"profile": e_prof, "noti": e_noti}})
-                        # ★ [패치 3] 영구 추방 자동 가결 시
+                        # ★ [패치] 무응답 자동 가결 시
                         elif a["type"] == "kick":
                             db["rooms"].update_one({"_id": room["_id"]}, {"$pull": {"members": a["target_email"]}})
-                            t_noti.insert(0, f"🚨 24시간 무응답으로 클럽에서 영구 추방되었습니다.")
+                            t_noti.insert(0, f"🚪 24시간 무응답으로 클럽에서 내보내졌습니다.")
                             creator_email = a.get("creator_email")
                             if creator_email:
                                 c_user = db["users"].find_one({"_id": creator_email})
                                 if c_user:
-                                    c_prof = c_user.get("profile", {})
-                                    c_prof["price"] = c_prof.get("price", 20000) + 1000
-                                    if "priceHistory" not in c_prof: c_prof["priceHistory"] = [c_prof.get("basePrice", 20000)]; c_prof["timeHistory"] = ["시작"]
-                                    c_prof["priceHistory"].append(c_prof["price"])
-                                    c_prof["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
                                     c_noti = c_user.get("noti", [])
-                                    c_noti.insert(0, f"⚖️ [추방 승소] 24시간 무응답으로 추방이 가결되어 공탁금 1,000p 환급 완료.")
-                                    db["users"].update_one({"_id": creator_email}, {"$set": {"profile": c_prof, "noti": c_noti}})
+                                    c_noti.insert(0, f"🚪 [내보내기 가결] 24시간 무응답으로 내보내기가 자동 가결되었습니다.")
+                                    db["users"].update_one({"_id": creator_email}, {"$set": {"noti": c_noti}})
                                     
                         db["users"].update_one({"_id": a["target_email"]}, {"$set": {"profile": t_prof, "noti": t_noti}})
                         
@@ -303,7 +297,6 @@ def buy_shop_item(data: ShopData, authorization: str = Header(None)):
         
     return {"status": "error", "message": "알 수 없는 아이템입니다."}
 
-# ★ [패치 2] 채팅방 500p 주사위 도박장 서버 로직
 @app.post("/api/room/gamble")
 def room_gamble(data: GambleData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -608,7 +601,7 @@ def delete_room_event(data: EventDeleteData, authorization: str = Header(None)):
     db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"events": {"id": data.event_id}}})
     return {"status": "success"}
 
-# ★ [패치 3] 영구 추방 안건 상정 API
+# ★ [패치] 무과금 내보내기 안건 생성
 @app.post("/api/agenda/create")
 def create_agenda(data: AgendaData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -616,34 +609,28 @@ def create_agenda(data: AgendaData, authorization: str = Header(None)):
     if is_spamming(email, "agenda", 3): return {"status": "error", "message": "요청이 너무 빠릅니다."}
 
     user = db["users"].find_one({"_id": email})
-    if not user or user["profile"].get("price", 0) < 1000: return {"status": "error", "message": "계좌 잔고가 부족합니다 (1,000p 필요)."}
+    if not user: return {"status": "error", "message": "유저 정보가 없습니다."}
 
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room or email not in room.get("members", []): return {"status": "error", "message": "클럽 멤버가 아닙니다."}
 
     target = db["users"].find_one({"_id": data.target_email})
     target_name = target.get("profile", {}).get("name", "알 수 없음") if target else "알 수 없음"
+    profile = user.get("profile", {})
 
-    # 소송 비용 차감
-    profile = user["profile"]
-    profile["price"] -= 1000
-    kst_now = datetime.utcnow() + timedelta(hours=9)
-    if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
-    profile["priceHistory"].append(profile["price"])
-    profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
-    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-
-    agenda = {
-        "id": str(uuid.uuid4()), "creator_email": email, "target_email": data.target_email, "target_name": target_name,
-        "type": data.agenda_type,
-        "reason": f"🚨 [클럽 영구 추방 재판] {profile.get('name')}님이 {target_name}님의 추방을 건의했습니다.\n[추방 사유]: {data.reason}",
-        "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active",
-        "deposit": 1000,
-        "created_at": datetime.utcnow().isoformat()
-    }
-    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"agendas": agenda}})
-
-    return {"status": "success", "message": "🚨 추방 재판이 발의되었습니다! (비용 1,000p 차감)"}
+    if data.agenda_type == "kick":
+        agenda = {
+            "id": str(uuid.uuid4()), "creator_email": email, "target_email": data.target_email, "target_name": target_name,
+            "type": data.agenda_type,
+            "reason": f"🚪 [클럽 내보내기 투표] {profile.get('name')}님이 {target_name}님을 내보내자고 건의했습니다.\n[사유]: {data.reason}",
+            "agreeVotes": 0, "disagreeVotes": 0, "votedUsers": [], "status": "active",
+            "deposit": 0,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        db["rooms"].update_one({"_id": data.room_code}, {"$push": {"agendas": agenda}})
+        return {"status": "success", "message": "🚪 내보내기 투표가 시작되었습니다!"}
+        
+    return {"status": "error", "message": "잘못된 안건 타입입니다."}
 
 @app.post("/api/agenda/vote")
 def vote_agenda(data: VoteData, authorization: str = Header(None)):
@@ -674,31 +661,24 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
         target_agenda["status"] = "resolved"
         target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
         
-        # ★ [패치 3] 추방 안건 가결 시 로직
+        # ★ [패치] 무과금 내보내기 통과 시
         if target_agenda["type"] == "kick":
-            # 1. 방에서 강퇴
             db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"members": target_agenda["target_email"]}})
             
-            # 2. 발의자(원고)에게 1,000p 환급
             creator_email = target_agenda.get("creator_email")
             if creator_email:
                 c_user = db["users"].find_one({"_id": creator_email})
                 if c_user:
-                    c_prof = c_user.get("profile", {})
-                    c_prof["price"] = c_prof.get("price", 20000) + 1000
-                    if "priceHistory" not in c_prof: c_prof["priceHistory"] = [c_prof.get("basePrice", 20000)]; c_prof["timeHistory"] = ["시작"]
-                    c_prof["priceHistory"].append(c_prof["price"]); c_prof["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
                     c_noti = c_user.get("noti", [])
-                    c_noti.insert(0, f"⚖️ [추방 승소] {target_agenda['target_name']}님 추방 안건 가결! 공탁금 1,000p 환급 완료.")
-                    db["users"].update_one({"_id": creator_email}, {"$set": {"profile": c_prof, "noti": c_noti}})
+                    c_noti.insert(0, f"🚪 [내보내기 가결] {target_agenda['target_name']}님을 내보내는 안건이 통과되었습니다.")
+                    db["users"].update_one({"_id": creator_email}, {"$set": {"noti": c_noti}})
             
-            # 3. 쫓겨난 유저에게 알림
             if target_user:
                 t_noti = target_user.get("noti", [])
-                t_noti.insert(0, f"🚨 [영구 추방] 다수결에 의해 클럽에서 영구 추방되었습니다.")
+                t_noti.insert(0, f"🚪 [클럽 퇴장] 다수결에 의해 클럽에서 내보내졌습니다.")
                 db["users"].update_one({"_id": target_agenda["target_email"]}, {"$set": {"noti": t_noti}})
                 
-            message = f"🚨 과반수 찬성으로 {target_agenda['target_name']}님이 클럽에서 영구 추방되었습니다."
+            message = f"🚪 과반수 찬성으로 {target_agenda['target_name']}님이 클럽에서 나갔습니다."
 
         elif target_user:
             if target_agenda["type"] == "delist":
@@ -746,18 +726,14 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
     elif target_agenda["disagreeVotes"] >= required_votes:
         target_agenda["status"] = "rejected"; status_msg = "resolved"
         
-        # ★ [패치 3] 추방 안건 기각 시 (위자료 지급)
+        # ★ [패치] 무과금 내보내기 부결 시 
         if target_agenda["type"] == "kick":
             target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
             if target_user:
-                t_prof = target_user.get("profile", {})
-                t_prof["price"] = t_prof.get("price", 20000) + 1000
-                if "priceHistory" not in t_prof: t_prof["priceHistory"] = [t_prof.get("basePrice", 20000)]; t_prof["timeHistory"] = ["시작"]
-                t_prof["priceHistory"].append(t_prof["price"]); t_prof["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
                 t_noti = target_user.get("noti", [])
-                t_noti.insert(0, f"⚖️ [추방 방어 성공] 나를 추방하려던 안건이 부결되어 무고 위자료 1,000p를 받았습니다! 🎉")
-                db["users"].update_one({"_id": target_agenda["target_email"]}, {"$set": {"profile": t_prof, "noti": t_noti}})
-            message = f"⚖️ 반대표가 많아 추방 안건이 기각되었습니다. (공탁금은 피고인에게 위자료로 지급됨)"
+                t_noti.insert(0, f"⚖️ [내보내기 부결] 나를 내보내려던 투표가 부결되었습니다.")
+                db["users"].update_one({"_id": target_agenda["target_email"]}, {"$set": {"noti": t_noti}})
+            message = f"⚖️ 반대표가 많아 내보내기 안건이 기각되었습니다."
             
         elif target_agenda["type"] == "defense":
             message = f"⚖️ [재판 승소] 배심원단이 기각하여 {target_agenda['target_name']}님이 방어에 성공했습니다! 악평은 무효 소멸됩니다."
