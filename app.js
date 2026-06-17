@@ -5,7 +5,7 @@ let myUsername = localStorage.getItem('fc_username') || null;
 let loginIntent = ''; 
 let autoSyncInterval = null; 
 let isSyncing = false; 
-let globalMegaphone = ""; // ★ 전 서버 확성기 메시지 저장용
+let globalMegaphone = ""; 
 
 if (!document.getElementById('global-loader')) {
     const loader = document.createElement('div');
@@ -100,14 +100,7 @@ function checkBadges() {
     globalRanking.forEach(p => { p.dynamicBadges = []; if (p.isVIP) p.dynamicBadges.push('👑VIP'); if (top1 && p.name === top1.name) p.dynamicBadges.push('👑1위'); if (topGainer && p.name === topGainer.name && (p.price - p.basePrice) > 0) p.dynamicBadges.push('🚀떡상왕'); });
 }
 
-// ★ [패치 1] 확성기 데이터 티커에 적용
-function updateTicker() { 
-    const tickerEl = document.getElementById('ticker-text'); if(!tickerEl || !myProfile || globalRanking.length === 0) return; 
-    const rankText = `👑 전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p)`;
-    const megaText = globalMegaphone ? `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; ${escapeHtml(globalMegaphone)}` : `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; [공지] 아이템 상점 오픈! 무지개 반사로 악평을 방어하세요!`;
-    tickerEl.innerHTML = `[글로벌 시황] ${rankText}${megaText}`; 
-}
-
+function updateTicker() { const tickerEl = document.getElementById('ticker-text'); if(!tickerEl || !myProfile || globalRanking.length === 0) return; const rankText = `👑 전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p)`; const megaText = globalMegaphone ? `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; ${escapeHtml(globalMegaphone)}` : `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; [공지] 아이템 상점 오픈! 무지개 반사로 악평을 방어하세요!`; tickerEl.innerHTML = `[글로벌 시황] ${rankText}${megaText}`; }
 function saveData() { checkBadges(); updateTicker(); if (!myEmail) return; fetch(`${BACKEND_URL}/api/save`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ profile: myProfile, noti: myNotifications }) }).catch(err => console.error(err)); }
 
 function switchTab(tabName) {
@@ -174,6 +167,26 @@ window.deleteEvent = async function(eventId) {
     } catch(err) { alert("통신 에러"); } finally { hideLoading(); }
 };
 
+// ★ [패치 2] 주사위 배팅 기능 추가
+window.rollDice = async function() {
+    if (myProfile.price < 500) { alert("도박장 입장 최소 금액은 500p입니다!"); return; }
+    const guess = prompt("🎲 주사위 도박장 (배팅금: 500p)\n\n'홀' 또는 '짝'을 입력하세요:");
+    if (!guess) return;
+    if (guess !== '홀' && guess !== '짝') { alert("정확히 '홀' 또는 '짝'이라고 입력해야 합니다."); return; }
+    if (!confirm(`[${guess}]에 500p를 배팅하시겠습니까?\n성공 시 1,000p 획득! 실패 시 500p 증발!`)) return;
+
+    showLoading();
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/room/gamble`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` },
+            body: JSON.stringify({ room_code: currentRoomCode, email: myEmail, guess: guess })
+        });
+        const data = await res.json();
+        if (data.status === 'success') { showToast(data.message); await forceSync(); } else { alert(data.message); }
+    } catch(e) { alert("오류"); } finally { hideLoading(); }
+};
+
 function renderHome() {
     const list = document.getElementById('friend-list'); if(!list) return;
     if (!currentRoomCode) { 
@@ -200,7 +213,28 @@ function renderHome() {
                 <div style="font-size:12px; color:#8b95a1; margin-top:4px; display:flex; align-items:center; justify-content:flex-end; gap:5px;">초대 코드: <span style="color:#3182f6; font-weight:bold;">${room.room_code}</span><button onclick="copyInviteLink('${room.room_code}')" style="background:#e8f5e9; color:#2e7d32; border:none; padding:3px 8px; border-radius:6px; font-size:10px; font-weight:bold; cursor:pointer;">🔗 복사</button></div>
             </div>
         </div>`;
-        html += `<div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"><div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div><button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button></div><div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">${room.messages && room.messages.length > 0 ? room.messages.map(m => { const isMe = m.sender_email === myEmail; return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${escapeHtml(m.message)}</div></div>`; }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}</div><div style="display:flex; gap:8px;"><input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()"><button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button></div></div>`;
+        
+        // ★ [패치 2] 시스템 메시지 강조 디자인 및 도박 버튼 🎲 추가
+        html += `<div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div>
+                <button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button>
+            </div>
+            <div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">
+            ${room.messages && room.messages.length > 0 ? room.messages.map(m => { 
+                if(m.sender_email === 'system') {
+                    return `<div style="text-align:center; margin:8px 0;"><span style="font-size:11px; background:#fff3e0; color:#e65100; padding:6px 10px; border-radius:12px; font-weight:bold; display:inline-block;">${escapeHtml(m.message)}</span></div>`;
+                }
+                const isMe = m.sender_email === myEmail; 
+                return `<div style="text-align:${isMe ? 'right' : 'left'};"><span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span><div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${escapeHtml(m.message)}</div></div>`; 
+            }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button onclick="rollDice()" style="background:#fff3e0; color:#e65100; border:1px solid #ffe0b2; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" title="500p 주사위 배팅">🎲</button>
+                <input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()">
+                <button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button>
+            </div>
+        </div>`;
         html += getCalendarHtml(room);
         html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="color:#333d4b; margin:0; font-size:15px;">참여자 목록 (${room.members.length}명)</h3></div>`;
         html += room.members.map(f => { 
@@ -235,6 +269,7 @@ async function leaveCurrentRoom() { if(!confirm("정말 이 클럽에서 나가�
 async function sendChat() { const input = document.getElementById('chat-input'); const text = input.value.trim(); if(!text || !currentRoomCode) return; input.value = ''; try { await fetch(`${BACKEND_URL}/api/room/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text }) }); await forceSync(); } catch(err) { console.error(err); } }
 async function refreshChat() { showLoading(); await forceSync(); hideLoading(); }
 
+// ★ [패치 3] 영구 추방 재판 발의 버튼 
 function openFriendDetail(friendEmail) {
     const room = myRooms.find(r => r.room_code === currentRoomCode); const friend = room.members.find(m => m.email === friendEmail); if (!friend) return; currentSelectedFriend = friend;
     if (friend.status === 'delisted') { alert(`💀 상장폐지된 코인은 더 이상 평가할 수 없습니다.`); return; }
@@ -242,8 +277,42 @@ function openFriendDetail(friendEmail) {
     evalState.p1 = Math.floor(friend.price * 0.01); evalState.p2 = Math.floor(friend.price * 0.02); evalState.p3 = Math.floor(friend.price * 0.03); evalState.type = null; evalState.intensity = null;
     const yPrice = getYesterdayClosePrice(friend); const cAmt = friend.price - yPrice; const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0; const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1'); const cSign = cAmt > 0 ? '+' : '';
 
-    modal.innerHTML = `<div style="background:white; padding:30px 25px; border-radius:20px; width:85%; max-width:340px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;"><div style="margin-bottom:15px;">${getAvatarHtml(friend, 'large')}</div><h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${escapeHtml(friend.name)}</h2><div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:5px;">${Math.floor(friend.price).toLocaleString()} p</div><div style="font-size:14px; font-weight:bold; color:${cColor}; margin-bottom:15px;">${cSign}${Math.floor(cAmt).toLocaleString()} p (${cSign}${cRate}%)</div><div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendFriendChartCanvas" style="width:100%; height:110px;"></canvas></div><div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div><div style="text-align:left; margin-bottom:15px;"><div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">1. 평가 종류 선택</div><div style="display:flex; gap:10px;"><button id="eval-type-good" onclick="selectEvalType('good')" style="flex:1; padding:12px; border:1px solid #ffdbdb; background:white; color:#ff3b30; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👍 호평하기</button><button id="eval-type-bad" onclick="selectEvalType('bad')" style="flex:1; padding:12px; border:1px solid #d6ebff; background:white; color:#3182f6; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👎 악평하기</button></div></div><div id="eval-intensity-section" style="text-align:left; margin-bottom:15px; display:none;"><div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">2. 변동폭 선택</div><div style="display:flex; gap:8px;"><button id="eval-int-1" onclick="selectEvalIntensity(1)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-1-pct">1%</span><br><span id="eval-int-1-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button><button id="eval-int-2" onclick="selectEvalIntensity(2)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-2-pct">2%</span><br><span id="eval-int-2-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button><button id="eval-int-3" onclick="selectEvalIntensity(3)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-3-pct">3%</span><br><span id="eval-int-3-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button></div></div><div style="text-align:left; margin-bottom:20px;"><div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">3. 사유 작성</div><textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea></div><button onclick="submitEvaluationFinal()" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; font-size:15px; cursor:pointer; margin-bottom:10px; transition:0.2s;">🚀 평가 보내기</button><button onclick="document.getElementById('eval-modal').style.display='none'" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">취소</button></div>`;
+    modal.innerHTML = `<div style="background:white; padding:30px 25px; border-radius:20px; width:85%; max-width:340px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;">
+        <div style="margin-bottom:15px;">${getAvatarHtml(friend, 'large')}</div><h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${escapeHtml(friend.name)}</h2>
+        <div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:5px;">${Math.floor(friend.price).toLocaleString()} p</div>
+        <div style="font-size:14px; font-weight:bold; color:${cColor}; margin-bottom:15px;">${cSign}${Math.floor(cAmt).toLocaleString()} p (${cSign}${cRate}%)</div>
+        <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendFriendChartCanvas" style="width:100%; height:110px;"></canvas></div>
+        
+        <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
+        <div style="text-align:left; margin-bottom:15px;"><div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">1. 평가 종류 선택</div><div style="display:flex; gap:10px;"><button id="eval-type-good" onclick="selectEvalType('good')" style="flex:1; padding:12px; border:1px solid #ffdbdb; background:white; color:#ff3b30; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👍 호평하기</button><button id="eval-type-bad" onclick="selectEvalType('bad')" style="flex:1; padding:12px; border:1px solid #d6ebff; background:white; color:#3182f6; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👎 악평하기</button></div></div>
+        <div id="eval-intensity-section" style="text-align:left; margin-bottom:15px; display:none;"><div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">2. 변동폭 선택</div><div style="display:flex; gap:8px;"><button id="eval-int-1" onclick="selectEvalIntensity(1)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-1-pct">1%</span><br><span id="eval-int-1-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button><button id="eval-int-2" onclick="selectEvalIntensity(2)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-2-pct">2%</span><br><span id="eval-int-2-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button><button id="eval-int-3" onclick="selectEvalIntensity(3)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-3-pct">3%</span><br><span id="eval-int-3-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button></div></div>
+        <div style="text-align:left; margin-bottom:20px;"><div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">3. 사유 작성</div><textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea></div>
+        
+        <button onclick="submitEvaluationFinal()" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; font-size:15px; cursor:pointer; margin-bottom:10px; transition:0.2s;">🚀 평가 보내기</button>
+        <button onclick="kickUser('${friend.email}', '${escapeHtml(friend.name)}')" style="width:100%; padding:12px; background:#fce4ec; color:#c62828; border:1px solid #ffcdd2; border-radius:12px; font-weight:bold; cursor:pointer; font-size:13px; margin-bottom:10px;">🚨 이 유저 영구 추방 재판 발의 (1,000p)</button>
+        <button onclick="document.getElementById('eval-modal').style.display='none'" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">취소</button>
+    </div>`;
     modal.style.display = 'flex'; setTimeout(() => drawFriendPriceChart(friend), 50);
+}
+
+// ★ [패치 3] 추방 기능 로직
+window.kickUser = async function(targetEmail, targetName) {
+    if (myProfile.price < 1000) { alert("잔고가 부족합니다 (1,000p 필요)"); return; }
+    if (targetEmail === myEmail) { alert("자신을 추방할 수 없습니다."); return; }
+    const reason = prompt(`🚨 [${targetName}] 님을 클럽에서 영구 추방하는 재판을 엽니다.\n소송 비용 1,000p가 선차감되며, 부결 시 상대방에게 뺏깁니다.\n\n추방 사유를 작성해주세요:`);
+    if (!reason || reason.trim() === "") return;
+    if(!confirm(`정말 1,000p를 걸고 추방 재판을 여시겠습니까?`)) return;
+
+    document.getElementById('eval-modal').style.display = 'none'; showLoading();
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/agenda/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` },
+            body: JSON.stringify({ room_code: currentRoomCode, creator_email: myEmail, target_email: targetEmail, agenda_type: 'kick', reason: reason.trim() })
+        });
+        const data = await res.json();
+        if(data.status === 'success') { showToast(data.message); await forceSync(); switchTab('meeting'); } else { alert(data.message); }
+    } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
 
 function selectEvalType(type) { evalState.type = type; evalState.intensity = null; const goodBtn = document.getElementById('eval-type-good'); const badBtn = document.getElementById('eval-type-bad'); const intSec = document.getElementById('eval-intensity-section'); goodBtn.style.background = 'white'; goodBtn.style.color = '#ff3b30'; badBtn.style.background = 'white'; badBtn.style.color = '#3182f6'; if (type === 'good') { goodBtn.style.background = '#ff3b30'; goodBtn.style.color = 'white'; document.getElementById('eval-int-1-pct').textContent = '+1%'; document.getElementById('eval-int-2-pct').textContent = '+2%'; document.getElementById('eval-int-3-pct').textContent = '+3%'; document.getElementById('eval-int-1-pts').textContent = `+${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `+${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `+${evalState.p3.toLocaleString()}p`; } else { badBtn.style.background = '#3182f6'; badBtn.style.color = 'white'; document.getElementById('eval-int-1-pct').textContent = '-1%'; document.getElementById('eval-int-2-pct').textContent = '-2%'; document.getElementById('eval-int-3-pct').textContent = '-3%'; document.getElementById('eval-int-1-pts').textContent = `-${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `-${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `-${evalState.p3.toLocaleString()}p`; } intSec.style.display = 'block'; [1, 2, 3].forEach(i => { const btn = document.getElementById(`eval-int-${i}`); btn.style.background = 'white'; btn.style.color = '#333d4b'; btn.style.borderColor = '#e5e8eb'; }); }
@@ -291,6 +360,7 @@ function renderMeeting() {
         let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; 
         if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; } 
         else if (a.type === 'defense') { titleColor = '#f39c12'; titleText = '⚖️ 악평 이의제기 방어 법정'; }
+        else if (a.type === 'kick') { titleColor = '#8e44ad'; titleText = '🚨 클럽 영구 추방 재판'; } // ★ 영구 추방 디자인
         
         const targetPerson = a.members.find(f => f.email === a.target_email); const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; const hasVoted = a.votedUsers && a.votedUsers.includes(myEmail);
         const totalMembers = a.totalMembers; const requiredVotes = Math.floor(totalMembers / 2) + 1;
@@ -381,31 +451,18 @@ function closeVIPModal() { document.getElementById('vip-modal').style.display = 
 function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("💎 VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); }
 function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
 
-// ★ [패치 1] 상점 UI 구매 함수
 window.buyShopItem = async function(itemType, cost) {
     if (myProfile.price < cost) { alert("잔고가 부족합니다!"); return; }
     let extraData = "";
-    if (itemType === 'megaphone') {
-        extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자):");
-        if (!extraData || extraData.trim() === "") return;
-        if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; }
-    } else {
-        if (!confirm(`3,000p를 지불하고 '무지개 반사' 방어권을 구매하시겠습니까?`)) return;
-    }
-    
+    if (itemType === 'megaphone') { extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자):"); if (!extraData || extraData.trim() === "") return; if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } } 
+    else { if (!confirm(`3,000p를 지불하고 '무지개 반사' 방어권을 구매하시겠습니까?`)) return; }
     showLoading();
     try {
-        const res = await fetch(`${BACKEND_URL}/api/shop/buy`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` },
-            body: JSON.stringify({ email: myEmail, item_type: itemType, extra_data: extraData })
-        });
-        const data = await res.json();
-        if (data.status === 'success') { showToast(data.message); await forceSync(); } else { alert(data.message); }
+        const res = await fetch(`${BACKEND_URL}/api/shop/buy`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, item_type: itemType, extra_data: extraData }) });
+        const data = await res.json(); if (data.status === 'success') { showToast(data.message); await forceSync(); } else { alert(data.message); }
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
 
-// ★ [패치 1] 프로필 탭에 상점 UI 추가
 function renderProfile() {
     const container = document.getElementById('my-profile-info'); if(!container || !myProfile) return;
     const isDelisted = myProfile.status === 'delisted'; 
@@ -423,22 +480,13 @@ function renderProfile() {
 
     const shopHtml = `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #e5e8eb;">
-            <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between;">
-                🛒 포인트 상점
-                <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
-            </h3>
+            <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between;">🛒 포인트 상점<span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span></h3>
             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px; margin-bottom:10px;">
-                <div>
-                    <div style="font-weight:bold; font-size:14px; color:#333d4b;">🛡️ 무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div>
-                    <div style="font-size:11px; color:#8b95a1; margin-top:4px;">악평 피격 시 1회 자동 방어 및 소멸</div>
-                </div>
+                <div><div style="font-weight:bold; font-size:14px; color:#333d4b;">🛡️ 무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">악평 피격 시 1회 자동 방어</div></div>
                 <button onclick="buyShopItem('shield', 3000)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">3,000p</button>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
-                <div>
-                    <div style="font-weight:bold; font-size:14px; color:#333d4b;">📢 글로벌 확성기</div>
-                    <div style="font-size:11px; color:#8b95a1; margin-top:4px;">전국구 뉴스 티커에 내 메시지 띄우기</div>
-                </div>
+                <div><div style="font-weight:bold; font-size:14px; color:#333d4b;">📢 글로벌 확성기</div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">전국구 뉴스 티커에 메시지 띄우기</div></div>
                 <button onclick="buyShopItem('megaphone', 1500)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">1,500p</button>
             </div>
         </div>
