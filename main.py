@@ -15,10 +15,17 @@ load_dotenv()
 
 app = FastAPI()
 
+# [보안 패치] 허용된 도메인만 접근 가능하도록 CORS 엄격 제한
+origins = [
+    "https://friend-coin.vercel.app",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False, 
+    allow_origins=origins,
+    allow_credentials=True, 
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -27,6 +34,7 @@ MONGO_URL = os.getenv("MONGO_URL")
 client = MongoClient(MONGO_URL)
 db = client["friend_coin_db"] 
 
+# --- Pydantic Models ---
 class EvalData(BaseModel):
     evaluator_email: str
     target_email: str
@@ -94,12 +102,22 @@ class GambleData(BaseModel):
     email: str
     guess: str
 
+# --- 유틸리티 함수 ---
 api_cooldowns = { "chat": {}, "evaluate": {}, "agenda": {}, "join": {}, "gamble": {} }
 
 def is_spamming(email: str, action_type: str, cooldown_seconds: int) -> bool:
     now = datetime.utcnow()
+    
+    # [최적화 패치] 메모리 누수 방지 로직 (딕셔너리가 커지면 만료된 항목 청소)
+    if len(api_cooldowns[action_type]) > 500:
+        expired_keys = [k for k, v in api_cooldowns[action_type].items() if (now - v).total_seconds() >= cooldown_seconds]
+        for k in expired_keys:
+            del api_cooldowns[action_type][k]
+
     last_time = api_cooldowns[action_type].get(email)
-    if last_time and (now - last_time).total_seconds() < cooldown_seconds: return True 
+    if last_time and (now - last_time).total_seconds() < cooldown_seconds: 
+        return True 
+    
     api_cooldowns[action_type][email] = now
     return False
 
@@ -114,6 +132,7 @@ def verify_google_token(auth_header: str):
         return data.get("email").strip().lower()
     except Exception: return None
 
+# --- API Endpoints ---
 @app.get("/api/data")
 def get_user_data(authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -230,7 +249,6 @@ def get_user_data(authorization: str = Header(None)):
                                     e_noti = eval_user.get("noti", [])
                                     e_noti.insert(0, f"💸 [위자료 입금] 24시간 무응답으로 {a['target_name']}님의 방어 재판이 기각되어 위자료 1,000p를 획득했습니다.")
                                     db["users"].update_one({"_id": evaluator_email}, {"$set": {"profile": e_prof, "noti": e_noti}})
-                        # ★ [패치] 무응답 자동 가결 시
                         elif a["type"] == "kick":
                             db["rooms"].update_one({"_id": room["_id"]}, {"$pull": {"members": a["target_email"]}})
                             t_noti.insert(0, f"🚪 24시간 무응답으로 클럽에서 내보내졌습니다.")
@@ -262,80 +280,6 @@ def get_user_data(authorization: str = Header(None)):
     megaphone_msg = sys_data.get("megaphone", "") if sys_data else ""
 
     return {"isNewUser": False, "profile": profile, "noti": user_data.get("noti", []), "my_rooms": my_rooms, "global_ranking": global_ranking, "megaphone_msg": megaphone_msg}
-
-@app.post("/api/shop/buy")
-def buy_shop_item(data: ShopData, authorization: str = Header(None)):
-    email = verify_google_token(authorization)
-    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
-    user = db["users"].find_one({"_id": email})
-    if not user: return {"status": "error", "message": "유저 없음"}
-    
-    profile = user["profile"]
-    kst_now = datetime.utcnow() + timedelta(hours=9)
-    
-    if data.item_type == "shield":
-        if profile.get("price", 20000) < 3000: return {"status": "error", "message": "잔고가 부족합니다 (3,000p 필요)."}
-        profile["price"] -= 3000
-        profile["shieldCount"] = profile.get("shieldCount", 0) + 1
-        
-        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
-        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
-        db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-        return {"status": "success", "message": "🛡️ 무지개 반사 구매 완료! (악평 1회 자동 방어)"}
-        
-    elif data.item_type == "megaphone":
-        if profile.get("price", 20000) < 1500: return {"status": "error", "message": "잔고가 부족합니다 (1,500p 필요)."}
-        if not data.extra_data.strip(): return {"status": "error", "message": "메시지를 입력하세요."}
-        
-        profile["price"] -= 1500
-        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
-        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
-        
-        db["system"].update_one({"_id": "global"}, {"$set": {"megaphone": f"📢 [{profile.get('name')}] {data.extra_data}"}}, upsert=True)
-        db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-        return {"status": "success", "message": "📢 확성기 사용 완료! 전국구 티커에 등록되었습니다."}
-        
-    return {"status": "error", "message": "알 수 없는 아이템입니다."}
-
-@app.post("/api/room/gamble")
-def room_gamble(data: GambleData, authorization: str = Header(None)):
-    email = verify_google_token(authorization)
-    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
-    if is_spamming(email, "gamble", 2): return {"status": "error", "message": "천천히 배팅해주세요."}
-
-    user = db["users"].find_one({"_id": email})
-    if not user or user["profile"].get("price", 0) < 500: return {"status": "error", "message": "도박장 입장 최소 금액(500p)이 부족합니다."}
-
-    room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []): return {"status": "error", "message": "클럽 멤버가 아닙니다."}
-
-    profile = user["profile"]
-    dice = random.randint(1, 6)
-    is_odd = dice % 2 != 0
-    user_guess_odd = data.guess == "홀"
-
-    win = (is_odd and user_guess_odd) or (not is_odd and not user_guess_odd)
-    result_str = "홀" if is_odd else "짝"
-
-    kst_now = datetime.utcnow() + timedelta(hours=9)
-    time_str = kst_now.strftime("%m.%d %H:%M")
-
-    if win:
-        profile["price"] += 500 # 500 내고 1000 받으니 순이익 500
-        chat_msg = f"🎰 [도박장] {profile.get('name')}님이 '{data.guess}'에 배팅! ➔ 🎲 {dice} ({result_str}) ➔ 🎉 1,000p 획득!"
-        msg = f"🎉 🎲 {dice} ({result_str})! 주사위 게임 승리! 1,000p를 획득하셨습니다!"
-    else:
-        profile["price"] -= 500
-        chat_msg = f"🎰 [도박장] {profile.get('name')}님이 '{data.guess}'에 배팅! ➔ 🎲 {dice} ({result_str}) ➔ 💸 500p 증발..."
-        msg = f"💸 🎲 {dice} ({result_str})... 도박 실패. 500p를 잃으셨습니다."
-
-    if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
-    profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(time_str)
-
-    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": chat_msg}}})
-
-    return {"status": "success", "message": msg}
 
 @app.post("/api/save")
 def save_user_data(data: UserData, authorization: str = Header(None)):
@@ -405,7 +349,7 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.evaluator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     if data.evaluator_email == data.target_email: return {"status": "error", "message": "자신을 평가할 수 없습니다."}
-    if is_spamming(email, "evaluate", 3): return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
+    if is_spamming(email, "evaluate", 3): return {"status": "error", "message": "요청이 너무 빠릅니다."}
     if data.intensity not in [1, 2, 3]: return {"status": "error", "message": "올바르지 않은 변동 수치입니다."}
 
     evaluator = db["users"].find_one({"_id": data.evaluator_email})
@@ -564,10 +508,10 @@ def leave_room(data: RoomData, authorization: str = Header(None)):
     user = db["users"].find_one({"_id": email})
     profile = user.get("profile", {})
     for a in room.get("agendas", []):
-        if a.get("status") == "active" and a.get("target_email") == email: return {"status": "error", "message": "🚨 도망 금지: 본인이 회부된 진행 중인 재판이 있어 방을 나갈 수 없습니다."}
+        if a.get("status") == "active" and a.get("target_email") == email: return {"status": "error", "message": "🚨 도망 금지: 진행 중인 재판이 있어 방을 나갈 수 없습니다."}
     for pe in profile.get("pending_evals", []):
-        if pe.get("evaluator_email") in room_members: return {"status": "error", "message": "🚨 도망 금지: 이 방의 멤버가 작성한 결재 대기 중인 악평이 있습니다."}
-    if profile.get("narackStartTime") and profile.get("narackLastHitEmail") in room_members: return {"status": "error", "message": "🚨 도망 금지: 상장폐지 심사 대기 중(나락 상태)이므로 방을 나갈 수 없습니다."}
+        if pe.get("evaluator_email") in room_members: return {"status": "error", "message": "🚨 도망 금지: 대기 중인 악평이 있습니다."}
+    if profile.get("narackStartTime") and profile.get("narackLastHitEmail") in room_members: return {"status": "error", "message": "🚨 도망 금지: 상장폐지 심사 대기 중입니다."}
     db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"members": email}})
     return {"status": "success"}
 
@@ -575,7 +519,7 @@ def leave_room(data: RoomData, authorization: str = Header(None)):
 def send_chat(data: ChatData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.sender_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
-    if is_spamming(email, "chat", 1): return {"status": "error", "message": "채팅 도배 방지! 천천히 입력해 주세요."}
+    if is_spamming(email, "chat", 1): return {"status": "error", "message": "도배 방지! 천천히 입력해 주세요."}
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
     chat_msg = {"sender_email": email, "sender_name": data.sender_name, "message": data.message}
@@ -587,7 +531,7 @@ def add_room_event(data: EventAddData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.creator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
+    if not room or email not in room.get("members", []): return {"status": "error", "message": "권한 없음"}
     event = { "id": str(uuid.uuid4()), "start_date": data.start_date, "end_date": data.end_date, "title": data.title, "creator_email": email, "creator_name": data.creator_name }
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"events": event}})
     return {"status": "success"}
@@ -597,11 +541,10 @@ def delete_room_event(data: EventDeleteData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.deleter_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
+    if not room or email not in room.get("members", []): return {"status": "error", "message": "권한 없음"}
     db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"events": {"id": data.event_id}}})
     return {"status": "success"}
 
-# ★ [패치] 무과금 내보내기 안건 생성
 @app.post("/api/agenda/create")
 def create_agenda(data: AgendaData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -656,15 +599,12 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
     status_msg = "success"; message = "투표 완료"
     kst_now = datetime.utcnow() + timedelta(hours=9)
 
-    # 🚨 가결 시
     if target_agenda["agreeVotes"] >= required_votes:
         target_agenda["status"] = "resolved"
         target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
         
-        # ★ [패치] 무과금 내보내기 통과 시
         if target_agenda["type"] == "kick":
             db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"members": target_agenda["target_email"]}})
-            
             creator_email = target_agenda.get("creator_email")
             if creator_email:
                 c_user = db["users"].find_one({"_id": creator_email})
@@ -722,11 +662,8 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
             db["users"].update_one({"_id": target_agenda["target_email"]}, {"$set": {"profile": target_user["profile"], "noti": target_user.get("noti", [])}})
         status_msg = "resolved"
 
-    # ⚖️ 기각 시
     elif target_agenda["disagreeVotes"] >= required_votes:
         target_agenda["status"] = "rejected"; status_msg = "resolved"
-        
-        # ★ [패치] 무과금 내보내기 부결 시 
         if target_agenda["type"] == "kick":
             target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
             if target_user:
@@ -752,6 +689,77 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
 
     db["rooms"].update_one({"_id": data.room_code}, {"$set": {"agendas": agendas}})
     return {"status": status_msg, "message": message}
+
+@app.post("/api/shop/buy")
+def buy_shop_item(data: ShopData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    user = db["users"].find_one({"_id": email})
+    if not user: return {"status": "error", "message": "유저 없음"}
+    
+    profile = user["profile"]
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    
+    if data.item_type == "shield":
+        if profile.get("price", 20000) < 3000: return {"status": "error", "message": "잔고가 부족합니다 (3,000p 필요)."}
+        profile["price"] -= 3000
+        profile["shieldCount"] = profile.get("shieldCount", 0) + 1
+        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
+        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
+        db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
+        return {"status": "success", "message": "🛡️ 무지개 반사 구매 완료! (악평 1회 자동 방어)"}
+        
+    elif data.item_type == "megaphone":
+        if profile.get("price", 20000) < 1500: return {"status": "error", "message": "잔고가 부족합니다 (1,500p 필요)."}
+        if not data.extra_data.strip(): return {"status": "error", "message": "메시지를 입력하세요."}
+        profile["price"] -= 1500
+        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
+        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
+        db["system"].update_one({"_id": "global"}, {"$set": {"megaphone": f"📢 [{profile.get('name')}] {data.extra_data}"}}, upsert=True)
+        db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
+        return {"status": "success", "message": "📢 확성기 사용 완료! 전국구 티커에 등록되었습니다."}
+        
+    return {"status": "error", "message": "알 수 없는 아이템입니다."}
+
+@app.post("/api/room/gamble")
+def room_gamble(data: GambleData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    if is_spamming(email, "gamble", 2): return {"status": "error", "message": "천천히 배팅해주세요."}
+
+    user = db["users"].find_one({"_id": email})
+    if not user or user["profile"].get("price", 0) < 500: return {"status": "error", "message": "도박장 입장 최소 금액(500p)이 부족합니다."}
+
+    room = db["rooms"].find_one({"_id": data.room_code})
+    if not room or email not in room.get("members", []): return {"status": "error", "message": "클럽 멤버가 아닙니다."}
+
+    profile = user["profile"]
+    dice = random.randint(1, 6)
+    is_odd = dice % 2 != 0
+    user_guess_odd = data.guess == "홀"
+
+    win = (is_odd and user_guess_odd) or (not is_odd and not user_guess_odd)
+    result_str = "홀" if is_odd else "짝"
+
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    time_str = kst_now.strftime("%m.%d %H:%M")
+
+    if win:
+        profile["price"] += 500
+        chat_msg = f"🎰 [도박장] {profile.get('name')}님이 '{data.guess}'에 배팅! ➔ 🎲 {dice} ({result_str}) ➔ 🎉 1,000p 획득!"
+        msg = f"🎉 🎲 {dice} ({result_str})! 주사위 게임 승리! 1,000p를 획득하셨습니다!"
+    else:
+        profile["price"] -= 500
+        chat_msg = f"🎰 [도박장] {profile.get('name')}님이 '{data.guess}'에 배팅! ➔ 🎲 {dice} ({result_str}) ➔ 💸 500p 증발..."
+        msg = f"💸 🎲 {dice} ({result_str})... 도박 실패. 500p를 잃으셨습니다."
+
+    if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
+    profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(time_str)
+
+    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
+    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": chat_msg}}})
+
+    return {"status": "success", "message": msg}
 
 @app.post("/api/upload")
 async def upload_image(image: UploadFile = File(...)):
