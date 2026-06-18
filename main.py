@@ -15,7 +15,6 @@ load_dotenv()
 
 app = FastAPI()
 
-# ★ [긴급 패치] 코드스페이스 환경 접속을 위해 CORS 보안 제한 해제
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -105,16 +104,13 @@ api_cooldowns = { "chat": {}, "evaluate": {}, "agenda": {}, "join": {}, "gamble"
 
 def is_spamming(email: str, action_type: str, cooldown_seconds: int) -> bool:
     now = datetime.utcnow()
-    
     if len(api_cooldowns[action_type]) > 500:
         expired_keys = [k for k, v in api_cooldowns[action_type].items() if (now - v).total_seconds() >= cooldown_seconds]
         for k in expired_keys:
             del api_cooldowns[action_type][k]
-
     last_time = api_cooldowns[action_type].get(email)
     if last_time and (now - last_time).total_seconds() < cooldown_seconds: 
         return True 
-    
     api_cooldowns[action_type][email] = now
     return False
 
@@ -128,6 +124,15 @@ def verify_google_token(auth_header: str):
         if data.get("aud") != "837250448431-hrlfbnof2bf4acofs03e28t3qdpkun5g.apps.googleusercontent.com": return None
         return data.get("email").strip().lower()
     except Exception: return None
+
+# ★ [긴급 패치] 어떤 이상한 날짜 형식이 들어와도 서버가 죽지 않고 버티게 만드는 방패 함수
+def parse_time_safe(time_str):
+    if not time_str: return None
+    try:
+        clean_str = time_str.replace("Z", "+00:00")
+        return datetime.fromisoformat(clean_str)
+    except Exception:
+        return None
 
 @app.get("/api/data")
 def get_user_data(authorization: str = Header(None)):
@@ -155,8 +160,8 @@ def get_user_data(authorization: str = Header(None)):
     
     for e in pending_list:
         if "timestamp" in e:
-            created = datetime.fromisoformat(e["timestamp"])
-            if datetime.utcnow() >= created + timedelta(hours=24):
+            created = parse_time_safe(e["timestamp"]) # ★ 안전한 시간 파싱 적용
+            if created and datetime.utcnow() >= created + timedelta(hours=24):
                 base_p = profile.get("basePrice", 20000)
                 change_amount = base_p * (e["intensity"] * 0.01)
                 profile["price"] = profile.get("price", 20000) - change_amount
@@ -182,8 +187,8 @@ def get_user_data(authorization: str = Header(None)):
         db["users"].update_one({"_id": email}, {"$set": {"profile": profile, "noti": user_data.get("noti", [])}})
 
     if profile.get("narackStartTime") and profile.get("narackLastHitEmail"):
-        start_time = datetime.fromisoformat(profile["narackStartTime"])
-        if datetime.utcnow() >= start_time + timedelta(days=30):
+        start_time = parse_time_safe(profile["narackStartTime"]) # ★ 안전한 시간 파싱 적용
+        if start_time and datetime.utcnow() >= start_time + timedelta(days=30):
             last_hit_email = profile["narackLastHitEmail"]
             common_room = db["rooms"].find_one({"members": {"$all": [email, last_hit_email]}})
             if common_room:
@@ -204,9 +209,8 @@ def get_user_data(authorization: str = Header(None)):
         room_modified = False
         for a in room.get("agendas", []):
             if a.get("status") == "active" and a.get("created_at"):
-                created_str = a["created_at"] if "Z" in a["created_at"] else a["created_at"] + "Z"
-                created = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
-                if datetime.utcnow() >= created + timedelta(hours=24):
+                created = parse_time_safe(a["created_at"]) # ★ 안전한 시간 파싱 적용
+                if created and datetime.utcnow() >= created + timedelta(hours=24):
                     a["status"] = "resolved"; a["agreeVotes"] = 999; room_modified = True
                     target_user = db["users"].find_one({"_id": a["target_email"]})
                     
