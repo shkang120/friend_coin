@@ -8,12 +8,15 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- 전역 로딩 스피너 및 알림창 -->
     <div id="global-loader"><div class="spinner"></div></div>
     <div id="toast"></div>
 
     <div class="app-container">
+        <!-- 최상단 글로벌 뉴스 티커 -->
         <div class="news-ticker"><div class="ticker-text" id="ticker-text">[속보] 코인 데이터 불러오는 중...</div></div>
 
+        <!-- 메인 화면 뷰 컨테이너 -->
         <div class="view-container">
             <div id="home-view" class="view">
                 <div class="header-top"><div>📈 내 클럽 로비</div></div>
@@ -41,6 +44,7 @@
             </div>
         </div>
 
+        <!-- 하단 네비게이션 바 -->
         <div class="bottom-nav">
             <div class="nav-item" onclick="switchTab('home')"><span class="nav-icon">📈</span>로비</div>
             <div class="nav-item" onclick="switchTab('meeting')"><span class="nav-icon">⚖️</span>총회</div>
@@ -50,18 +54,30 @@
         </div>
     </div>
 
+    <!-- ===== 정적 모달창(팝업) 영역 ===== -->
+
+    <!-- ★ [패치] 프로필 통합 꾸미기 모달 -->
     <div id="profile-modal" class="modal-overlay">
-        <div class="modal-content" style="text-align: center;">
-            <h3 style="margin-top:0; color:#333d4b;">내 아바타 선택</h3>
-            <div id="default-profiles-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;"></div>
+        <div class="modal-content" style="text-align: center; max-height:85vh; overflow-y:auto;">
+            <h3 style="margin-top:0; color:#333d4b;">🎨 프로필 꾸미기</h3>
+            
+            <div style="font-weight:bold; font-size:14px; color:#4e5968; margin-bottom:10px; text-align:left;">1. 내 아바타 변경</div>
+            <div id="default-profiles-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px;"></div>
             <div style="margin: 15px 0; border-top: 1px dashed #e5e8eb; padding-top: 15px;">
                 <label for="custom-image-upload" style="display:block; padding:12px; background:#f2f4f6; color:#4e5968; border-radius:10px; font-weight:bold; cursor:pointer;">📸 내 갤러리 사진 올리기 (5MB 이하)</label>
                 <input type="file" id="custom-image-upload" accept="image/*" style="display:none;">
             </div>
+            
+            <div style="font-weight:bold; font-size:14px; color:#4e5968; margin-top:25px; margin-bottom:10px; text-align:left;">2. 스페셜 테마 장착</div>
+            <div id="owned-themes-container" style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
+                <!-- JS에서 내가 보유한 테마 목록을 그려줍니다 -->
+            </div>
+
             <button onclick="closeProfileModal()" style="width:100%; padding:12px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">닫기</button>
         </div>
     </div>
 
+    <!-- VIP 결제 모달 -->
     <div id="vip-modal" class="modal-overlay">
         <div class="modal-content">
             <h3 style="margin-top: 0; color: #333d4b; text-align:center;">💎 프리미엄 VIP 가입</h3>
@@ -78,6 +94,7 @@
         </div>
     </div>
 
+    <!-- 광고 시청 모달 -->
     <div id="ad-modal" class="modal-overlay">
         <div class="modal-content" style="text-align: center;">
             <div style="font-size: 50px; margin-bottom: 10px;">📺</div>
@@ -90,6 +107,7 @@
         </div>
     </div>
 
+    <!-- 앱 엔진 로드 -->
     <script src="app.js"></script>
 </body>
 </html>

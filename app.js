@@ -37,8 +37,7 @@ function getYesterdayClosePrice(profile) {
     return yesterdayPrice;
 }
 
-// ★ [캐시 아이템 추가] anonTickets, profileTheme 추가
-const defaultProfile = { name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active', goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false, lastDailyAdBonus: null, lastAdTicketMonday: null, badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 }, isVIP: false, nameColor: "#333d4b", priceHistory: [], timeHistory: [], pending_evals: [], defense_count: 0, defense_month: "", roomAliases: {}, shieldCount: 0, anonTickets: 0, profileTheme: 'none' };
+const defaultProfile = { name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active', goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false, lastDailyAdBonus: null, lastAdTicketMonday: null, badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 }, isVIP: false, nameColor: "#333d4b", priceHistory: [], timeHistory: [], pending_evals: [], defense_count: 0, defense_month: "", roomAliases: {}, shieldCount: 0, anonTickets: 0, profileTheme: 'none', ownedThemes: ['none'] };
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = []; let currentRoomCode = null; let currentAdRewardType = null; let adInterval = null; let currentSelectedFriend = null; let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 }; let calYear = new Date().getFullYear(); let calMonth = new Date().getMonth(); let calSelectedDate = getFormattedDate(new Date());
 
 const DEFAULT_AVATARS = [ 'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aneka&backgroundColor=c0aede', 'https://api.dicebear.com/7.x/bottts/svg?seed=Oliver&backgroundColor=ffd5dc', 'https://api.dicebear.com/7.x/bottts/svg?seed=Sophie&backgroundColor=d1d4f9', 'https://api.dicebear.com/7.x/bottts/svg?seed=Jack&backgroundColor=ffdfbf', 'https://api.dicebear.com/7.x/bottts/svg?seed=Mia&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Leo&backgroundColor=c0aede', 'https://api.dicebear.com/7.x/bottts/svg?seed=Chloe&backgroundColor=ffd5dc', 'https://api.dicebear.com/7.x/bottts/svg?seed=Sam&backgroundColor=d1d4f9', 'https://api.dicebear.com/7.x/bottts/svg?seed=Zoe&backgroundColor=ffdfbf' ];
@@ -54,7 +53,6 @@ window.copyInviteLink = function(code) {
     } 
 };
 
-// ★ [테마 적용] 프로필 테두리에 효과 부여
 function getAvatarHtml(person, size = 'small') { 
     const sizePx = size === 'large' ? '100px' : '40px'; 
     const radius = size === 'large' ? '24px' : '14px'; 
@@ -485,51 +483,61 @@ function renderProfile() {
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
     if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
 
-    // ★ [캐시 상점 UI] 포인트 상점 아래에 추가
+    // ★ 상점 아이템 HTML
     const shopHtml = `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #e5e8eb;">
             <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between;">
                 🛒 포인트 상점 <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
             </h3>
             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
-                <div><div style="font-weight:bold; font-size:14px; color:#333d4b;">🛡️ 무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">악평 피격 시 1회 자동 방어</div></div>
+                <div><div style="font-weight:bold; font-size:14px; color:#333d4b;"><span style="display:inline-block; width:22px; text-align:center;">🛡️</span> 무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">악평 피격 시 1회 자동 방어</div></div>
                 <button onclick="buyShopItem('shield', 3000)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">3,000p</button>
             </div>
         </div>
+    `;
 
+    // ★ 캐시 상점 HTML (아이콘 정렬 칼각 맞춤 & 보유 여부 체크 적용)
+    const neonOwned = (myProfile.ownedThemes || []).includes('neon');
+    const fireOwned = (myProfile.ownedThemes || []).includes('fire');
+
+    const neonBtn = neonOwned 
+        ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed;" disabled>✅ 보유 중</button>`
+        : `<button onclick="buyCashItem('theme_neon')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,500</button>`;
+        
+    const fireBtn = fireOwned 
+        ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed;" disabled>✅ 보유 중</button>`
+        : `<button onclick="buyCashItem('theme_fire')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,500</button>`;
+
+    const cashShopHtml = `
         <div style="background: linear-gradient(135deg, #1c1c1e, #333d4b); border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.15); color:white;">
             <h3 style="margin-top:0; font-size:15px; display:flex; align-items:center; justify-content:space-between; color:#d4af37;">
                 💎 스페셜 캐시 상점 <span style="font-size:11px; font-weight:normal; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:10px;">가상 결제 테스트 중</span>
             </h3>
             
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div><div style="font-weight:bold; font-size:14px;">🥷 익명 암살권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.anonTickets || 0}개)</span></div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">악평 시 내 정체 100% 은폐</div></div>
+                <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">🥷</span> 익명 암살권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.anonTickets || 0}개)</span></div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">악평 시 내 정체 100% 은폐</div></div>
                 <button onclick="buyCashItem('anon_ticket')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩2,500</button>
             </div>
             
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div><div style="font-weight:bold; font-size:14px;">💰 긴급 자금 수혈</div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">계좌로 즉시 10,000p 입금</div></div>
+                <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">💰</span> 긴급 자금 수혈</div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">계좌로 즉시 10,000p 입금</div></div>
                 <button onclick="buyCashItem('fund_pack')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,000</button>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div><div style="font-weight:bold; font-size:14px;">📢 글로벌 확성기</div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">전국구 뉴스 티커에 메시지 띄우기</div></div>
-                <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩1,500</button>
+                <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">📢</span> 글로벌 확성기</div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">전국구 뉴스 티커에 메시지 띄우기</div></div>
+                <!-- ★ 확성기 가격 500원 수정 -->
+                <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩500</button>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div><div style="font-weight:bold; font-size:14px;">✨ 테마: 홀로그램 네온</div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">프로필 무지개빛 발광 효과</div></div>
-                <button onclick="buyCashItem('theme_neon')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,500</button>
+                <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">✨</span> 테마: 홀로그램 네온</div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">프로필 무지개빛 발광 효과</div></div>
+                ${neonBtn}
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px;">
-                <div><div style="font-weight:bold; font-size:14px;">🔥 테마: 지옥의 불꽃</div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">프로필 타오르는 오라 효과</div></div>
-                <button onclick="buyCashItem('theme_fire')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,500</button>
-            </div>
-            
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-top:10px;">
-                <div><div style="font-weight:bold; font-size:14px; color:#b6e3f4;">일반 테마로 복구</div></div>
-                <button onclick="buyCashItem('theme_none')" style="background:#e5e8eb; color:#4e5968; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">무료 변경</button>
+                <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">🔥</span> 테마: 지옥의 불꽃</div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">프로필 타오르는 오라 효과</div></div>
+                ${fireBtn}
             </div>
         </div>
     `;
@@ -559,6 +567,7 @@ function renderProfile() {
         <div style="font-weight: bold; color: ${colorClass}; margin-bottom: 20px;">${isDelisted ? '' : sign + Math.floor(changeAmount).toLocaleString() + ' p (' + sign + changeRate + '%)'}</div>
         <div style="background: white; padding: 15px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); border: 1px solid #f2f4f6;"><canvas id="priceChart" style="width:100%; height:150px;"></canvas></div>
         ${shopHtml}
+        ${cashShopHtml}
         ${actionBtn}
         <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px; margin-bottom: 100px;" onclick="handleLogout()">🚪 로그아웃</button>
     `;
@@ -711,14 +720,10 @@ function selectEvalType(type) {
     if (type === 'good') { 
         goodBtn.style.background = '#ff3b30'; goodBtn.style.color = 'white'; 
         document.getElementById('eval-int-1-pct').textContent = '+1%'; document.getElementById('eval-int-2-pct').textContent = '+2%'; document.getElementById('eval-int-3-pct').textContent = '+3%'; document.getElementById('eval-int-1-pts').textContent = `+${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `+${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `+${evalState.p3.toLocaleString()}p`; 
-        
-        // 익명권 숨기기
         const sec = document.getElementById('anon-section'); if(sec) { sec.style.display = 'none'; document.getElementById('use-anon-ticket').checked = false; }
     } else { 
         badBtn.style.background = '#3182f6'; badBtn.style.color = 'white'; 
         document.getElementById('eval-int-1-pct').textContent = '-1%'; document.getElementById('eval-int-2-pct').textContent = '-2%'; document.getElementById('eval-int-3-pct').textContent = '-3%'; document.getElementById('eval-int-1-pts').textContent = `-${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `-${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `-${evalState.p3.toLocaleString()}p`; 
-        
-        // ★ [패치] 익명권 보유 시 악평할 때만 체크박스 노출
         if (myProfile.anonTickets > 0) { document.getElementById('anon-section').style.display = 'block'; }
     } 
     intSec.style.display = 'block'; 
@@ -735,7 +740,6 @@ async function submitEvaluation(evalType, intensity) {
     const reasonInput = document.getElementById('eval-reason-input'); const reasonText = reasonInput ? reasonInput.value.trim() : "";
     if (!reasonText) { alert("평가 사유를 반드시 작성해 주세요!"); if(reasonInput) reasonInput.focus(); return; }
     
-    // ★ 익명 사용 여부 체크
     const anonCheckbox = document.getElementById('use-anon-ticket');
     const isAnonymous = anonCheckbox && anonCheckbox.checked;
 
@@ -802,12 +806,6 @@ async function claimWeeklyTickets() {
     } catch(err) { alert("서버 오류"); } finally { hideLoading(); }
 }
 
-function openVIPModal() { document.getElementById('vip-modal').style.display = 'flex'; if (myProfile.isVIP) { document.getElementById('vip-buy-section').style.display = 'none'; document.getElementById('vip-manage-section').style.display = 'block'; document.getElementById('vip-color-picker').value = myProfile.nameColor || '#333d4b'; } else { document.getElementById('vip-buy-section').style.display = 'block'; document.getElementById('vip-manage-section').style.none; } }
-function closeVIPModal() { document.getElementById('vip-modal').style.display = 'none'; }
-function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("💎 VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); }
-function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
-
-// 상점 아이템 구매
 window.buyShopItem = async function(itemType, cost) {
     if (myProfile.price < cost) { alert("잔고가 부족합니다!"); return; }
     if (!confirm(`3,000p를 지불하고 '무지개 반사' 방어권을 구매하시겠습니까?`)) return;
@@ -819,7 +817,6 @@ window.buyShopItem = async function(itemType, cost) {
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
 
-// ★ [신규 패치] 캐시 상점 전용 가상 결제 함수
 window.buyCashItem = async function(itemType) {
     let extraData = "";
     if (itemType === 'megaphone') { 
@@ -828,9 +825,7 @@ window.buyCashItem = async function(itemType) {
         if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } 
     }
     
-    if (itemType !== 'theme_none') {
-        if (!confirm("💳 테스트 환경이므로 실제 과금 없이 [무료 가상 결제]가 진행됩니다.\n계속하시겠습니까?")) return;
-    }
+    if (!confirm("💳 테스트 환경이므로 실제 과금 없이 [무료 가상 결제]가 진행됩니다.\n계속하시겠습니까?")) return;
 
     showLoading();
     try {
@@ -845,10 +840,52 @@ window.buyCashItem = async function(itemType) {
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
 
+// ★ [패치] 통합 프로필 편집 모달
+function openProfileModal() { 
+    document.getElementById('profile-modal').style.display = 'flex'; 
+    
+    // 1. 아바타 렌더링
+    const grid = document.getElementById('default-profiles-grid'); 
+    grid.innerHTML = DEFAULT_AVATARS.map(url => {
+        const isSelected = myProfile.profileImage === url;
+        const boxStyle = isSelected ? 'border: 3px solid #3182f6;' : 'border: 3px solid transparent; box-shadow: 0 2px 4px rgba(0,0,0,0.05);';
+        return `<div onclick="selectDefaultProfile('${url}')" style="cursor: pointer; border-radius: 12px; overflow: hidden; background: #f2f4f6; transition: transform 0.1s; ${boxStyle}"><img src="${url}" style="width: 100%; height: 100%; display: block; object-fit: cover;"></div>`;
+    }).join(''); 
 
-function openProfileModal() { document.getElementById('profile-modal').style.display = 'flex'; const grid = document.getElementById('default-profiles-grid'); grid.innerHTML = DEFAULT_AVATARS.map(url => `<div onclick="selectDefaultProfile('${url}')" style="cursor: pointer; border-radius: 12px; overflow: hidden; background: #f2f4f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.1s;"><img src="${url}" style="width: 100%; height: 100%; display: block; object-fit: cover;"></div>`).join(''); }
+    // 2. 테마 렌더링
+    const themeContainer = document.getElementById('owned-themes-container');
+    if (themeContainer) {
+        const owned = myProfile.ownedThemes || ['none'];
+        const themes = [
+            { id: 'none', name: '일반 테마 (기본)', icon: '👤' },
+            { id: 'neon', name: '홀로그램 네온', icon: '✨', class: 'theme-neon' },
+            { id: 'fire', name: '지옥의 불꽃', icon: '🔥', class: 'theme-fire' }
+        ];
+        
+        themeContainer.innerHTML = themes.map(t => {
+            if (!owned.includes(t.id)) return ''; // 보유한 것만 보여줌
+            const isEquipped = myProfile.profileTheme === t.id;
+            return `
+                <div onclick="selectTheme('${t.id}')" class="${t.id !== 'none' ? t.class : ''}" style="cursor:pointer; padding:12px; border-radius:12px; background:${isEquipped ? '#e8f5e9' : '#f9fafb'}; border:${isEquipped ? '2px solid #2e7d32' : '2px solid transparent'}; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-weight:bold; font-size:14px; color:#333d4b;">${t.icon} ${t.name}</div>
+                    ${isEquipped ? '<div style="font-size:12px; color:#2e7d32; font-weight:bold;">✅ 장착 중</div>' : '<div style="font-size:12px; color:#8b95a1; font-weight:bold;">장착하기</div>'}
+                </div>
+            `;
+        }).join('');
+    }
+}
 function closeProfileModal() { document.getElementById('profile-modal').style.display = 'none'; }
-function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); showToast("프로필 이미지 변경!"); closeProfileModal(); renderProfile(); }
+function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); showToast("프로필 아바타 변경!"); openProfileModal(); renderProfile(); }
+
+// ★ [패치] 테마 장착 함수
+window.selectTheme = function(themeId) {
+    myProfile.profileTheme = themeId;
+    saveData();
+    showToast("테마 장착 완료!");
+    openProfileModal(); 
+    renderProfile();
+};
+
 async function changeNickname() { const newName = prompt("변경할 닉네임 (최대 8자):"); if(!newName || newName.trim() === "" || newName.trim() === myProfile.name) return; if (/[^a-zA-Z0-9가-힣]/.test(newName.trim())) { alert("특수문자 불가"); return; } try { const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName.trim())}`); const data = await res.json(); if(!data.available) { alert(data.message); return; } myProfile.name = newName.trim(); myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); saveData(); showToast("변경 완료!"); renderProfile(); } catch(err) { alert("오류 발생"); } }
 
 let fileInput = document.getElementById('custom-image-upload');
@@ -922,6 +959,7 @@ function finishSetup() {
     if (myProfile && myProfile.shieldCount === undefined) myProfile.shieldCount = 0;
     if (myProfile && myProfile.anonTickets === undefined) myProfile.anonTickets = 0;
     if (myProfile && !myProfile.profileTheme) myProfile.profileTheme = 'none';
+    if (myProfile && !myProfile.ownedThemes) myProfile.ownedThemes = ['none']; // ★ 보유 테마 배열 초기화
     if (myProfile && !myProfile.badges) myProfile.badges = []; 
     if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
     if (myProfile && !myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice, myProfile.price]; myProfile.timeHistory = ["시작", getCurrentTime()]; } 

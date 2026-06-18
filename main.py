@@ -125,7 +125,6 @@ def verify_google_token(auth_header: str):
         return data.get("email").strip().lower()
     except Exception: return None
 
-# ★ [긴급 패치] 어떤 이상한 날짜 형식이 들어와도 서버가 죽지 않고 버티게 만드는 방패 함수
 def parse_time_safe(time_str):
     if not time_str: return None
     try:
@@ -160,7 +159,7 @@ def get_user_data(authorization: str = Header(None)):
     
     for e in pending_list:
         if "timestamp" in e:
-            created = parse_time_safe(e["timestamp"]) # ★ 안전한 시간 파싱 적용
+            created = parse_time_safe(e["timestamp"])
             if created and datetime.utcnow() >= created + timedelta(hours=24):
                 base_p = profile.get("basePrice", 20000)
                 change_amount = base_p * (e["intensity"] * 0.01)
@@ -187,7 +186,7 @@ def get_user_data(authorization: str = Header(None)):
         db["users"].update_one({"_id": email}, {"$set": {"profile": profile, "noti": user_data.get("noti", [])}})
 
     if profile.get("narackStartTime") and profile.get("narackLastHitEmail"):
-        start_time = parse_time_safe(profile["narackStartTime"]) # ★ 안전한 시간 파싱 적용
+        start_time = parse_time_safe(profile["narackStartTime"])
         if start_time and datetime.utcnow() >= start_time + timedelta(days=30):
             last_hit_email = profile["narackLastHitEmail"]
             common_room = db["rooms"].find_one({"members": {"$all": [email, last_hit_email]}})
@@ -209,7 +208,7 @@ def get_user_data(authorization: str = Header(None)):
         room_modified = False
         for a in room.get("agendas", []):
             if a.get("status") == "active" and a.get("created_at"):
-                created = parse_time_safe(a["created_at"]) # ★ 안전한 시간 파싱 적용
+                created = parse_time_safe(a["created_at"])
                 if created and datetime.utcnow() >= created + timedelta(hours=24):
                     a["status"] = "resolved"; a["agreeVotes"] = 999; room_modified = True
                     target_user = db["users"].find_one({"_id": a["target_email"]})
@@ -295,6 +294,8 @@ def save_user_data(data: UserData, authorization: str = Header(None)):
         db_profile["isVIP"] = data.profile.get("isVIP", db_profile.get("isVIP"))
         db_profile["badges"] = data.profile.get("badges", db_profile.get("badges", []))
         db_profile["roomAliases"] = data.profile.get("roomAliases", db_profile.get("roomAliases", {}))
+        db_profile["profileTheme"] = data.profile.get("profileTheme", db_profile.get("profileTheme", "none")) # ★ 저장 시 테마 반영
+        db_profile["ownedThemes"] = data.profile.get("ownedThemes", db_profile.get("ownedThemes", ["none"])) # ★ 보유 테마 목록 저장
         final_profile = db_profile
     else: final_profile = data.profile
     db["users"].update_one({"_id": email}, {"$set": {"profile": final_profile, "noti": data.noti}}, upsert=True)
@@ -729,6 +730,7 @@ def buy_shop_item(data: ShopData, authorization: str = Header(None)):
         
     return {"status": "error", "message": "알 수 없는 아이템입니다."}
 
+# ★ [패치] 테마 구매 시 보유 배열(ownedThemes)에 추가 및 중복 방지 로직 적용
 @app.post("/api/cash-shop/buy")
 def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -738,6 +740,10 @@ def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
     
     profile = user["profile"]
     kst_now = datetime.utcnow() + timedelta(hours=9)
+    
+    # 보유 목록 배열이 없으면 초기화
+    if "ownedThemes" not in profile:
+        profile["ownedThemes"] = ["none"]
     
     if data.item_type == "anon_ticket":
         profile["anonTickets"] = profile.get("anonTickets", 0) + 1
@@ -756,11 +762,14 @@ def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
 
     elif data.item_type.startswith("theme_"):
         theme_name = data.item_type.split("_")[1]
-        profile["profileTheme"] = theme_name
-        if theme_name == "none":
-            msg = "🎨 테마가 기본값으로 복구되었습니다."
-        else:
-            msg = f"✨ 프로필 테마 [{theme_name}] 결제 및 적용 완료!"
+        
+        # 중복 검사
+        if theme_name in profile["ownedThemes"]:
+            return {"status": "error", "message": "이미 보유하고 있는 테마입니다."}
+            
+        profile["ownedThemes"].append(theme_name)
+        profile["profileTheme"] = theme_name # 사면 즉시 자동 장착
+        msg = f"✨ 테마 결제 완료! (자동으로 장착되었습니다)"
     else:
         return {"status": "error", "message": "알 수 없는 상품입니다."}
         
