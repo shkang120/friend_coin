@@ -418,7 +418,7 @@ function renderMeeting() {
         let btnHtml = ''; let stampHtml = ''; let opacityStyle = ''; let timeRemainingHtml = '';
 
         if (a.status === 'active') {
-            const createdTime = new Date(a.created_at).getTime(); const expireTime = createdTime + (24 * 60 * 60 * 1000); const nowTime = new Date().getTime();
+            const createdTime = new Date(a.created_at.includes('Z') ? a.created_at : a.created_at + 'Z').getTime(); const expireTime = createdTime + (24 * 60 * 60 * 1000); const nowTime = new Date().getTime();
             let diffMs = expireTime - nowTime; if (diffMs < 0) diffMs = 0; 
             const diffHrs = Math.floor(diffMs / (1000 * 60 * 60)); const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
             timeRemainingHtml = `<span style="background:#fff3f3; color:#ff3b30; padding:3px 8px; border-radius:10px; font-size:11px; font-weight:bold;">⏳ 마감까지 ${diffHrs}시간 ${diffMins}분</span>`;
