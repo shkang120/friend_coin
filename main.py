@@ -15,16 +15,11 @@ load_dotenv()
 
 app = FastAPI()
 
-origins = [
-    "https://friend-coin.vercel.app",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000"
-]
-
+# ★ [긴급 패치] 코드스페이스 환경 접속을 위해 CORS 보안 제한 해제
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True, 
+    allow_origins=["*"],
+    allow_credentials=False, 
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -39,7 +34,7 @@ class EvalData(BaseModel):
     eval_type: str
     intensity: int
     reason: str = Field("", max_length=500)
-    is_anonymous: bool = False # ★ 익명 권한 추가
+    is_anonymous: bool = False
 
 class UserData(BaseModel):
     profile: dict
@@ -96,7 +91,6 @@ class ShopData(BaseModel):
     item_type: str
     extra_data: str = ""
 
-# ★ 캐시 상점 전용 모델 추가
 class CashShopData(BaseModel):
     email: str
     item_type: str
@@ -370,7 +364,6 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
 
     evaluator_name = evaluator.get("profile", {}).get("name", "익명")
 
-    # ★ [패치] 익명 암살 처리
     if data.is_anonymous and data.eval_type == 'bad':
         if evaluator["profile"].get("anonTickets", 0) <= 0: return {"status": "error", "message": "보유한 익명 암살권이 없습니다."}
         evaluator["profile"]["anonTickets"] -= 1
@@ -488,7 +481,6 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
         }
 
         profile["pending_evals"] = [e for e in pending_list if e["id"] != data.eval_id]
-        # 익명일 경우 전역(아무 방)이나 가장 최근 활성 방에 올릴 수 있음
         target_room_id = common_room["_id"] if common_room else db["rooms"].find_one({"members": email})["_id"]
         db["rooms"].update_one({"_id": target_room_id}, {"$push": {"agendas": agenda}})
         db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
@@ -733,7 +725,6 @@ def buy_shop_item(data: ShopData, authorization: str = Header(None)):
         
     return {"status": "error", "message": "알 수 없는 아이템입니다."}
 
-# ★ [신규 패치] 캐시 상점 전용 결제 로직 추가
 @app.post("/api/cash-shop/buy")
 def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
