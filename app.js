@@ -13,16 +13,6 @@ if (!document.getElementById('global-loader')) {
     loader.innerHTML = '<div class="spinner"></div>';
     loader.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.6); z-index:99999; display:none; justify-content:center; align-items:center; backdrop-filter:blur(2px);";
     document.body.appendChild(loader);
-
-    const style = document.createElement('style');
-    style.id = 'custom-styles';
-    style.innerHTML = `
-        .spinner { width: 45px; height: 45px; border: 5px solid #e5e8eb; border-top-color: #3182f6; border-radius: 50%; animation: spin 0.8s linear infinite; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-        @keyframes stampDrop { 0% { transform: scale(3) rotate(-30deg); opacity: 0; } 50% { transform: scale(0.9) rotate(-10deg); opacity: 1; } 100% { transform: scale(1) rotate(-15deg); opacity: 0.9; } }
-        .verdict-stamp { position: absolute; top: 15px; right: 15px; border: 4px solid; padding: 5px 15px; font-size: 22px; font-weight: 900; border-radius: 8px; font-family: 'Times New Roman', serif; letter-spacing: 2px; animation: stampDrop 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards; z-index: 10; pointer-events: none; background: rgba(255,255,255,0.85); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    `;
-    document.head.appendChild(style);
 }
 
 window.showLoading = () => document.getElementById('global-loader').style.display = 'flex';
@@ -47,8 +37,8 @@ function getYesterdayClosePrice(profile) {
     return yesterdayPrice;
 }
 
-// ★ [패치] lastAdTicketMonday 추가 (일일 -> 주간)
-const defaultProfile = { name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active', goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false, lastDailyAdBonus: null, lastAdTicketMonday: null, badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 }, isVIP: false, nameColor: "#333d4b", priceHistory: [], timeHistory: [], pending_evals: [], defense_count: 0, defense_month: "", roomAliases: {}, shieldCount: 0 };
+// ★ [캐시 아이템 추가] anonTickets, profileTheme 추가
+const defaultProfile = { name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active', goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false, lastDailyAdBonus: null, lastAdTicketMonday: null, badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 }, isVIP: false, nameColor: "#333d4b", priceHistory: [], timeHistory: [], pending_evals: [], defense_count: 0, defense_month: "", roomAliases: {}, shieldCount: 0, anonTickets: 0, profileTheme: 'none' };
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = []; let currentRoomCode = null; let currentAdRewardType = null; let adInterval = null; let currentSelectedFriend = null; let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 }; let calYear = new Date().getFullYear(); let calMonth = new Date().getMonth(); let calSelectedDate = getFormattedDate(new Date());
 
 const DEFAULT_AVATARS = [ 'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aneka&backgroundColor=c0aede', 'https://api.dicebear.com/7.x/bottts/svg?seed=Oliver&backgroundColor=ffd5dc', 'https://api.dicebear.com/7.x/bottts/svg?seed=Sophie&backgroundColor=d1d4f9', 'https://api.dicebear.com/7.x/bottts/svg?seed=Jack&backgroundColor=ffdfbf', 'https://api.dicebear.com/7.x/bottts/svg?seed=Mia&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Leo&backgroundColor=c0aede', 'https://api.dicebear.com/7.x/bottts/svg?seed=Chloe&backgroundColor=ffd5dc', 'https://api.dicebear.com/7.x/bottts/svg?seed=Sam&backgroundColor=d1d4f9', 'https://api.dicebear.com/7.x/bottts/svg?seed=Zoe&backgroundColor=ffdfbf' ];
@@ -64,17 +54,22 @@ window.copyInviteLink = function(code) {
     } 
 };
 
+// ★ [테마 적용] 프로필 테두리에 효과 부여
 function getAvatarHtml(person, size = 'small') { 
     const sizePx = size === 'large' ? '100px' : '40px'; 
     const radius = size === 'large' ? '24px' : '14px'; 
     const isDelisted = person.status === 'delisted'; 
     const filter = isDelisted ? 'grayscale(100%) opacity(50%)' : 'none'; 
+    const themeClass = (person.profileTheme && person.profileTheme !== 'none') ? `theme-${person.profileTheme}` : '';
     
+    let inner = '';
     if (person.profileImage) {
-        return `<img src="${person.profileImage}" style="width:${sizePx}; height:${sizePx}; border-radius:${radius}; object-fit:cover; display:inline-block; vertical-align:middle; background:#f2f4f6; box-shadow: 0 2px 8px rgba(0,0,0,0.1); filter:${filter};">`;
+        inner = `<img src="${person.profileImage}" style="width:100%; height:100%; border-radius:${radius}; object-fit:cover; display:inline-block; vertical-align:middle; background:#f2f4f6;">`;
     } else {
-        return `<span style="display:inline-block; width:${sizePx}; height:${sizePx}; line-height:${sizePx}; text-align:center; font-size:${size === 'large' ? '50px' : '20px'}; background:#f9fafb; border-radius:${radius}; vertical-align:middle; box-shadow: 0 2px 8px rgba(0,0,0,0.05); filter:${filter};">${isDelisted ? '💀' : person.emoji || '👤'}</span>`;
+        inner = `<span style="display:inline-block; width:100%; height:100%; line-height:${sizePx}; text-align:center; font-size:${size === 'large' ? '50px' : '20px'}; background:#f9fafb; border-radius:${radius}; vertical-align:middle;">${isDelisted ? '💀' : person.emoji || '👤'}</span>`;
     }
+
+    return `<div class="${themeClass}" style="width:${sizePx}; height:${sizePx}; border-radius:${radius}; filter:${filter}; display:inline-block; vertical-align:middle; background:white; ${themeClass ? '' : 'box-shadow: 0 2px 8px rgba(0,0,0,0.1);'}">${inner}</div>`;
 }
 
 function getBadgeHtml(person) { 
@@ -206,7 +201,8 @@ function renderHome() {
                 const aliasTag = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? '<span style="font-size:10px; font-weight:normal; color:#8b95a1; background:#f2f4f6; padding:2px 4px; border-radius:4px; margin-left:4px;">내 별명</span>' : '';
                 const avatars = r.members.slice(0, 4).map((m, i) => { 
                     const inner = m.profileImage ? `<img src="${m.profileImage}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:12px; background:#f9fafb;">${m.status==='delisted'?'💀':m.emoji||'👤'}</div>`; 
-                    return `<div style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:${i===0?'0':'-8px'}; position:relative; z-index:${10-i}; overflow:hidden; display:inline-block; vertical-align:middle; box-shadow:0 1px 3px rgba(0,0,0,0.1); background:white;">${inner}</div>`; 
+                    const themeClass = (m.profileTheme && m.profileTheme !== 'none') ? `theme-${m.profileTheme}` : '';
+                    return `<div class="${themeClass}" style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:${i===0?'0':'-8px'}; position:relative; z-index:${10-i}; overflow:hidden; display:inline-block; vertical-align:middle; box-shadow:0 1px 3px rgba(0,0,0,0.1); background:white;">${inner}</div>`; 
                 }).join('');
                 const extraMembers = r.members.length > 4 ? `<div style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:-8px; position:relative; z-index:5; background:#f2f4f6; color:#8b95a1; font-size:10px; font-weight:bold; display:inline-flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,0.1); vertical-align:middle;">+${r.members.length-4}</div>` : '';
                 
@@ -465,10 +461,6 @@ function renderProfile() {
     const yesterdayPrice = getYesterdayClosePrice(myProfile); const changeAmount = myProfile.price - yesterdayPrice; const changeRate = yesterdayPrice > 0 ? ((changeAmount / yesterdayPrice) * 100).toFixed(1) : 0;
     const colorClass = changeAmount > 0 ? '#ff3b30' : (changeAmount < 0 ? '#3182f6' : '#8b95a1'); const sign = changeAmount > 0 ? '+' : '';
     
-    const vipBanner = myProfile.isVIP 
-        ? `<div style="background: linear-gradient(135deg, #d4af37, #f3e5f5); padding: 15px; border-radius: 12px; color: white; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div style="color:#333d4b;">👑 VIP 멤버십 적용 중</div><div style="font-size: 12px; background: rgba(255,255,255,0.4); color: #333d4b; padding: 6px 10px; border-radius: 6px;">설정 ⚙️</div></div>` 
-        : `<div style="background: #333d4b; padding: 15px; border-radius: 12px; color: #d4af37; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="openVIPModal()"><div>💎 프리미엄 가입하기</div><div style="font-size: 12px; background: rgba(255,255,255,0.1); padding: 6px 10px; border-radius: 6px; color:white;">알아보기 👉</div></div>`;
-    
     const todayStr = getFormattedDate(new Date()); 
     const hasDailyDone = myProfile.lastDailyAttendance === todayStr; 
     const dailyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasDailyDone ? '#e5e8eb' : '#e8f5e9'}; color: ${hasDailyDone ? '#8b95a1' : '#2e7d32'}; font-weight: bold; border: none; cursor: ${hasDailyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="doDailyAttendance()" ${hasDailyDone ? 'disabled' : ''}>${hasDailyDone ? '✅ 출석 완료' : '📅 매일 출석 (+50p)'}</button>`;
@@ -484,46 +476,65 @@ function renderProfile() {
     const hasWeeklyDone = myProfile.weeklyTicketsClaimed === true; 
     const weeklyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasWeeklyDone ? '#e5e8eb' : '#fff3e0'}; color: ${hasWeeklyDone ? '#8b95a1' : '#e65100'}; font-weight: bold; border: none; cursor: ${hasWeeklyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="claimWeeklyTickets()" ${hasWeeklyDone ? 'disabled' : ''}>${hasWeeklyDone ? '✅ 주간 보너스 완료' : '🎁 주간 보너스 평가권 (각 +1장)'}</button>`;
     
-    // ★ [패치] 일간 보상 ➔ 주간 보상으로 텍스트 및 로직 변경 (JS에서 이번 주 월요일 계산)
-    const now = new Date();
-    const kstNow = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 3600000));
-    let day = kstNow.getDay();
-    let diff = (day === 0 ? 6 : day - 1);
-    let monday = new Date(kstNow);
-    monday.setDate(kstNow.getDate() - diff);
+    const now = new Date(); const kstNow = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 3600000));
+    let day = kstNow.getDay(); let diff = (day === 0 ? 6 : day - 1); let monday = new Date(kstNow); monday.setDate(kstNow.getDate() - diff);
     const mondayStr = getFormattedDate(monday);
-
     const hasAdTicketDone = myProfile.lastAdTicketMonday === mondayStr;
     const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasAdTicketDone ? '#e5e8eb' : '#f3e5f5'}; color: ${hasAdTicketDone ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${hasAdTicketDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="watchAd('extra_ticket')" ${hasAdTicketDone ? 'disabled' : ''}>${hasAdTicketDone ? '✅ 이번 주 추가 평가권 획득 완료' : '🎬 광고 보고 평가권 추가 (주 1회)'}</button>`;
     
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
     if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
 
+    // ★ [캐시 상점 UI] 포인트 상점 아래에 추가
     const shopHtml = `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #e5e8eb;">
             <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between;">
-                🛒 포인트 상점
-                <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
+                🛒 포인트 상점 <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
             </h3>
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px; margin-bottom:10px;">
-                <div>
-                    <div style="font-weight:bold; font-size:14px; color:#333d4b;">🛡️ 무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div>
-                    <div style="font-size:11px; color:#8b95a1; margin-top:4px;">악평 피격 시 1회 자동 방어</div>
-                </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
+                <div><div style="font-weight:bold; font-size:14px; color:#333d4b;">🛡️ 무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">악평 피격 시 1회 자동 방어</div></div>
                 <button onclick="buyShopItem('shield', 3000)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">3,000p</button>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
-                <div>
-                    <div style="font-weight:bold; font-size:14px; color:#333d4b;">📢 글로벌 확성기</div>
-                    <div style="font-size:11px; color:#8b95a1; margin-top:4px;">전국구 뉴스 티커에 메시지 띄우기</div>
-                </div>
-                <button onclick="buyShopItem('megaphone', 1500)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">1,500p</button>
+        </div>
+
+        <div style="background: linear-gradient(135deg, #1c1c1e, #333d4b); border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.15); color:white;">
+            <h3 style="margin-top:0; font-size:15px; display:flex; align-items:center; justify-content:space-between; color:#d4af37;">
+                💎 스페셜 캐시 상점 <span style="font-size:11px; font-weight:normal; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:10px;">가상 결제 테스트 중</span>
+            </h3>
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
+                <div><div style="font-weight:bold; font-size:14px;">🥷 익명 암살권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.anonTickets || 0}개)</span></div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">악평 시 내 정체 100% 은폐</div></div>
+                <button onclick="buyCashItem('anon_ticket')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩2,500</button>
+            </div>
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
+                <div><div style="font-weight:bold; font-size:14px;">💰 긴급 자금 수혈</div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">계좌로 즉시 10,000p 입금</div></div>
+                <button onclick="buyCashItem('fund_pack')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,000</button>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
+                <div><div style="font-weight:bold; font-size:14px;">📢 글로벌 확성기</div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">전국구 뉴스 티커에 메시지 띄우기</div></div>
+                <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩1,500</button>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
+                <div><div style="font-weight:bold; font-size:14px;">✨ 테마: 홀로그램 네온</div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">프로필 무지개빛 발광 효과</div></div>
+                <button onclick="buyCashItem('theme_neon')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,500</button>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px;">
+                <div><div style="font-weight:bold; font-size:14px;">🔥 테마: 지옥의 불꽃</div><div style="font-size:11px; color:#8b95a1; margin-top:4px;">프로필 타오르는 오라 효과</div></div>
+                <button onclick="buyCashItem('theme_fire')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,500</button>
+            </div>
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-top:10px;">
+                <div><div style="font-weight:bold; font-size:14px; color:#b6e3f4;">일반 테마로 복구</div></div>
+                <button onclick="buyCashItem('theme_none')" style="background:#e5e8eb; color:#4e5968; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">무료 변경</button>
             </div>
         </div>
     `;
 
     container.innerHTML = `
-        ${vipBanner}
         <div style="position: relative; display: inline-block;">
             ${getAvatarHtml(myProfile, 'large')}
             <button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✏️</button>
@@ -585,7 +596,6 @@ function renderRanking() {
     `;
 }
 
-// --- API 및 로직 처리 ---
 function enterRoom(code) { currentRoomCode = code; const now = new Date(); calYear = now.getFullYear(); calMonth = now.getMonth(); calSelectedDate = getFormattedDate(now); renderHome(); forceSync(); }
 function exitRoomView() { currentRoomCode = null; renderHome(); }
 
@@ -647,6 +657,7 @@ function openFriendDetail(friendEmail) {
                     <button id="eval-type-bad" onclick="selectEvalType('bad')" style="flex:1; padding:12px; border:1px solid #d6ebff; background:white; color:#3182f6; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👎 악평하기</button>
                 </div>
             </div>
+            
             <div id="eval-intensity-section" style="text-align:left; margin-bottom:15px; display:none;">
                 <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">2. 변동폭 선택</div>
                 <div style="display:flex; gap:8px;">
@@ -655,9 +666,16 @@ function openFriendDetail(friendEmail) {
                     <button id="eval-int-3" onclick="selectEvalIntensity(3)" style="flex:1; padding:10px; border:1px solid #e5e8eb; background:white; border-radius:8px; font-weight:bold; cursor:pointer; transition:0.2s;"><span id="eval-int-3-pct">3%</span><br><span id="eval-int-3-pts" style="font-size:10px; font-weight:normal; color:#8b95a1;"></span></button>
                 </div>
             </div>
+            
             <div style="text-align:left; margin-bottom:20px;">
                 <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">3. 사유 작성</div>
                 <textarea id="eval-reason-input" placeholder="이 코인을 평가하는 사유를 적어주세요 (필수)" style="width:100%; height:60px; padding:10px; border:1px solid #e5e8eb; border-radius:8px; box-sizing:border-box; resize:none; font-family:sans-serif; outline:none; font-size:13px;"></textarea>
+                
+                <div id="anon-section" style="display:none; margin-top:10px; padding:10px; background:#f3e5f5; border-radius:8px; border:1px solid #e1bee7;">
+                    <label style="font-weight:bold; color:#6a1b9a; cursor:pointer; font-size:12px; display:flex; align-items:center; gap:5px;">
+                        <input type="checkbox" id="use-anon-ticket"> 🥷 익명 암살권 사용 (보유: ${myProfile.anonTickets || 0}개)
+                    </label>
+                </div>
             </div>
             
             <button onclick="submitEvaluationFinal()" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; font-size:15px; cursor:pointer; margin-bottom:10px; transition:0.2s;">🚀 평가 보내기</button>
@@ -686,7 +704,26 @@ window.kickUser = async function(targetEmail, targetName) {
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
 
-function selectEvalType(type) { evalState.type = type; evalState.intensity = null; const goodBtn = document.getElementById('eval-type-good'); const badBtn = document.getElementById('eval-type-bad'); const intSec = document.getElementById('eval-intensity-section'); goodBtn.style.background = 'white'; goodBtn.style.color = '#ff3b30'; badBtn.style.background = 'white'; badBtn.style.color = '#3182f6'; if (type === 'good') { goodBtn.style.background = '#ff3b30'; goodBtn.style.color = 'white'; document.getElementById('eval-int-1-pct').textContent = '+1%'; document.getElementById('eval-int-2-pct').textContent = '+2%'; document.getElementById('eval-int-3-pct').textContent = '+3%'; document.getElementById('eval-int-1-pts').textContent = `+${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `+${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `+${evalState.p3.toLocaleString()}p`; } else { badBtn.style.background = '#3182f6'; badBtn.style.color = 'white'; document.getElementById('eval-int-1-pct').textContent = '-1%'; document.getElementById('eval-int-2-pct').textContent = '-2%'; document.getElementById('eval-int-3-pct').textContent = '-3%'; document.getElementById('eval-int-1-pts').textContent = `-${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `-${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `-${evalState.p3.toLocaleString()}p`; } intSec.style.display = 'block'; [1, 2, 3].forEach(i => { const btn = document.getElementById(`eval-int-${i}`); btn.style.background = 'white'; btn.style.color = '#333d4b'; btn.style.borderColor = '#e5e8eb'; }); }
+function selectEvalType(type) { 
+    evalState.type = type; evalState.intensity = null; 
+    const goodBtn = document.getElementById('eval-type-good'); const badBtn = document.getElementById('eval-type-bad'); const intSec = document.getElementById('eval-intensity-section'); 
+    goodBtn.style.background = 'white'; goodBtn.style.color = '#ff3b30'; badBtn.style.background = 'white'; badBtn.style.color = '#3182f6'; 
+    if (type === 'good') { 
+        goodBtn.style.background = '#ff3b30'; goodBtn.style.color = 'white'; 
+        document.getElementById('eval-int-1-pct').textContent = '+1%'; document.getElementById('eval-int-2-pct').textContent = '+2%'; document.getElementById('eval-int-3-pct').textContent = '+3%'; document.getElementById('eval-int-1-pts').textContent = `+${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `+${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `+${evalState.p3.toLocaleString()}p`; 
+        
+        // 익명권 숨기기
+        const sec = document.getElementById('anon-section'); if(sec) { sec.style.display = 'none'; document.getElementById('use-anon-ticket').checked = false; }
+    } else { 
+        badBtn.style.background = '#3182f6'; badBtn.style.color = 'white'; 
+        document.getElementById('eval-int-1-pct').textContent = '-1%'; document.getElementById('eval-int-2-pct').textContent = '-2%'; document.getElementById('eval-int-3-pct').textContent = '-3%'; document.getElementById('eval-int-1-pts').textContent = `-${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `-${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `-${evalState.p3.toLocaleString()}p`; 
+        
+        // ★ [패치] 익명권 보유 시 악평할 때만 체크박스 노출
+        if (myProfile.anonTickets > 0) { document.getElementById('anon-section').style.display = 'block'; }
+    } 
+    intSec.style.display = 'block'; 
+    [1, 2, 3].forEach(i => { const btn = document.getElementById(`eval-int-${i}`); btn.style.background = 'white'; btn.style.color = '#333d4b'; btn.style.borderColor = '#e5e8eb'; }); 
+}
 function selectEvalIntensity(intensity) { evalState.intensity = intensity; const color = evalState.type === 'good' ? '#ff3b30' : '#3182f6'; const bgColor = evalState.type === 'good' ? '#fff2f2' : '#f0f8ff'; [1, 2, 3].forEach(i => { const btn = document.getElementById(`eval-int-${i}`); if (i === intensity) { btn.style.background = bgColor; btn.style.color = color; btn.style.borderColor = color; } else { btn.style.background = 'white'; btn.style.color = '#333d4b'; btn.style.borderColor = '#e5e8eb'; } }); }
 
 function submitEvaluationFinal() { if (!evalState.type) { alert("평가 종류(호평/악평)를 선택해주세요."); return; } if (!evalState.intensity) { alert("변동폭(1%, 2%, 3%)을 선택해주세요."); return; } submitEvaluation(evalState.type, evalState.intensity); }
@@ -698,6 +735,10 @@ async function submitEvaluation(evalType, intensity) {
     const reasonInput = document.getElementById('eval-reason-input'); const reasonText = reasonInput ? reasonInput.value.trim() : "";
     if (!reasonText) { alert("평가 사유를 반드시 작성해 주세요!"); if(reasonInput) reasonInput.focus(); return; }
     
+    // ★ 익명 사용 여부 체크
+    const anonCheckbox = document.getElementById('use-anon-ticket');
+    const isAnonymous = anonCheckbox && anonCheckbox.checked;
+
     if (evalType === 'bad') {
         const basePrice = currentSelectedFriend.basePrice || 20000;
         const dropAmount = basePrice * (intensity * 0.01);
@@ -711,7 +752,10 @@ async function submitEvaluation(evalType, intensity) {
 
     document.getElementById('eval-modal').style.display = 'none'; showLoading();
     try {
-        const res = await fetch(`${BACKEND_URL}/api/evaluate`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity, reason: reasonText }) });
+        const res = await fetch(`${BACKEND_URL}/api/evaluate`, { 
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, 
+            body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity, reason: reasonText, is_anonymous: isAnonymous }) 
+        });
         const data = await res.json(); if (data.status === 'success') { alert(data.message); await forceSync(); } else { alert(data.message); }
     } catch(err) { alert("네트워크 오류 발생"); } finally { hideLoading(); }
 }
@@ -763,17 +807,44 @@ function closeVIPModal() { document.getElementById('vip-modal').style.display = 
 function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("💎 VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); }
 function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
 
+// 상점 아이템 구매
 window.buyShopItem = async function(itemType, cost) {
     if (myProfile.price < cost) { alert("잔고가 부족합니다!"); return; }
-    let extraData = "";
-    if (itemType === 'megaphone') { extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자):"); if (!extraData || extraData.trim() === "") return; if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } } 
-    else { if (!confirm(`3,000p를 지불하고 '무지개 반사' 방어권을 구매하시겠습니까?`)) return; }
+    if (!confirm(`3,000p를 지불하고 '무지개 반사' 방어권을 구매하시겠습니까?`)) return;
+    
     showLoading();
     try {
-        const res = await fetch(`${BACKEND_URL}/api/shop/buy`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, item_type: itemType, extra_data: extraData }) });
+        const res = await fetch(`${BACKEND_URL}/api/shop/buy`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, item_type: itemType, extra_data: '' }) });
         const data = await res.json(); if (data.status === 'success') { showToast(data.message); await forceSync(); } else { alert(data.message); }
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
+
+// ★ [신규 패치] 캐시 상점 전용 가상 결제 함수
+window.buyCashItem = async function(itemType) {
+    let extraData = "";
+    if (itemType === 'megaphone') { 
+        extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자):"); 
+        if (!extraData || extraData.trim() === "") return; 
+        if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } 
+    }
+    
+    if (itemType !== 'theme_none') {
+        if (!confirm("💳 테스트 환경이므로 실제 과금 없이 [무료 가상 결제]가 진행됩니다.\n계속하시겠습니까?")) return;
+    }
+
+    showLoading();
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/cash-shop/buy`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, 
+            body: JSON.stringify({ email: myEmail, item_type: itemType, extra_data: extraData }) 
+        });
+        const data = await res.json(); 
+        if (data.status === 'success') { showToast(data.message); await forceSync(); } 
+        else { alert(data.message); }
+    } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
+}
+
 
 function openProfileModal() { document.getElementById('profile-modal').style.display = 'flex'; const grid = document.getElementById('default-profiles-grid'); grid.innerHTML = DEFAULT_AVATARS.map(url => `<div onclick="selectDefaultProfile('${url}')" style="cursor: pointer; border-radius: 12px; overflow: hidden; background: #f2f4f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.1s;"><img src="${url}" style="width: 100%; height: 100%; display: block; object-fit: cover;"></div>`).join(''); }
 function closeProfileModal() { document.getElementById('profile-modal').style.display = 'none'; }
@@ -849,6 +920,8 @@ function finishSetup() {
     if (myProfile && myProfile.isVIP === undefined) { myProfile.isVIP = false; myProfile.nameColor = '#333d4b'; } 
     if (myProfile && !myProfile.roomAliases) myProfile.roomAliases = {}; 
     if (myProfile && myProfile.shieldCount === undefined) myProfile.shieldCount = 0;
+    if (myProfile && myProfile.anonTickets === undefined) myProfile.anonTickets = 0;
+    if (myProfile && !myProfile.profileTheme) myProfile.profileTheme = 'none';
     if (myProfile && !myProfile.badges) myProfile.badges = []; 
     if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
     if (myProfile && !myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice, myProfile.price]; myProfile.timeHistory = ["시작", getCurrentTime()]; } 

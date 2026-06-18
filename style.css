@@ -7,18 +7,16 @@ body {
     display: flex; 
     justify-content: center; 
     height: 100vh;
-    height: 100dvh; /* 모바일 브라우저 주소창 스크롤 완벽 대응 */
+    height: 100dvh; 
     overflow: hidden; 
 }
 
-/* 메인 앱 껍데기 */
 .app-container { 
     width: 100%; max-width: 480px; background-color: #ffffff; 
     height: 100%; display: flex; flex-direction: column; 
     position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.05); 
 }
 
-/* 상단 뉴스 티커 */
 .news-ticker { 
     width: 100%; height: 36px; background-color: #1c1c1e; color: #32d74b; 
     font-size: 13px; font-weight: bold; display: flex; align-items: center; 
@@ -27,7 +25,6 @@ body {
 .ticker-text { display: inline-block; animation: ticker 15s linear infinite; }
 @keyframes ticker { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
-/* 화면 전환 컨테이너 */
 .view-container { 
     flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; 
     background: #ffffff; padding-bottom: 80px; 
@@ -36,7 +33,6 @@ body {
 .view-active { display: block; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-/* 상단 헤더 및 하단 네비게이션 바 */
 .header-top { 
     padding: 20px 20px 10px 20px; font-size: 22px; font-weight: 800; color: #333d4b; 
     display: flex; justify-content: space-between; align-items: center; 
@@ -56,14 +52,12 @@ body {
 .nav-icon { font-size: 20px; }
 .nav-item.active { color: #3182f6; }
 
-/* 공통 정보 카드 UI */
 .info-card { 
     background: white; border-radius: 16px; padding: 20px; margin-bottom: 15px; 
     box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid #f2f4f6; transition: background 0.2s; 
 }
 .info-card:active { background: #f9fafb; }
 
-/* 팝업 모달창 공통 디자인 */
 .modal-overlay { 
     display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
     background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; 
@@ -75,7 +69,6 @@ body {
 }
 @keyframes popUp { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-/* 토스트 메시지 (하단 알림) */
 #toast { 
     position: fixed; bottom: 85px; left: 50%; transform: translateX(-50%); 
     background: rgba(51, 61, 75, 0.9); color: white; padding: 12px 20px; 
@@ -84,7 +77,6 @@ body {
 }
 #toast.show { opacity: 1; }
 
-/* ★ [최적화] JS에서 불러오던 스피너와 애니메이션을 CSS 엔진으로 이관 */
 #global-loader { 
     position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
     background: rgba(255,255,255,0.7); z-index: 99999; display: none; 
@@ -96,11 +88,29 @@ body {
 }
 @keyframes spin { 100% { transform: rotate(360deg); } }
 
-/* 판결 도장 애니메이션 */
 @keyframes stampDrop { 0% { transform: scale(3) rotate(-30deg); opacity: 0; } 50% { transform: scale(0.9) rotate(-10deg); opacity: 1; } 100% { transform: scale(1) rotate(-15deg); opacity: 0.9; } }
 .verdict-stamp { 
     position: absolute; top: 15px; right: 15px; border: 4px solid; padding: 5px 15px; 
     font-size: 22px; font-weight: 900; border-radius: 8px; font-family: 'Times New Roman', serif; 
     letter-spacing: 2px; animation: stampDrop 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards; 
     z-index: 10; pointer-events: none; background: rgba(255,255,255,0.85); box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+}
+
+/* ★ [시즌 3] VVIP 스페셜 애니메이션 테마 */
+.theme-neon {
+    box-shadow: 0 0 10px #00ffff, 0 0 20px #ff00ff, 0 0 30px #ffff00;
+    animation: neonGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes neonGlow {
+    from { box-shadow: 0 0 5px #ff0000, 0 0 10px #00ff00, 0 0 15px #0000ff; }
+    to { box-shadow: 0 0 10px #00ffff, 0 0 20px #ff00ff, 0 0 30px #ffff00; }
+}
+
+.theme-fire {
+    box-shadow: 0 0 10px #ff4500, 0 0 20px #ff8c00;
+    animation: fireGlow 0.8s ease-in-out infinite alternate;
+}
+@keyframes fireGlow {
+    from { box-shadow: 0 0 5px #ff4500, 0 0 10px #ff8c00; }
+    to { box-shadow: 0 0 15px #ff0000, 0 0 25px #ff4500; }
 }
