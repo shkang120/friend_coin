@@ -34,7 +34,6 @@ MONGO_URL = os.getenv("MONGO_URL")
 client = MongoClient(MONGO_URL)
 db = client["friend_coin_db"] 
 
-# --- Pydantic Models ---
 class EvalData(BaseModel):
     evaluator_email: str
     target_email: str
@@ -102,13 +101,11 @@ class GambleData(BaseModel):
     email: str
     guess: str
 
-# --- 유틸리티 함수 ---
 api_cooldowns = { "chat": {}, "evaluate": {}, "agenda": {}, "join": {}, "gamble": {} }
 
 def is_spamming(email: str, action_type: str, cooldown_seconds: int) -> bool:
     now = datetime.utcnow()
     
-    # [최적화 패치] 메모리 누수 방지 로직 (딕셔너리가 커지면 만료된 항목 청소)
     if len(api_cooldowns[action_type]) > 500:
         expired_keys = [k for k, v in api_cooldowns[action_type].items() if (now - v).total_seconds() >= cooldown_seconds]
         for k in expired_keys:
@@ -132,7 +129,6 @@ def verify_google_token(auth_header: str):
         return data.get("email").strip().lower()
     except Exception: return None
 
-# --- API Endpoints ---
 @app.get("/api/data")
 def get_user_data(authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -208,7 +204,8 @@ def get_user_data(authorization: str = Header(None)):
         room_modified = False
         for a in room.get("agendas", []):
             if a.get("status") == "active" and a.get("created_at"):
-                created = datetime.fromisoformat(a["created_at"])
+                created_str = a["created_at"] if "Z" in a["created_at"] else a["created_at"] + "Z"
+                created = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
                 if datetime.utcnow() >= created + timedelta(hours=24):
                     a["status"] = "resolved"; a["agreeVotes"] = 999; room_modified = True
                     target_user = db["users"].find_one({"_id": a["target_email"]})
@@ -317,17 +314,27 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
         profile["price"] = profile.get("price", 20000) + 50
         profile["lastDailyAttendance"] = server_today_str
         msg = "💵 일일 출석 완료!"
+        
     elif data.reward_type == 'double_attendance':
         if profile.get("lastDailyAdBonus") == server_today_str: return {"status": "error", "message": "이미 완료하셨습니다!"}
         profile["price"] = profile.get("price", 20000) + 50
         profile["lastDailyAdBonus"] = server_today_str
         msg = "🎁 50p가 추가 상승했습니다."
+        
     elif data.reward_type == 'extra_ticket':
-        if profile.get("dailyAdTicketsDate") != server_today_str: profile["dailyAdTicketsCount"] = 0
-        if profile.get("dailyAdTicketsCount", 0) >= 1: return {"status": "error", "message": "오늘은 더 받을 수 없습니다."}
-        profile["goodTickets"] = profile.get("goodTickets", 0) + 1; profile["badTickets"] = profile.get("badTickets", 0) + 1
-        profile["dailyAdTicketsCount"] = profile.get("dailyAdTicketsCount", 0) + 1; profile["dailyAdTicketsDate"] = server_today_str
-        msg = "🎁 평가권 각 +1장 획득!"
+        # ★ [패치] 일간 제한을 주간 제한 로직으로 변경
+        days_since_monday = kst_now.weekday()
+        if kst_now.weekday() == 0 and kst_now.hour < 8: days_since_monday = 7
+        recent_monday = (kst_now - timedelta(days=days_since_monday)).strftime("%Y-%m-%d")
+        
+        if profile.get("lastAdTicketMonday") == recent_monday:
+            return {"status": "error", "message": "이번 주 광고 보상(평가권)을 이미 받으셨습니다. 다음 주에 시도해주세요."}
+            
+        profile["goodTickets"] = profile.get("goodTickets", 0) + 1
+        profile["badTickets"] = profile.get("badTickets", 0) + 1
+        profile["lastAdTicketMonday"] = recent_monday
+        msg = "🎁 이번 주 추가 평가권 각 +1장 획득!"
+        
     elif data.reward_type == 'weekly':
         if profile.get("weeklyTicketsClaimed"): return {"status": "error", "message": "이미 완료하셨습니다!"}
         profile["goodTickets"] = profile.get("goodTickets", 0) + 1; profile["badTickets"] = profile.get("badTickets", 0) + 1
@@ -349,7 +356,7 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.evaluator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     if data.evaluator_email == data.target_email: return {"status": "error", "message": "자신을 평가할 수 없습니다."}
-    if is_spamming(email, "evaluate", 3): return {"status": "error", "message": "요청이 너무 빠릅니다."}
+    if is_spamming(email, "evaluate", 3): return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
     if data.intensity not in [1, 2, 3]: return {"status": "error", "message": "올바르지 않은 변동 수치입니다."}
 
     evaluator = db["users"].find_one({"_id": data.evaluator_email})
@@ -508,10 +515,10 @@ def leave_room(data: RoomData, authorization: str = Header(None)):
     user = db["users"].find_one({"_id": email})
     profile = user.get("profile", {})
     for a in room.get("agendas", []):
-        if a.get("status") == "active" and a.get("target_email") == email: return {"status": "error", "message": "🚨 도망 금지: 진행 중인 재판이 있어 방을 나갈 수 없습니다."}
+        if a.get("status") == "active" and a.get("target_email") == email: return {"status": "error", "message": "🚨 도망 금지: 본인이 회부된 진행 중인 재판이 있어 방을 나갈 수 없습니다."}
     for pe in profile.get("pending_evals", []):
-        if pe.get("evaluator_email") in room_members: return {"status": "error", "message": "🚨 도망 금지: 대기 중인 악평이 있습니다."}
-    if profile.get("narackStartTime") and profile.get("narackLastHitEmail") in room_members: return {"status": "error", "message": "🚨 도망 금지: 상장폐지 심사 대기 중입니다."}
+        if pe.get("evaluator_email") in room_members: return {"status": "error", "message": "🚨 도망 금지: 이 방의 멤버가 작성한 결재 대기 중인 악평이 있습니다."}
+    if profile.get("narackStartTime") and profile.get("narackLastHitEmail") in room_members: return {"status": "error", "message": "🚨 도망 금지: 상장폐지 심사 대기 중(나락 상태)이므로 방을 나갈 수 없습니다."}
     db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"members": email}})
     return {"status": "success"}
 
@@ -531,7 +538,7 @@ def add_room_event(data: EventAddData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.creator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []): return {"status": "error", "message": "권한 없음"}
+    if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
     event = { "id": str(uuid.uuid4()), "start_date": data.start_date, "end_date": data.end_date, "title": data.title, "creator_email": email, "creator_name": data.creator_name }
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"events": event}})
     return {"status": "success"}
@@ -541,7 +548,7 @@ def delete_room_event(data: EventDeleteData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.deleter_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []): return {"status": "error", "message": "권한 없음"}
+    if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
     db["rooms"].update_one({"_id": data.room_code}, {"$pull": {"events": {"id": data.event_id}}})
     return {"status": "success"}
 

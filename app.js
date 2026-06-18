@@ -1,4 +1,4 @@
-const BACKEND_URL = "https://friend-coin.onrender.com"; // ★ 백엔드 주소 고정 완료
+const BACKEND_URL = "https://friend-coin.onrender.com";
 
 let myEmail = localStorage.getItem('fc_email') || null; 
 let myUsername = localStorage.getItem('fc_username') || null;
@@ -7,7 +7,6 @@ let autoSyncInterval = null;
 let isSyncing = false; 
 let globalMegaphone = ""; 
 
-// 로딩 스피너 및 커스텀 스타일 초기화
 if (!document.getElementById('global-loader')) {
     const loader = document.createElement('div');
     loader.id = 'global-loader';
@@ -29,7 +28,6 @@ if (!document.getElementById('global-loader')) {
 window.showLoading = () => document.getElementById('global-loader').style.display = 'flex';
 window.hideLoading = () => document.getElementById('global-loader').style.display = 'none';
 
-// 유틸리티 함수
 function escapeHtml(text) { if (!text) return ""; return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
 function getCurrentTime() { const now = new Date(); return `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`; }
 function getFormattedDate(d) { const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); const date = String(d.getDate()).padStart(2, '0'); return `${year}-${month}-${date}`; }
@@ -49,7 +47,8 @@ function getYesterdayClosePrice(profile) {
     return yesterdayPrice;
 }
 
-const defaultProfile = { name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active', goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false, lastDailyAdBonus: null, dailyAdTicketsDate: null, dailyAdTicketsCount: 0, badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 }, isVIP: false, nameColor: "#333d4b", priceHistory: [], timeHistory: [], pending_evals: [], defense_count: 0, defense_month: "", roomAliases: {}, shieldCount: 0 };
+// ★ [패치] lastAdTicketMonday 추가 (일일 -> 주간)
+const defaultProfile = { name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active', goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false, lastDailyAdBonus: null, lastAdTicketMonday: null, badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 }, isVIP: false, nameColor: "#333d4b", priceHistory: [], timeHistory: [], pending_evals: [], defense_count: 0, defense_month: "", roomAliases: {}, shieldCount: 0 };
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = []; let currentRoomCode = null; let currentAdRewardType = null; let adInterval = null; let currentSelectedFriend = null; let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 }; let calYear = new Date().getFullYear(); let calMonth = new Date().getMonth(); let calSelectedDate = getFormattedDate(new Date());
 
 const DEFAULT_AVATARS = [ 'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aneka&backgroundColor=c0aede', 'https://api.dicebear.com/7.x/bottts/svg?seed=Oliver&backgroundColor=ffd5dc', 'https://api.dicebear.com/7.x/bottts/svg?seed=Sophie&backgroundColor=d1d4f9', 'https://api.dicebear.com/7.x/bottts/svg?seed=Jack&backgroundColor=ffdfbf', 'https://api.dicebear.com/7.x/bottts/svg?seed=Mia&backgroundColor=b6e3f4', 'https://api.dicebear.com/7.x/bottts/svg?seed=Leo&backgroundColor=c0aede', 'https://api.dicebear.com/7.x/bottts/svg?seed=Chloe&backgroundColor=ffd5dc', 'https://api.dicebear.com/7.x/bottts/svg?seed=Sam&backgroundColor=d1d4f9', 'https://api.dicebear.com/7.x/bottts/svg?seed=Zoe&backgroundColor=ffdfbf' ];
@@ -155,7 +154,6 @@ window.changeCalMonth = function(offset) { calMonth += offset; if(calMonth < 0) 
 window.selectCalDate = function(dStr) { calSelectedDate = dStr; renderHome(); }; 
 window.handleDatePickerChange = function(val) { if(!val) return; const d = new Date(val); calYear = d.getFullYear(); calMonth = d.getMonth(); calSelectedDate = val; renderHome(); };
 
-// --- 모달 렌더링 함수들 ---
 window.openAddEventModal = function(dateStr) { 
     let modal = document.getElementById('event-modal'); 
     if(!modal) { 
@@ -188,7 +186,6 @@ window.openAddEventModal = function(dateStr) {
     modal.style.display = 'flex'; 
 };
 
-// --- 화면 렌더링 (가독성 패치 적용) ---
 function renderHome() {
     const list = document.getElementById('friend-list'); if(!list) return;
     
@@ -418,7 +415,8 @@ function renderMeeting() {
         let btnHtml = ''; let stampHtml = ''; let opacityStyle = ''; let timeRemainingHtml = '';
 
         if (a.status === 'active') {
-            const createdTime = new Date(a.created_at.includes('Z') ? a.created_at : a.created_at + 'Z').getTime(); const expireTime = createdTime + (24 * 60 * 60 * 1000); const nowTime = new Date().getTime();
+            const createdTime = new Date(a.created_at.includes('Z') ? a.created_at : a.created_at + 'Z').getTime();
+            const expireTime = createdTime + (24 * 60 * 60 * 1000); const nowTime = new Date().getTime();
             let diffMs = expireTime - nowTime; if (diffMs < 0) diffMs = 0; 
             const diffHrs = Math.floor(diffMs / (1000 * 60 * 60)); const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
             timeRemainingHtml = `<span style="background:#fff3f3; color:#ff3b30; padding:3px 8px; border-radius:10px; font-size:11px; font-weight:bold;">⏳ 마감까지 ${diffHrs}시간 ${diffMins}분</span>`;
@@ -486,9 +484,17 @@ function renderProfile() {
     const hasWeeklyDone = myProfile.weeklyTicketsClaimed === true; 
     const weeklyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasWeeklyDone ? '#e5e8eb' : '#fff3e0'}; color: ${hasWeeklyDone ? '#8b95a1' : '#e65100'}; font-weight: bold; border: none; cursor: ${hasWeeklyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="claimWeeklyTickets()" ${hasWeeklyDone ? 'disabled' : ''}>${hasWeeklyDone ? '✅ 주간 보너스 완료' : '🎁 주간 보너스 평가권 (각 +1장)'}</button>`;
     
-    if (myProfile.dailyAdTicketsDate !== todayStr) myProfile.dailyAdTicketsCount = 0; 
-    const adTicketCount = myProfile.dailyAdTicketsCount || 0; const isAdTicketMax = adTicketCount >= 1; 
-    const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${isAdTicketMax ? '#e5e8eb' : '#f3e5f5'}; color: ${isAdTicketMax ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${isAdTicketMax ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="watchAd('extra_ticket')" ${isAdTicketMax ? 'disabled' : ''}>${isAdTicketMax ? '✅ 오늘 티켓 추가 완료' : `🎬 광고 보고 평가권 추가 (${adTicketCount}/1회)`}</button>`;
+    // ★ [패치] 일간 보상 ➔ 주간 보상으로 텍스트 및 로직 변경 (JS에서 이번 주 월요일 계산)
+    const now = new Date();
+    const kstNow = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 3600000));
+    let day = kstNow.getDay();
+    let diff = (day === 0 ? 6 : day - 1);
+    let monday = new Date(kstNow);
+    monday.setDate(kstNow.getDate() - diff);
+    const mondayStr = getFormattedDate(monday);
+
+    const hasAdTicketDone = myProfile.lastAdTicketMonday === mondayStr;
+    const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasAdTicketDone ? '#e5e8eb' : '#f3e5f5'}; color: ${hasAdTicketDone ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${hasAdTicketDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="watchAd('extra_ticket')" ${hasAdTicketDone ? 'disabled' : ''}>${hasAdTicketDone ? '✅ 이번 주 추가 평가권 획득 완료' : '🎬 광고 보고 평가권 추가 (주 1회)'}</button>`;
     
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
     if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
