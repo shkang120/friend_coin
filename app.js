@@ -483,16 +483,19 @@ function renderProfile() {
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
     if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
 
-    // ★ 포인트 상점 (아이콘 칼정렬 패치)
+    // 포인트 상점
     const shopHtml = `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #e5e8eb;">
-            <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between;">
+            <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between; text-align:left;">
                 🛒 포인트 상점 <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
             </h3>
             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <div style="font-size:20px; line-height:1;">🛡️</div>
-                    <div>
+                <div style="display:flex; gap:12px; align-items:center; flex:1;">
+                    <div style="width:28px; height:28px; flex-shrink:0;">
+                        <!-- ★이미지 URL★ 무지개 반사 아이콘 -->
+                        <img src="https://placehold.co/80x80/f2f4f6/333d4b?text=Shield" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
+                    </div>
+                    <div style="text-align:left; flex:1;">
                         <div style="font-weight:bold; font-size:14px; color:#333d4b;">무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div>
                         <div style="font-size:11px; color:#8b95a1; margin-top:2px;">악평 피격 시 1회 자동 방어</div>
                     </div>
@@ -502,7 +505,6 @@ function renderProfile() {
         </div>
     `;
 
-    // ★ 캐시 상점 (아이콘 칼정렬 패치 적용)
     const neonOwned = (myProfile.ownedThemes || []).includes('neon');
     const fireOwned = (myProfile.ownedThemes || []).includes('fire');
 
@@ -516,14 +518,17 @@ function renderProfile() {
 
     const cashShopHtml = `
         <div style="background: linear-gradient(135deg, #1c1c1e, #333d4b); border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.15); color:white;">
-            <h3 style="margin-top:0; font-size:15px; display:flex; align-items:center; justify-content:space-between; color:#d4af37;">
+            <h3 style="margin-top:0; font-size:15px; display:flex; align-items:center; justify-content:space-between; color:#d4af37; text-align:left;">
                 💎 스페셜 캐시 상점 <span style="font-size:11px; font-weight:normal; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:10px;">가상 결제 테스트 중</span>
             </h3>
             
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <div style="font-size:20px; line-height:1;">🥷</div>
-                    <div>
+                <div style="display:flex; gap:12px; align-items:center; flex:1;">
+                    <div style="width:28px; height:28px; flex-shrink:0;">
+                        <!-- ★이미지 URL★ 익명 암살권 아이콘 -->
+                        <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Ninja" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
+                    </div>
+                    <div style="text-align:left; flex:1;">
                         <div style="font-weight:bold; font-size:14px; color:white;">익명 암살권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.anonTickets || 0}개)</span></div>
                         <div style="font-size:11px; color:#8b95a1; margin-top:2px;">악평 시 내 정체 100% 은폐</div>
                     </div>
@@ -532,9 +537,12 @@ function renderProfile() {
             </div>
             
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <div style="font-size:20px; line-height:1;">💰</div>
-                    <div>
+                <div style="display:flex; gap:12px; align-items:center; flex:1;">
+                    <div style="width:28px; height:28px; flex-shrink:0;">
+                        <!-- ★이미지 URL★ 긴급 자금 아이콘 -->
+                        <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Money" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
+                    </div>
+                    <div style="text-align:left; flex:1;">
                         <div style="font-weight:bold; font-size:14px; color:white;">긴급 자금 수혈</div>
                         <div style="font-size:11px; color:#8b95a1; margin-top:2px;">계좌로 즉시 10,000p 입금</div>
                     </div>
@@ -543,21 +551,26 @@ function renderProfile() {
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <div style="font-size:20px; line-height:1;">📢</div>
-                    <div>
+                <div style="display:flex; gap:12px; align-items:center; flex:1;">
+                    <div style="width:28px; height:28px; flex-shrink:0;">
+                        <!-- ★이미지 URL★ 확성기 아이콘 -->
+                        <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Mega" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
+                    </div>
+                    <div style="text-align:left; flex:1;">
                         <div style="font-weight:bold; font-size:14px; color:white;">글로벌 확성기</div>
                         <div style="font-size:11px; color:#8b95a1; margin-top:2px;">전국구 뉴스 티커에 메시지 띄우기</div>
                     </div>
                 </div>
-                <!-- ★ 확성기 가격 500원 -->
                 <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩500</button>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <div style="font-size:20px; line-height:1;">✨</div>
-                    <div>
+                <div style="display:flex; gap:12px; align-items:center; flex:1;">
+                    <div style="width:28px; height:28px; flex-shrink:0;">
+                        <!-- ★이미지 URL★ 네온 테마 아이콘 -->
+                        <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Neon" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
+                    </div>
+                    <div style="text-align:left; flex:1;">
                         <div style="font-weight:bold; font-size:14px; color:white;">테마: 홀로그램 네온</div>
                         <div style="font-size:11px; color:#8b95a1; margin-top:2px;">프로필 무지개빛 발광 효과</div>
                     </div>
@@ -566,9 +579,12 @@ function renderProfile() {
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px;">
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <div style="font-size:20px; line-height:1;">🔥</div>
-                    <div>
+                <div style="display:flex; gap:12px; align-items:center; flex:1;">
+                    <div style="width:28px; height:28px; flex-shrink:0;">
+                        <!-- ★이미지 URL★ 불꽃 테마 아이콘 -->
+                        <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Fire" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
+                    </div>
+                    <div style="text-align:left; flex:1;">
                         <div style="font-weight:bold; font-size:14px; color:white;">테마: 지옥의 불꽃</div>
                         <div style="font-size:11px; color:#8b95a1; margin-top:2px;">프로필 타오르는 오라 효과</div>
                     </div>
