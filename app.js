@@ -37,6 +37,7 @@ function getYesterdayClosePrice(profile) {
     return yesterdayPrice;
 }
 
+// 기본 프로필 객체 정의 (이모지 대신 기본 아바타/이미지 체계 유지)
 const defaultProfile = { name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active', goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false, lastDailyAdBonus: null, lastAdTicketMonday: null, badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 }, isVIP: false, nameColor: "#333d4b", priceHistory: [], timeHistory: [], pending_evals: [], defense_count: 0, defense_month: "", roomAliases: {}, shieldCount: 0, anonTickets: 0, profileTheme: 'none', ownedThemes: ['none'] };
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = []; let currentRoomCode = null; let currentAdRewardType = null; let adInterval = null; let currentSelectedFriend = null; let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 }; let calYear = new Date().getFullYear(); let calMonth = new Date().getMonth(); let calSelectedDate = getFormattedDate(new Date());
 
@@ -64,7 +65,8 @@ function getAvatarHtml(person, size = 'small') {
     if (person.profileImage) {
         inner = `<img src="${person.profileImage}" style="width:100%; height:100%; border-radius:${radius}; object-fit:cover; display:inline-block; vertical-align:middle; background:#f2f4f6;">`;
     } else {
-        inner = `<span style="display:inline-block; width:100%; height:100%; line-height:${sizePx}; text-align:center; font-size:${size === 'large' ? '50px' : '20px'}; background:#f9fafb; border-radius:${radius}; vertical-align:middle;">${isDelisted ? '💀' : person.emoji || '👤'}</span>`;
+        /* [주석: 프로필 이미지가 없을 때 채워지는 기본 유저 이미지] */
+        inner = `<img src="https://placehold.co/100x100/f2f4f6/4e5968?text=User" style="width:100%; height:100%; border-radius:${radius}; object-fit:cover; display:inline-block; vertical-align:middle;">`;
     }
 
     return `<div class="${themeClass}" style="width:${sizePx}; height:${sizePx}; border-radius:${radius}; filter:${filter}; display:inline-block; vertical-align:middle; background:white; ${themeClass ? '' : 'box-shadow: 0 2px 8px rgba(0,0,0,0.1);'}">${inner}</div>`;
@@ -95,8 +97,14 @@ function checkBadges() {
 function updateTicker() { 
     const tickerEl = document.getElementById('ticker-text'); 
     if(!tickerEl || !myProfile || globalRanking.length === 0) return; 
-    const rankText = `👑 전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p)`; 
-    const megaText = globalMegaphone ? `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; ${escapeHtml(globalMegaphone)}` : `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; [공지] 아이템 상점 오픈! 무지개 반사로 악평을 방어하세요!`; 
+    
+    /* [주석: 글로벌 전광판 좌측 왕관 마크 이미지 대체] */
+    const crownImg = `<img src="https://placehold.co/24x24/1c1c1e/d4af37?text=CR" style="width:14px; height:14px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+    const rankText = `${crownImg}전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p)`; 
+    
+    /* [주석: 글로벌 전광판 공지 마크 이미지 대체] */
+    const noticeImg = `<img src="https://placehold.co/24x24/1c1c1e/32d74b?text=NT" style="width:14px; height:14px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+    const megaText = globalMegaphone ? `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; ${escapeHtml(globalMegaphone)}` : `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; ${noticeImg}[공지] 아이템 상점 오픈! 무지개 반사로 악평을 방어하세요!`; 
     tickerEl.innerHTML = `[글로벌 시황] ${rankText}${megaText}`; 
 }
 
@@ -157,7 +165,7 @@ window.openAddEventModal = function(dateStr) {
     } 
     modal.innerHTML = ` 
         <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:left; box-shadow: 0 10px 25px rgba(0,0,0,0.2);"> 
-            <h3 style="margin-top:0; color:#333d4b; text-align:center; font-size:18px;">🗓️ 일정 추가</h3> 
+            <h3 style="margin-top:0; color:#333d4b; text-align:center; font-size:18px;">일정 추가</h3> 
             <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:6px;">1. 일정 내용</label> 
             <input type="text" id="event-title-input" placeholder="예: 부산 2박 3일 여행" style="width:100%; padding:12px; border:1px solid #e5e8eb; border-radius:10px; margin-bottom:15px; box-sizing:border-box; outline:none; font-family:sans-serif;"> 
             <div style="display:flex; gap:10px; margin-bottom:20px;"> 
@@ -186,7 +194,7 @@ function renderHome() {
         let html = `
             <div style="display:flex; gap:10px; margin-bottom:20px;">
                 <button onclick="createNewRoom()" style="flex:1; padding:15px; background:#333d4b; color:white; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1);">+ 새 클럽 개설</button>
-                <button onclick="joinExistingRoom()" style="flex:1; padding:15px; background:#e8f5e9; color:#2e7d32; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.05);">🔑 코드로 입장</button>
+                <button onclick="joinExistingRoom()" style="flex:1; padding:15px; background:#e8f5e9; color:#2e7d32; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.05);">코드로 입장</button>
             </div>
             <h3 style="color:#333d4b; margin-top:0; font-size:16px;">내 투자 클럽 목록</h3>
         `;
@@ -198,7 +206,11 @@ function renderHome() {
                 const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? myProfile.roomAliases[r.room_code] : r.room_name;
                 const aliasTag = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? '<span style="font-size:10px; font-weight:normal; color:#8b95a1; background:#f2f4f6; padding:2px 4px; border-radius:4px; margin-left:4px;">내 별명</span>' : '';
                 const avatars = r.members.slice(0, 4).map((m, i) => { 
-                    const inner = m.profileImage ? `<img src="${m.profileImage}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:12px; background:#f9fafb;">${m.status==='delisted'?'💀':m.emoji||'👤'}</div>`; 
+                    /* [주석: 클럽방 카드 내부 상장폐지 상태 유저 마크 이미지 대체] */
+                    const delistedAvatar = `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#f2f4f6;"><img src="https://placehold.co/40x40/ffebee/c62828?text=X" style="width:14px; height:14px;"></div>`;
+                    const normalAvatar = `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#f9fafb;"><img src="https://placehold.co/40x40/f2f4f6/4e5968?text=U" style="width:100%; height:100%; object-fit:cover;"></div>`;
+                    
+                    const inner = m.profileImage ? `<img src="${m.profileImage}" style="width:100%; height:100%; object-fit:cover;">` : (m.status==='delisted'? delistedAvatar : normalAvatar); 
                     const themeClass = (m.profileTheme && m.profileTheme !== 'none') ? `theme-${m.profileTheme}` : '';
                     return `<div class="${themeClass}" style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:${i===0?'0':'-8px'}; position:relative; z-index:${10-i}; overflow:hidden; display:inline-block; vertical-align:middle; box-shadow:0 1px 3px rgba(0,0,0,0.1); background:white;">${inner}</div>`; 
                 }).join('');
@@ -259,7 +271,8 @@ function renderHome() {
                 }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}
                 </div>
                 <div style="display:flex; gap:8px;">
-                    <button onclick="rollDice()" style="background:#fff3e0; color:#e65100; border:1px solid #ffe0b2; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" title="500p 주사위 배팅">🎲</button>
+                    <!-- [주석: 채팅창 내 주사위 배팅용 주사위 아이콘 이미지 대체] -->
+                    <button onclick="rollDice()" style="background:#fff3e0; color:#e65100; border:1px solid #ffe0b2; padding:6px 10px; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center;" title="500p 주사위 배팅"><img src="https://placehold.co/40x40/fff3e0/e65100?text=Dice" style="width:20px; height:20px;"></button>
                     <input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()">
                     <button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button>
                 </div>
@@ -275,6 +288,9 @@ function renderHome() {
             const cardStyle = isDelisted ? "background: #f2f2f2; opacity: 0.6; cursor:pointer;" : (isMe ? "background: #f0f8ff; border: 1px solid #cce5ff;" : "cursor: pointer; transition: 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.05);"); 
             const yPrice = getYesterdayClosePrice(f); const cAmt = f.price - yPrice; const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0; 
             const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1'); const cSign = cAmt > 0 ? '+' : '';
+            
+            /* [주석: 참여자 목록 및 로비 내 상장폐지 텍스트 옆 해골 마크 이미지 대체] */
+            const delistedLabel = `<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px; display:inline-flex; align-items:center; gap:2px;"><img src="https://placehold.co/40x40/ffffff/ff3b30?text=Skull" style="width:12px; height:12px; vertical-align:middle;">상장폐지</span>`;
             const priceHtml = isDelisted ? '-' : `${Math.floor(f.price || 0).toLocaleString()} p<br><span style="font-size:11px; color:${cColor}; font-weight:normal;">${cSign}${Math.floor(cAmt).toLocaleString()}p (${cSign}${cRate}%)</span>`;
             
             return `
@@ -282,10 +298,10 @@ function renderHome() {
                     <div style="display: flex; align-items: center; gap: 15px;">
                         ${getAvatarHtml(f, 'small')}
                         <div>
-                            <div style="font-size: 16px; font-weight: bold;">
+                            <div style="font-size: 16px; font-weight: bold; text-align:left;">
                                 <span style="color: ${f.nameColor || '#333d4b'};">${escapeHtml(f.name)}</span> 
                                 ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} 
-                                ${isDelisted ? '<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px;">💀상장폐지</span>' : ''}
+                                ${isDelisted ? delistedLabel : ''}
                             </div>
                             ${getBadgeHtml(f)}
                         </div>
@@ -295,7 +311,7 @@ function renderHome() {
             `; 
         }).join('');
         
-        html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer;">🚪 이 클럽에서 나가기</button>`;
+        html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer;">이 클럽에서 나가기</button>`;
         list.innerHTML = html; 
         setTimeout(() => { const chatBox = document.getElementById('chat-box'); if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; }, 10);
     }
@@ -336,7 +352,7 @@ function getCalendarHtml(room) {
                     const dotColors = ['#ff3b30', '#3182f6', '#34c759']; const indicatorColor = index < 3 ? dotColors[index] : '#8b95a1'; 
                     return `
                         <div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:8px; border-radius:6px; margin-bottom:6px; border:1px solid #eee; border-left:4px solid ${indicatorColor};">
-                            <div style="font-size:13px; color:#333d4b;"><b>${escapeHtml(e.title)}</b> ${dateTag} <span style="font-size:11px; color:#8b95a1;">(${escapeHtml(e.creator_name)})</span></div>
+                            <div style="font-size:13px; color:#333d4b; text-align:left;"><b>${escapeHtml(e.title)}</b> ${dateTag} <span style="font-size:11px; color:#8b95a1;">(${escapeHtml(e.creator_name)})</span></div>
                             <button onclick="deleteEvent('${e.id}')" style="background:none; border:none; color:#ff3b30; font-size:12px; cursor:pointer;">❌</button>
                         </div>
                     `; 
@@ -437,11 +453,11 @@ function renderMeeting() {
                 <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
                     ${avatarHtml}
                     <div>
-                        <div style="color: ${titleColor}; font-weight: bold; font-size:15px;">[${titleText}]</div>
-                        <div style="font-size:13px; color:#333d4b;">대상자: <b>${escapeHtml(a.target_name)}</b></div>
+                        <div style="color: ${titleColor}; font-weight: bold; font-size:15px; text-align:left;">[${titleText}]</div>
+                        <div style="font-size:13px; color:#333d4b; text-align:left;">대상자: <b>${escapeHtml(a.target_name)}</b></div>
                     </div>
                 </div>
-                <div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb;">
+                <div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb; text-align:left;">
                     <b>📝 사유:</b><br>${escapeHtml(a.reason)}
                 </div>
                 ${gaugeHtml}
@@ -461,38 +477,44 @@ function renderProfile() {
     
     const todayStr = getFormattedDate(new Date()); 
     const hasDailyDone = myProfile.lastDailyAttendance === todayStr; 
-    const dailyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasDailyDone ? '#e5e8eb' : '#e8f5e9'}; color: ${hasDailyDone ? '#8b95a1' : '#2e7d32'}; font-weight: bold; border: none; cursor: ${hasDailyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="doDailyAttendance()" ${hasDailyDone ? 'disabled' : ''}>${hasDailyDone ? '✅ 출석 완료' : '📅 매일 출석 (+50p)'}</button>`;
+    
+    /* [주석: 프로필 화면 내 매일 출석 달력 마크 이미지 대체] */
+    const dailyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasDailyDone ? '#e5e8eb' : '#e8f5e9'}; color: ${hasDailyDone ? '#8b95a1' : '#2e7d32'}; font-weight: bold; border: none; cursor: ${hasDailyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="doDailyAttendance()" ${hasDailyDone ? 'disabled' : ''}><img src="https://placehold.co/40x40/e8f5e9/2e7d32?text=CAL" style="width:16px; height:16px;"> ${hasDailyDone ? '✅ 출석 완료' : '매일 출석 (+50p)'}</button>`;
     
     const hasAdBonusDone = myProfile.lastDailyAdBonus === todayStr; 
     let adDoubleBtn = ''; 
     if (hasDailyDone && !hasAdBonusDone) { 
-        adDoubleBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #e3f2fd; color: #1565c0; font-weight: bold; border: none; cursor: pointer; margin-bottom: 10px;" onclick="watchAd('double_attendance')">🎬 광고 보고 2배 출석 (+50p)</button>`; 
+        /* [주석: 프로필 화면 내 광고보고 2배 보너스 슬레이트 마크 이미지 대체] */
+        adDoubleBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #e3f2fd; color: #1565c0; font-weight: bold; border: none; cursor: pointer; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="watchAd('double_attendance')"><img src="https://placehold.co/40x40/e3f2fd/1565c0?text=AD" style="width:16px; height:16px;"> 🎬 광고 보고 2배 출석 (+50p)</button>`; 
     } else if (hasDailyDone && hasAdBonusDone) { 
         adDoubleBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #e5e8eb; color: #8b95a1; font-weight: bold; border: none; cursor: not-allowed; margin-bottom: 10px;" disabled>✅ 출석 보상 2배 완료</button>`; 
     }
     
     const hasWeeklyDone = myProfile.weeklyTicketsClaimed === true; 
-    const weeklyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasWeeklyDone ? '#e5e8eb' : '#fff3e0'}; color: ${hasWeeklyDone ? '#8b95a1' : '#e65100'}; font-weight: bold; border: none; cursor: ${hasWeeklyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="claimWeeklyTickets()" ${hasWeeklyDone ? 'disabled' : ''}>${hasWeeklyDone ? '✅ 주간 보너스 완료' : '🎁 주간 보너스 평가권 (각 +1장)'}</button>`;
+    /* [주석: 프로필 화면 내 주간 선물 상자 마크 이미지 대체] */
+    const weeklyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasWeeklyDone ? '#e5e8eb' : '#fff3e0'}; color: ${hasWeeklyDone ? '#8b95a1' : '#e65100'}; font-weight: bold; border: none; cursor: ${hasWeeklyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="claimWeeklyTickets()" ${hasWeeklyDone ? 'disabled' : ''}><img src="https://placehold.co/40x40/fff3e0/e65100?text=GIFT" style="width:16px; height:16px;"> ${hasWeeklyDone ? '✅ 주간 보너스 완료' : '주간 보너스 평가권 (각 +1장)'}</button>`;
     
     const now = new Date(); const kstNow = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 3600000));
     let day = kstNow.getDay(); let diff = (day === 0 ? 6 : day - 1); let monday = new Date(kstNow); monday.setDate(kstNow.getDate() - diff);
     const mondayStr = getFormattedDate(monday);
     const hasAdTicketDone = myProfile.lastAdTicketMonday === mondayStr;
-    const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasAdTicketDone ? '#e5e8eb' : '#f3e5f5'}; color: ${hasAdTicketDone ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${hasAdTicketDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px;" onclick="watchAd('extra_ticket')" ${hasAdTicketDone ? 'disabled' : ''}>${hasAdTicketDone ? '✅ 이번 주 추가 평가권 획득 완료' : '🎬 광고 보고 평가권 추가 (주 1회)'}</button>`;
+    
+    /* [주석: 프로필 화면 내 하단 광고 보기 슬레이트 마크 이미지 대체] */
+    const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasAdTicketDone ? '#e5e8eb' : '#f3e5f5'}; color: ${hasAdTicketDone ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${hasAdTicketDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="watchAd('extra_ticket')" ${hasAdTicketDone ? 'disabled' : ''}><img src="https://placehold.co/40x40/f3e5f5/6a1b9a?text=AD" style="width:16px; height:16px;"> ${hasAdTicketDone ? '✅ 이번 주 추가 평가권 획득 완료' : '🎬 광고 보고 평가권 추가 (주 1회)'}</button>`;
     
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
-    if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
+    if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
 
     // 포인트 상점
     const shopHtml = `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #e5e8eb;">
             <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between; text-align:left;">
-                🛒 포인트 상점 <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
+                포인트 상점 <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
             </h3>
             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- ★이미지 URL★ 무지개 반사 아이콘 -->
+                        <!-- [주석: 포인트 상점 내 무지개 반사 방패 마크 이미지 대체] -->
                         <img src="https://placehold.co/80x80/f2f4f6/333d4b?text=Shield" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
@@ -516,17 +538,18 @@ function renderProfile() {
         ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; flex-shrink:0;" disabled>✅ 보유 중</button>`
         : `<button onclick="buyCashItem('theme_fire')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,500</button>`;
 
+    // ★ [안전 정렬 보완 패치] 캐시 상점 내부 강제 좌측 정렬(text-align:left) 주입 완료
     const cashShopHtml = `
         <div style="background: linear-gradient(135deg, #1c1c1e, #333d4b); border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.15); color:white;">
             <h3 style="margin-top:0; font-size:15px; display:flex; align-items:center; justify-content:space-between; color:#d4af37; text-align:left;">
                 💎 스페셜 캐시 상점 <span style="font-size:11px; font-weight:normal; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:10px;">가상 결제 테스트 중</span>
             </h3>
             
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- ★이미지 URL★ 익명 암살권 아이콘 -->
-                        <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Ninja" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
+                        <!-- [주석: 캐시 상점 내 익명 암살권 마크 이미지 대체] -->
+                        <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Assassin" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
                         <div style="font-weight:bold; font-size:14px; color:white;">익명 암살권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.anonTickets || 0}개)</span></div>
@@ -536,10 +559,10 @@ function renderProfile() {
                 <button onclick="buyCashItem('anon_ticket')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩2,500</button>
             </div>
             
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- ★이미지 URL★ 긴급 자금 아이콘 -->
+                        <!-- [주석: 캐시 상점 내 긴급 자금 수혈 마크 이미지 대체] -->
                         <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Money" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
@@ -550,11 +573,11 @@ function renderProfile() {
                 <button onclick="buyCashItem('fund_pack')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,000</button>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- ★이미지 URL★ 확성기 아이콘 -->
-                        <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Mega" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
+                        <!-- [주석: 캐시 상점 내 글로벌 확성기 마크 이미지 대체] -->
+                        <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Speaker" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
                         <div style="font-weight:bold; font-size:14px; color:white;">글로벌 확성기</div>
@@ -564,10 +587,10 @@ function renderProfile() {
                 <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩500</button>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- ★이미지 URL★ 네온 테마 아이콘 -->
+                        <!-- [주석: 캐시 상점 내 네온 테마 마크 이미지 대체] -->
                         <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Neon" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
@@ -578,10 +601,10 @@ function renderProfile() {
                 ${neonBtn}
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- ★이미지 URL★ 불꽃 테마 아이콘 -->
+                        <!-- [주석: 캐시 상점 내 불꽃 테마 마크 이미지 대체] -->
                         <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Fire" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
@@ -593,6 +616,10 @@ function renderProfile() {
             </div>
         </div>
     `;
+
+    /* [주석: 내 평가권 스탯창 내 손가락 이미지 대체] */
+    const goodThumbImg = `<img src="https://placehold.co/40x40/ffffff/ff3b30?text=UP" style="width:15px; height:16px; vertical-align:middle; margin-left:4px; margin-top:-3px;">`;
+    const badThumbImg = `<img src="https://placehold.co/40x40/ffffff/3182f6?text=DN" style="width:15px; height:16px; vertical-align:middle; margin-left:4px; margin-top:-3px;">`;
 
     container.innerHTML = `
         <div style="position: relative; display: inline-block;">
@@ -607,11 +634,11 @@ function renderProfile() {
         ${getBadgeHtml(myProfile)}
         <div style="display: flex; justify-content: space-around; margin: 20px 0;">
             <div style="background: #f9fafb; padding: 15px; border-radius: 12px; width: 40%;">
-                <div style="font-size: 13px; color: #8b95a1;">남은 호평권 👍</div>
+                <div style="font-size: 13px; color: #8b95a1;">남은 호평권 ${goodThumbImg}</div>
                 <div style="font-size: 20px; font-weight: bold; color: #ff3b30;">${myProfile.goodTickets} 장</div>
             </div>
             <div style="background: #f9fafb; padding: 15px; border-radius: 12px; width: 40%;">
-                <div style="font-size: 13px; color: #8b95a1;">남은 악평권 👎</div>
+                <div style="font-size: 13px; color: #8b95a1;">남은 악평권 ${badThumbImg}</div>
                 <div style="font-size: 20px; font-weight: bold; color: #3182f6;">${myProfile.badTickets} 장</div>
             </div>
         </div>
@@ -630,13 +657,19 @@ function renderRanking() {
     const container = document.getElementById('ranking-content'); if (!container || !myProfile || globalRanking.length === 0) return;
     const top10 = globalRanking.slice(0, 10);
     const createTotalRankCard = (p, index) => {
-        const medals = ['🥇', '🥈', '🥉']; const rankIcon = index < 3 ? medals[index] : `<span style="display:inline-block; width: 24px; text-align:center; color:#8b95a1; font-size:14px; font-weight:bold;">${index+1}</span>`;
+        /* [주석: 통합 랭킹 Top 3 메달 이모지 -> 고유 이미지 태그로 완벽 마이그레이션] */
+        let rankIcon = '';
+        if (index === 0) rankIcon = `<img src="https://placehold.co/40x40/ffffff/d4af37?text=1st" style="width:18px; height:18px; vertical-align:middle;">`;
+        else if (index === 1) rankIcon = `<img src="https://placehold.co/40x40/ffffff/c0c0c0?text=2nd" style="width:18px; height:18px; vertical-align:middle;">`;
+        else if (index === 2) rankIcon = `<img src="https://placehold.co/40x40/ffffff/cd7f32?text=3rd" style="width:18px; height:18px; vertical-align:middle;">`;
+        else rankIcon = `<span style="display:inline-block; width: 24px; text-align:center; color:#8b95a1; font-size:14px; font-weight:bold;">${index+1}</span>`;
+
         const isMe = p.name === myProfile.name; const bg = isMe ? "background:#f0f8ff;" : "";
         const yPrice = getYesterdayClosePrice(p); const cAmt = p.price - yPrice; const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0; const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1'); const cSign = cAmt > 0 ? '+' : '';
         return `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid #f9fafb; border-radius:8px; ${bg}">
                 <div style="display: flex; align-items: center; font-size: 15px; font-weight: bold;">
-                    <span style="font-size: 18px; margin-right: 10px; width:20px; text-align:center;">${rankIcon}</span>
+                    <span style="font-size: 18px; margin-right: 10px; width:24px; text-align:center; display:inline-flex; align-items:center; justify-content:center;">${rankIcon}</span>
                     ${getAvatarHtml(p, 'small')}
                     <span style="margin-left:10px; color: ${p.nameColor || '#333d4b'};">${escapeHtml(p.name)}</span> 
                     ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''}
@@ -734,13 +767,14 @@ function openFriendDetail(friendEmail) {
                 
                 <div id="anon-section" style="display:none; margin-top:10px; padding:10px; background:#f3e5f5; border-radius:8px; border:1px solid #e1bee7;">
                     <label style="font-weight:bold; color:#6a1b9a; cursor:pointer; font-size:12px; display:flex; align-items:center; gap:5px;">
-                        <input type="checkbox" id="use-anon-ticket"> 🥷 익명 암살권 사용 (보유: ${myProfile.anonTickets || 0}개)
+                        <!-- [주석: 피평가자 상세 팝업 내부 익명 암살권 사용 문구 옆 닌자 마크 이미지 대체] -->
+                        <input type="checkbox" id="use-anon-ticket"> <img src="https://placehold.co/40x40/f3e5f5/6a1b9a?text=NJ" style="width:14px; height:14px; vertical-align:middle; margin-top:-2px;"> 익명 암살권 사용 (보유: ${myProfile.anonTickets || 0}개)
                     </label>
                 </div>
             </div>
             
             <button onclick="submitEvaluationFinal()" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; font-size:15px; cursor:pointer; margin-bottom:10px; transition:0.2s;">🚀 평가 보내기</button>
-            <button onclick="kickUser('${friend.email}', '${escapeHtml(friend.name)}')" style="width:100%; padding:12px; background:#f2f4f6; color:#4e5968; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; font-size:13px; margin-bottom:10px;">🚪 이 유저 내보내기 투표 발의</button>
+            <button onclick="kickUser('${friend.email}', '${escapeHtml(friend.name)}')" style="width:100%; padding:12px; background:#f2f4f6; color:#4e5968; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; font-size:13px; margin-bottom:10px;">이 유저 내보내기 투표 발의</button>
             <button onclick="document.getElementById('eval-modal').style.display='none'" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">취소</button>
         </div>
     `;
@@ -749,7 +783,7 @@ function openFriendDetail(friendEmail) {
 
 window.kickUser = async function(targetEmail, targetName) {
     if (targetEmail === myEmail) { alert("자신을 내보낼 수 없습니다."); return; }
-    const reason = prompt(`🚪 [${targetName}] 님을 클럽에서 내보내는 투표를 발의합니다.\n포인트 소모는 없습니다.\n\n내보내려는 사유를 간단히 적어주세요:`);
+    const reason = prompt(`[${targetName}] 님을 클럽에서 내보내는 투표를 발의합니다.\n포인트 소모는 없습니다.\n\n내보내려는 사유를 간단히 적어주세요:`);
     if (!reason || reason.trim() === "") return;
     if(!confirm(`정말로 이 유저를 내보내는 투표를 시작하시겠습니까?`)) return;
 
@@ -801,7 +835,7 @@ async function submitEvaluation(evalType, intensity) {
         const expectedPrice = currentSelectedFriend.price - dropAmount;
         const maxPrice = currentSelectedFriend.maxPrice || 20000;
         if (expectedPrice <= maxPrice * 0.3) {
-            const proceed = confirm(`🚨 [경고] 치명타 임박!\n\n이 악평이 수락되면 상대방은 최고가 대비 -70% 이하로 폭락하여 즉시 '상장폐지 심사' 위기에 빠집니다.\n\n정말로 쏘시겠습니까? 😈`);
+            const proceed = confirm(`🚨 [경고] 치명타 임박!\n\이 악평이 수락되면 상대방은 최고가 대비 -70% 이하로 폭락하여 즉시 '상장폐지 심사' 위기에 빠집니다.\n\n정말로 쏘시겠습니까? 😈`);
             if (!proceed) return;
         }
     }
@@ -919,10 +953,12 @@ function openProfileModal() {
     const themeContainer = document.getElementById('owned-themes-container');
     if (themeContainer) {
         const owned = myProfile.ownedThemes || ['none'];
+        
+        /* [주석: 내 프로필 꾸미기 설정창 내부 테마 구별용 미니 이미지 마크 대체] */
         const themes = [
-            { id: 'none', name: '일반 테마 (기본)', icon: '👤' },
-            { id: 'neon', name: '홀로그램 네온', icon: '✨', class: 'theme-neon' },
-            { id: 'fire', name: '지옥의 불꽃', icon: '🔥', class: 'theme-fire' }
+            { id: 'none', name: '일반 테마 (기본)', img: 'https://placehold.co/40x40/f2f4f6/4e5968?text=U' },
+            { id: 'neon', name: '홀로그램 네온', img: 'https://placehold.co/40x40/f2f4f6/3182f6?text=Neon', class: 'theme-neon' },
+            { id: 'fire', name: '지옥의 불꽃', img: 'https://placehold.co/40x40/f2f4f6/ff3b30?text=Fire', class: 'theme-fire' }
         ];
         
         themeContainer.innerHTML = themes.map(t => {
@@ -930,7 +966,7 @@ function openProfileModal() {
             const isEquipped = myProfile.profileTheme === t.id;
             return `
                 <div onclick="selectTheme('${t.id}')" class="${t.id !== 'none' ? t.class : ''}" style="cursor:pointer; padding:12px; border-radius:12px; background:${isEquipped ? '#e8f5e9' : '#f9fafb'}; border:${isEquipped ? '2px solid #2e7d32' : '2px solid transparent'}; display:flex; justify-content:space-between; align-items:center;">
-                    <div style="font-weight:bold; font-size:14px; color:#333d4b;">${t.icon} ${t.name}</div>
+                    <div style="font-weight:bold; font-size:14px; color:#333d4b; display:flex; align-items:center; gap:8px;"><img src="${t.img}" style="width:16px; height:16px; object-fit:contain;"> ${t.name}</div>
                     ${isEquipped ? '<div style="font-size:12px; color:#2e7d32; font-weight:bold;">✅ 장착 중</div>' : '<div style="font-size:12px; color:#8b95a1; font-weight:bold;">장착하기</div>'}
                 </div>
             `;
