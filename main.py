@@ -204,12 +204,22 @@ def get_user_data(authorization: str = Header(None)):
 
     my_rooms_cursor = db["rooms"].find({"members": email})
     my_rooms = []
+    
     for room in my_rooms_cursor:
         room_modified = False
+        surviving_agendas = [] # ★ 살아남은 투표만 담을 배열
+        
         for a in room.get("agendas", []):
-            if a.get("status") == "active" and a.get("created_at"):
+            if a.get("created_at"):
                 created = parse_time_safe(a["created_at"])
-                if created and datetime.utcnow() >= created + timedelta(hours=24):
+                
+                # ★ [패치] 48시간(마감 후 하루) 지난 안건은 배열에 넣지 않음 = DB에서 영구 삭제
+                if created and datetime.utcnow() >= created + timedelta(hours=48):
+                    room_modified = True
+                    continue 
+
+                # 24시간 지난 안건 자동 마감 처리 (이건 살아남음)
+                if a.get("status") == "active" and created and datetime.utcnow() >= created + timedelta(hours=24):
                     a["status"] = "resolved"; a["agreeVotes"] = 999; room_modified = True
                     target_user = db["users"].find_one({"_id": a["target_email"]})
                     
@@ -262,7 +272,12 @@ def get_user_data(authorization: str = Header(None)):
                                     
                         db["users"].update_one({"_id": a["target_email"]}, {"$set": {"profile": t_prof, "noti": t_noti}})
                         
-        if room_modified: db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"agendas": room.get("agendas")}})
+            # 살아남은 안건(48시간 이내)만 배열에 추가
+            surviving_agendas.append(a)
+
+        if room_modified: 
+            db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"agendas": surviving_agendas}})
+            room["agendas"] = surviving_agendas
             
         members_profiles = []
         for member_email in room["members"]:
@@ -294,8 +309,8 @@ def save_user_data(data: UserData, authorization: str = Header(None)):
         db_profile["isVIP"] = data.profile.get("isVIP", db_profile.get("isVIP"))
         db_profile["badges"] = data.profile.get("badges", db_profile.get("badges", []))
         db_profile["roomAliases"] = data.profile.get("roomAliases", db_profile.get("roomAliases", {}))
-        db_profile["profileTheme"] = data.profile.get("profileTheme", db_profile.get("profileTheme", "none")) # ★ 저장 시 테마 반영
-        db_profile["ownedThemes"] = data.profile.get("ownedThemes", db_profile.get("ownedThemes", ["none"])) # ★ 보유 테마 목록 저장
+        db_profile["profileTheme"] = data.profile.get("profileTheme", db_profile.get("profileTheme", "none")) 
+        db_profile["ownedThemes"] = data.profile.get("ownedThemes", db_profile.get("ownedThemes", ["none"])) 
         final_profile = db_profile
     else: final_profile = data.profile
     db["users"].update_one({"_id": email}, {"$set": {"profile": final_profile, "noti": data.noti}}, upsert=True)
@@ -730,7 +745,6 @@ def buy_shop_item(data: ShopData, authorization: str = Header(None)):
         
     return {"status": "error", "message": "알 수 없는 아이템입니다."}
 
-# ★ [패치] 테마 구매 시 보유 배열(ownedThemes)에 추가 및 중복 방지 로직 적용
 @app.post("/api/cash-shop/buy")
 def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -741,7 +755,6 @@ def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
     profile = user["profile"]
     kst_now = datetime.utcnow() + timedelta(hours=9)
     
-    # 보유 목록 배열이 없으면 초기화
     if "ownedThemes" not in profile:
         profile["ownedThemes"] = ["none"]
     
@@ -763,12 +776,11 @@ def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
     elif data.item_type.startswith("theme_"):
         theme_name = data.item_type.split("_")[1]
         
-        # 중복 검사
         if theme_name in profile["ownedThemes"]:
             return {"status": "error", "message": "이미 보유하고 있는 테마입니다."}
             
         profile["ownedThemes"].append(theme_name)
-        profile["profileTheme"] = theme_name # 사면 즉시 자동 장착
+        profile["profileTheme"] = theme_name 
         msg = f"✨ 테마 결제 완료! (자동으로 장착되었습니다)"
     else:
         return {"status": "error", "message": "알 수 없는 상품입니다."}

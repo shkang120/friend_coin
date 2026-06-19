@@ -423,7 +423,9 @@ function renderMeeting() {
             opacityStyle = 'opacity: 0.65; filter: grayscale(20%);'; const isResolved = a.status === 'resolved'; 
             const stampColor = isResolved ? titleColor : '#3182f6'; const stampText = isResolved ? '가결 확정' : '기각 무효';
             stampHtml = `<div class="verdict-stamp" style="border-color:${stampColor}; color:${stampColor};">${stampText}</div>`; 
-            btnHtml = `<div style="width:100%; text-align:center; padding:10px; font-size:13px; font-weight:bold; color:#8b95a1; background:#f9fafb; border-radius:10px;">종료된 재판/투표 기록입니다.</div>`;
+            
+            // ★ [패치] 48시간 후 완전 삭제 안내 문구 추가
+            btnHtml = `<div style="width:100%; text-align:center; padding:10px; font-size:12px; font-weight:bold; color:#8b95a1; background:#f9fafb; border-radius:10px;">종료된 재판/투표 기록입니다.<br><span style="font-size:10px; font-weight:normal;">(마감 24시간 후 자동 삭제됨)</span></div>`;
         }
 
         const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[a.room_code]) ? myProfile.roomAliases[a.room_code] : a.room_name;
@@ -483,7 +485,6 @@ function renderProfile() {
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
     if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
 
-    // ★ 상점 아이템 HTML
     const shopHtml = `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #e5e8eb;">
             <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between;">
@@ -496,7 +497,6 @@ function renderProfile() {
         </div>
     `;
 
-    // ★ 캐시 상점 HTML (아이콘 정렬 칼각 맞춤 & 보유 여부 체크 적용)
     const neonOwned = (myProfile.ownedThemes || []).includes('neon');
     const fireOwned = (myProfile.ownedThemes || []).includes('fire');
 
@@ -526,7 +526,6 @@ function renderProfile() {
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
                 <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">📢</span> 글로벌 확성기</div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">전국구 뉴스 티커에 메시지 띄우기</div></div>
-                <!-- ★ 확성기 가격 500원 수정 -->
                 <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩500</button>
             </div>
 
@@ -806,13 +805,25 @@ async function claimWeeklyTickets() {
     } catch(err) { alert("서버 오류"); } finally { hideLoading(); }
 }
 
+function openVIPModal() { document.getElementById('vip-modal').style.display = 'flex'; if (myProfile.isVIP) { document.getElementById('vip-buy-section').style.display = 'none'; document.getElementById('vip-manage-section').style.display = 'block'; document.getElementById('vip-color-picker').value = myProfile.nameColor || '#333d4b'; } else { document.getElementById('vip-buy-section').style.display = 'block'; document.getElementById('vip-manage-section').style.none; } }
+function closeVIPModal() { document.getElementById('vip-modal').style.display = 'none'; }
+function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("💎 VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); }
+function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
+
 window.buyShopItem = async function(itemType, cost) {
     if (myProfile.price < cost) { alert("잔고가 부족합니다!"); return; }
-    if (!confirm(`3,000p를 지불하고 '무지개 반사' 방어권을 구매하시겠습니까?`)) return;
+    let extraData = "";
+    if (itemType === 'megaphone') { 
+        extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자):"); 
+        if (!extraData || extraData.trim() === "") return; 
+        if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } 
+    } else { 
+        if (!confirm(`3,000p를 지불하고 '무지개 반사' 방어권을 구매하시겠습니까?`)) return; 
+    }
     
     showLoading();
     try {
-        const res = await fetch(`${BACKEND_URL}/api/shop/buy`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, item_type: itemType, extra_data: '' }) });
+        const res = await fetch(`${BACKEND_URL}/api/shop/buy`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, item_type: itemType, extra_data: extraData }) });
         const data = await res.json(); if (data.status === 'success') { showToast(data.message); await forceSync(); } else { alert(data.message); }
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
@@ -825,7 +836,9 @@ window.buyCashItem = async function(itemType) {
         if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } 
     }
     
-    if (!confirm("💳 테스트 환경이므로 실제 과금 없이 [무료 가상 결제]가 진행됩니다.\n계속하시겠습니까?")) return;
+    if (itemType !== 'theme_none') {
+        if (!confirm("💳 테스트 환경이므로 실제 과금 없이 [무료 가상 결제]가 진행됩니다.\n계속하시겠습니까?")) return;
+    }
 
     showLoading();
     try {
@@ -840,11 +853,10 @@ window.buyCashItem = async function(itemType) {
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
 
-// ★ [패치] 통합 프로필 편집 모달
+// ★ 아바타 & 테마 장착 통합 렌더링
 function openProfileModal() { 
     document.getElementById('profile-modal').style.display = 'flex'; 
     
-    // 1. 아바타 렌더링
     const grid = document.getElementById('default-profiles-grid'); 
     grid.innerHTML = DEFAULT_AVATARS.map(url => {
         const isSelected = myProfile.profileImage === url;
@@ -852,7 +864,6 @@ function openProfileModal() {
         return `<div onclick="selectDefaultProfile('${url}')" style="cursor: pointer; border-radius: 12px; overflow: hidden; background: #f2f4f6; transition: transform 0.1s; ${boxStyle}"><img src="${url}" style="width: 100%; height: 100%; display: block; object-fit: cover;"></div>`;
     }).join(''); 
 
-    // 2. 테마 렌더링
     const themeContainer = document.getElementById('owned-themes-container');
     if (themeContainer) {
         const owned = myProfile.ownedThemes || ['none'];
@@ -863,7 +874,7 @@ function openProfileModal() {
         ];
         
         themeContainer.innerHTML = themes.map(t => {
-            if (!owned.includes(t.id)) return ''; // 보유한 것만 보여줌
+            if (!owned.includes(t.id)) return '';
             const isEquipped = myProfile.profileTheme === t.id;
             return `
                 <div onclick="selectTheme('${t.id}')" class="${t.id !== 'none' ? t.class : ''}" style="cursor:pointer; padding:12px; border-radius:12px; background:${isEquipped ? '#e8f5e9' : '#f9fafb'}; border:${isEquipped ? '2px solid #2e7d32' : '2px solid transparent'}; display:flex; justify-content:space-between; align-items:center;">
@@ -874,10 +885,10 @@ function openProfileModal() {
         }).join('');
     }
 }
+
 function closeProfileModal() { document.getElementById('profile-modal').style.display = 'none'; }
 function selectDefaultProfile(url) { myProfile.profileImage = url; saveData(); showToast("프로필 아바타 변경!"); openProfileModal(); renderProfile(); }
 
-// ★ [패치] 테마 장착 함수
 window.selectTheme = function(themeId) {
     myProfile.profileTheme = themeId;
     saveData();
@@ -959,7 +970,7 @@ function finishSetup() {
     if (myProfile && myProfile.shieldCount === undefined) myProfile.shieldCount = 0;
     if (myProfile && myProfile.anonTickets === undefined) myProfile.anonTickets = 0;
     if (myProfile && !myProfile.profileTheme) myProfile.profileTheme = 'none';
-    if (myProfile && !myProfile.ownedThemes) myProfile.ownedThemes = ['none']; // ★ 보유 테마 배열 초기화
+    if (myProfile && !myProfile.ownedThemes) myProfile.ownedThemes = ['none'];
     if (myProfile && !myProfile.badges) myProfile.badges = []; 
     if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
     if (myProfile && !myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice, myProfile.price]; myProfile.timeHistory = ["시작", getCurrentTime()]; } 
