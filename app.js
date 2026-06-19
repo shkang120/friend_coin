@@ -423,8 +423,6 @@ function renderMeeting() {
             opacityStyle = 'opacity: 0.65; filter: grayscale(20%);'; const isResolved = a.status === 'resolved'; 
             const stampColor = isResolved ? titleColor : '#3182f6'; const stampText = isResolved ? '가결 확정' : '기각 무효';
             stampHtml = `<div class="verdict-stamp" style="border-color:${stampColor}; color:${stampColor};">${stampText}</div>`; 
-            
-            // ★ [패치] 48시간 후 완전 삭제 안내 문구 추가
             btnHtml = `<div style="width:100%; text-align:center; padding:10px; font-size:12px; font-weight:bold; color:#8b95a1; background:#f9fafb; border-radius:10px;">종료된 재판/투표 기록입니다.<br><span style="font-size:10px; font-weight:normal;">(마감 24시간 후 자동 삭제됨)</span></div>`;
         }
 
@@ -485,28 +483,36 @@ function renderProfile() {
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
     if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
 
+    // ★ 포인트 상점 (아이콘 칼정렬 패치)
     const shopHtml = `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #e5e8eb;">
             <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between;">
                 🛒 포인트 상점 <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
             </h3>
             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
-                <div><div style="font-weight:bold; font-size:14px; color:#333d4b;"><span style="display:inline-block; width:22px; text-align:center;">🛡️</span> 무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">악평 피격 시 1회 자동 방어</div></div>
-                <button onclick="buyShopItem('shield', 3000)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">3,000p</button>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <div style="font-size:20px; line-height:1;">🛡️</div>
+                    <div>
+                        <div style="font-weight:bold; font-size:14px; color:#333d4b;">무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div>
+                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">악평 피격 시 1회 자동 방어</div>
+                    </div>
+                </div>
+                <button onclick="buyShopItem('shield', 3000)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">3,000p</button>
             </div>
         </div>
     `;
 
+    // ★ 캐시 상점 (아이콘 칼정렬 패치 적용)
     const neonOwned = (myProfile.ownedThemes || []).includes('neon');
     const fireOwned = (myProfile.ownedThemes || []).includes('fire');
 
     const neonBtn = neonOwned 
-        ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed;" disabled>✅ 보유 중</button>`
-        : `<button onclick="buyCashItem('theme_neon')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,500</button>`;
+        ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; flex-shrink:0;" disabled>✅ 보유 중</button>`
+        : `<button onclick="buyCashItem('theme_neon')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,500</button>`;
         
     const fireBtn = fireOwned 
-        ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed;" disabled>✅ 보유 중</button>`
-        : `<button onclick="buyCashItem('theme_fire')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,500</button>`;
+        ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; flex-shrink:0;" disabled>✅ 보유 중</button>`
+        : `<button onclick="buyCashItem('theme_fire')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,500</button>`;
 
     const cashShopHtml = `
         <div style="background: linear-gradient(135deg, #1c1c1e, #333d4b); border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.15); color:white;">
@@ -515,27 +521,58 @@ function renderProfile() {
             </h3>
             
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">🥷</span> 익명 암살권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.anonTickets || 0}개)</span></div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">악평 시 내 정체 100% 은폐</div></div>
-                <button onclick="buyCashItem('anon_ticket')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩2,500</button>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <div style="font-size:20px; line-height:1;">🥷</div>
+                    <div>
+                        <div style="font-weight:bold; font-size:14px; color:white;">익명 암살권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.anonTickets || 0}개)</span></div>
+                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">악평 시 내 정체 100% 은폐</div>
+                    </div>
+                </div>
+                <button onclick="buyCashItem('anon_ticket')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩2,500</button>
             </div>
             
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">💰</span> 긴급 자금 수혈</div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">계좌로 즉시 10,000p 입금</div></div>
-                <button onclick="buyCashItem('fund_pack')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩3,000</button>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <div style="font-size:20px; line-height:1;">💰</div>
+                    <div>
+                        <div style="font-weight:bold; font-size:14px; color:white;">긴급 자금 수혈</div>
+                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">계좌로 즉시 10,000p 입금</div>
+                    </div>
+                </div>
+                <button onclick="buyCashItem('fund_pack')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,000</button>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">📢</span> 글로벌 확성기</div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">전국구 뉴스 티커에 메시지 띄우기</div></div>
-                <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">₩500</button>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <div style="font-size:20px; line-height:1;">📢</div>
+                    <div>
+                        <div style="font-weight:bold; font-size:14px; color:white;">글로벌 확성기</div>
+                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">전국구 뉴스 티커에 메시지 띄우기</div>
+                    </div>
+                </div>
+                <!-- ★ 확성기 가격 500원 -->
+                <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩500</button>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px;">
-                <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">✨</span> 테마: 홀로그램 네온</div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">프로필 무지개빛 발광 효과</div></div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <div style="font-size:20px; line-height:1;">✨</div>
+                    <div>
+                        <div style="font-weight:bold; font-size:14px; color:white;">테마: 홀로그램 네온</div>
+                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">프로필 무지개빛 발광 효과</div>
+                    </div>
+                </div>
                 ${neonBtn}
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px;">
-                <div><div style="font-weight:bold; font-size:14px;"><span style="display:inline-block; width:22px; text-align:center;">🔥</span> 테마: 지옥의 불꽃</div><div style="font-size:11px; color:#8b95a1; margin-top:4px; margin-left:26px;">프로필 타오르는 오라 효과</div></div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <div style="font-size:20px; line-height:1;">🔥</div>
+                    <div>
+                        <div style="font-weight:bold; font-size:14px; color:white;">테마: 지옥의 불꽃</div>
+                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">프로필 타오르는 오라 효과</div>
+                    </div>
+                </div>
                 ${fireBtn}
             </div>
         </div>
@@ -853,7 +890,6 @@ window.buyCashItem = async function(itemType) {
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
 
-// ★ 아바타 & 테마 장착 통합 렌더링
 function openProfileModal() { 
     document.getElementById('profile-modal').style.display = 'flex'; 
     
