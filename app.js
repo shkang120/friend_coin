@@ -37,7 +37,6 @@ function getYesterdayClosePrice(profile) {
     return yesterdayPrice;
 }
 
-// 기본 프로필 객체 정의 (이모지 대신 기본 아바타/이미지 체계 유지)
 const defaultProfile = { name: "", profileImage: "", emoji: "👨‍💻", price: 20000, basePrice: 20000, maxPrice: 20000, status: 'active', goodTickets: 2, badTickets: 2, lastDailyAttendance: null, weeklyTicketsClaimed: false, lastDailyAdBonus: null, lastAdTicketMonday: null, badges: [], stats: { goodGiven: 0, badGiven: 0, trialCount: 0 }, isVIP: false, nameColor: "#333d4b", priceHistory: [], timeHistory: [], pending_evals: [], defense_count: 0, defense_month: "", roomAliases: {}, shieldCount: 0, anonTickets: 0, profileTheme: 'none', ownedThemes: ['none'] };
 let myProfile = null; let myNotifications = []; let myRooms = []; let globalRanking = []; let currentRoomCode = null; let currentAdRewardType = null; let adInterval = null; let currentSelectedFriend = null; let evalState = { type: null, intensity: null, p1: 0, p2: 0, p3: 0 }; let calYear = new Date().getFullYear(); let calMonth = new Date().getMonth(); let calSelectedDate = getFormattedDate(new Date());
 
@@ -48,9 +47,9 @@ function showToast(msg) { const toast = document.getElementById('toast'); if(toa
 window.copyInviteLink = function(code) { 
     const link = window.location.origin + '/?join=' + code; 
     if (navigator.clipboard && window.isSecureContext) { 
-        navigator.clipboard.writeText(link).then(() => showToast("🔗 카톡에 붙여넣기 하세요! 링크 복사 완료!")); 
+        navigator.clipboard.writeText(link).then(() => showToast("카톡에 붙여넣기 하세요! 링크 복사 완료!")); 
     } else { 
-        const textArea = document.createElement("textarea"); textArea.value = link; document.body.appendChild(textArea); textArea.select(); document.execCommand("Copy"); textArea.remove(); showToast("🔗 카톡에 붙여넣기 하세요! 링크 복사 완료!"); 
+        const textArea = document.createElement("textarea"); textArea.value = link; document.body.appendChild(textArea); textArea.select(); document.execCommand("Copy"); textArea.remove(); showToast("카톡에 붙여넣기 하세요! 링크 복사 완료!"); 
     } 
 };
 
@@ -65,7 +64,7 @@ function getAvatarHtml(person, size = 'small') {
     if (person.profileImage) {
         inner = `<img src="${person.profileImage}" style="width:100%; height:100%; border-radius:${radius}; object-fit:cover; display:inline-block; vertical-align:middle; background:#f2f4f6;">`;
     } else {
-        /* [주석: 프로필 이미지가 없을 때 채워지는 기본 유저 이미지] */
+        /* [주석: 프로필 이미지가 없을 때 기본 아바타] */
         inner = `<img src="https://placehold.co/100x100/f2f4f6/4e5968?text=User" style="width:100%; height:100%; border-radius:${radius}; object-fit:cover; display:inline-block; vertical-align:middle;">`;
     }
 
@@ -75,22 +74,33 @@ function getAvatarHtml(person, size = 'small') {
 function getBadgeHtml(person) { 
     let allBadges = [...(person.dynamicBadges || []), ...(person.badges || [])]; 
     if (allBadges.length === 0) return ''; 
-    return `<div style="display:flex; gap:4px; margin-top:4px; flex-wrap:wrap;">` + allBadges.map(b => `<span style="font-size:10px; background:#f2f4f6; padding:2px 6px; border-radius:4px; color:#4e5968;">${b}</span>`).join('') + `</div>`; 
+    return `<div style="display:flex; gap:4px; margin-top:4px; flex-wrap:wrap;">` + allBadges.map(b => {
+        let badgeImg = '';
+        /* [주석: 칭호 뱃지 아이콘들] */
+        if(b.includes('천사')) badgeImg = `<img src="https://placehold.co/40x40/transparent/4e5968?text=Angel" style="width:12px; height:12px; margin-right:2px;">`;
+        else if(b.includes('악마')) badgeImg = `<img src="https://placehold.co/40x40/transparent/4e5968?text=Devil" style="width:12px; height:12px; margin-right:2px;">`;
+        else if(b.includes('단골')) badgeImg = `<img src="https://placehold.co/40x40/transparent/4e5968?text=Law" style="width:12px; height:12px; margin-right:2px;">`;
+        else if(b.includes('VIP')) badgeImg = `<img src="https://placehold.co/40x40/transparent/d4af37?text=VIP" style="width:12px; height:12px; margin-right:2px;">`;
+        else if(b.includes('1위')) badgeImg = `<img src="https://placehold.co/40x40/transparent/d4af37?text=1st" style="width:12px; height:12px; margin-right:2px;">`;
+        else if(b.includes('떡상왕')) badgeImg = `<img src="https://placehold.co/40x40/transparent/ff3b30?text=Up" style="width:12px; height:12px; margin-right:2px;">`;
+        
+        return `<span style="font-size:10px; background:#f2f4f6; padding:2px 6px; border-radius:4px; color:#4e5968; display:inline-flex; align-items:center;">${badgeImg}${b}</span>`;
+    }).join('') + `</div>`; 
 }
 
 function checkBadges() {
     if (!myProfile || !myProfile.badges) return;
-    if (myProfile.stats.goodGiven >= 2 && !myProfile.badges.includes('👼천사')) { myProfile.badges.push('👼천사'); showToast('🎉 [칭호 획득] 👼천사'); }
-    if (myProfile.stats.badGiven >= 2 && !myProfile.badges.includes('😈악마')) { myProfile.badges.push('😈악마'); showToast('🎉 [칭호 획득] 😈악마'); }
-    if (myProfile.stats.trialCount >= 2 && !myProfile.badges.includes('⚖️법정단골')) { myProfile.badges.push('⚖️법정단골'); showToast('🎉 [칭호 획득] ⚖️법정단골'); }
+    if (myProfile.stats.goodGiven >= 2 && !myProfile.badges.includes('천사')) { myProfile.badges.push('천사'); showToast('[칭호 획득] 천사'); }
+    if (myProfile.stats.badGiven >= 2 && !myProfile.badges.includes('악마')) { myProfile.badges.push('악마'); showToast('[칭호 획득] 악마'); }
+    if (myProfile.stats.trialCount >= 2 && !myProfile.badges.includes('법정단골')) { myProfile.badges.push('법정단골'); showToast('[칭호 획득] 법정단골'); }
     if (globalRanking.length === 0) return;
     const top1 = globalRanking[0]; 
     const topGainer = [...globalRanking].sort((a,b) => ((b.price||0) - (b.basePrice||0)) - ((a.price||0) - (a.basePrice||0)))[0];
     globalRanking.forEach(p => { 
         p.dynamicBadges = []; 
-        if (p.isVIP) p.dynamicBadges.push('👑VIP'); 
-        if (top1 && p.name === top1.name) p.dynamicBadges.push('👑1위'); 
-        if (topGainer && p.name === topGainer.name && (p.price - p.basePrice) > 0) p.dynamicBadges.push('🚀떡상왕'); 
+        if (p.isVIP) p.dynamicBadges.push('VIP'); 
+        if (top1 && p.name === top1.name) p.dynamicBadges.push('1위'); 
+        if (topGainer && p.name === topGainer.name && (p.price - p.basePrice) > 0) p.dynamicBadges.push('떡상왕'); 
     });
 }
 
@@ -98,12 +108,11 @@ function updateTicker() {
     const tickerEl = document.getElementById('ticker-text'); 
     if(!tickerEl || !myProfile || globalRanking.length === 0) return; 
     
-    /* [주석: 글로벌 전광판 좌측 왕관 마크 이미지 대체] */
-    const crownImg = `<img src="https://placehold.co/24x24/1c1c1e/d4af37?text=CR" style="width:14px; height:14px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+    /* [주석: 뉴스 티커 내 전국 1위 왕관 아이콘 / 공지사항 아이콘] */
+    const crownImg = `<img src="https://placehold.co/24x24/1c1c1e/d4af37?text=C" style="width:14px; height:14px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
     const rankText = `${crownImg}전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p)`; 
+    const noticeImg = `<img src="https://placehold.co/24x24/1c1c1e/32d74b?text=N" style="width:14px; height:14px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
     
-    /* [주석: 글로벌 전광판 공지 마크 이미지 대체] */
-    const noticeImg = `<img src="https://placehold.co/24x24/1c1c1e/32d74b?text=NT" style="width:14px; height:14px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
     const megaText = globalMegaphone ? `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; ${escapeHtml(globalMegaphone)}` : `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; ${noticeImg}[공지] 아이템 상점 오픈! 무지개 반사로 악평을 방어하세요!`; 
     tickerEl.innerHTML = `[글로벌 시황] ${rankText}${megaText}`; 
 }
@@ -113,6 +122,37 @@ function saveData() {
     updateTicker(); 
     if (!myEmail) return; 
     fetch(`${BACKEND_URL}/api/save`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ profile: myProfile, noti: myNotifications }) }).catch(err => console.error(err)); 
+}
+
+// 하단 내비게이션 아이콘 업데이트 로직
+function updateNavIcons() {
+    const navItems = document.querySelectorAll('.nav-item');
+    /* [주석: 하단 내비게이션 아이콘들 (Lobby, Meeting, Rank, Noti, Profile)] */
+    const icons = {
+        'home': 'https://placehold.co/40x40/transparent/8b95a1?text=Lobby',
+        'meeting': 'https://placehold.co/40x40/transparent/8b95a1?text=Meet',
+        'ranking': 'https://placehold.co/40x40/transparent/8b95a1?text=Rank',
+        'noti': 'https://placehold.co/40x40/transparent/8b95a1?text=Noti',
+        'profile': 'https://placehold.co/40x40/transparent/8b95a1?text=User'
+    };
+    const activeIcons = {
+        'home': 'https://placehold.co/40x40/transparent/3182f6?text=Lobby',
+        'meeting': 'https://placehold.co/40x40/transparent/3182f6?text=Meet',
+        'ranking': 'https://placehold.co/40x40/transparent/3182f6?text=Rank',
+        'noti': 'https://placehold.co/40x40/transparent/3182f6?text=Noti',
+        'profile': 'https://placehold.co/40x40/transparent/3182f6?text=User'
+    };
+
+    navItems.forEach((item, index) => {
+        const tabKeys = ['home', 'meeting', 'ranking', 'noti', 'profile'];
+        const key = tabKeys[index];
+        const iconSpan = item.querySelector('.nav-icon');
+        if (item.classList.contains('active')) {
+            iconSpan.innerHTML = `<img src="${activeIcons[key]}" style="width:24px; height:24px;">`;
+        } else {
+            iconSpan.innerHTML = `<img src="${icons[key]}" style="width:24px; height:24px;">`;
+        }
+    });
 }
 
 function switchTab(tabName) {
@@ -126,6 +166,8 @@ function switchTab(tabName) {
     const tabIndex = { 'home': 0, 'meeting': 1, 'ranking': 2, 'noti': 3, 'profile': 4 }[tabName];
     const navItems = document.querySelectorAll('.nav-item'); 
     if (navItems[tabIndex]) navItems[tabIndex].classList.add('active');
+    
+    updateNavIcons();
     
     if (tabName === 'home') renderHome(); 
     if (tabName === 'meeting') renderMeeting(); 
@@ -145,7 +187,7 @@ window.changeRoomAlias = function(roomCode, originalName) {
         showToast("원래 이름으로 복구되었습니다."); 
     } else { 
         myProfile.roomAliases[roomCode] = newName.trim(); 
-        showToast("방 별명이 변경되었습니다! ✨"); 
+        showToast("방 별명이 변경되었습니다!"); 
     }
     saveData(); 
     renderHome();
@@ -193,8 +235,12 @@ function renderHome() {
     if (!currentRoomCode) { 
         let html = `
             <div style="display:flex; gap:10px; margin-bottom:20px;">
-                <button onclick="createNewRoom()" style="flex:1; padding:15px; background:#333d4b; color:white; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1);">+ 새 클럽 개설</button>
-                <button onclick="joinExistingRoom()" style="flex:1; padding:15px; background:#e8f5e9; color:#2e7d32; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.05);">코드로 입장</button>
+                <button onclick="createNewRoom()" style="flex:1; padding:15px; background:#333d4b; color:white; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:center; gap:6px;">
+                    <img src="https://placehold.co/40x40/transparent/ffffff?text=+" style="width:18px; height:18px;"> 새 클럽 개설
+                </button>
+                <button onclick="joinExistingRoom()" style="flex:1; padding:15px; background:#e8f5e9; color:#2e7d32; border-radius:12px; font-weight:bold; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:center; gap:6px;">
+                    <img src="https://placehold.co/40x40/transparent/2e7d32?text=Key" style="width:18px; height:18px;"> 코드로 입장
+                </button>
             </div>
             <h3 style="color:#333d4b; margin-top:0; font-size:16px;">내 투자 클럽 목록</h3>
         `;
@@ -206,7 +252,7 @@ function renderHome() {
                 const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? myProfile.roomAliases[r.room_code] : r.room_name;
                 const aliasTag = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? '<span style="font-size:10px; font-weight:normal; color:#8b95a1; background:#f2f4f6; padding:2px 4px; border-radius:4px; margin-left:4px;">내 별명</span>' : '';
                 const avatars = r.members.slice(0, 4).map((m, i) => { 
-                    /* [주석: 클럽방 카드 내부 상장폐지 상태 유저 마크 이미지 대체] */
+                    /* [주석: 클럽방 카드 내부 상장폐지 상태 유저 마크] */
                     const delistedAvatar = `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#f2f4f6;"><img src="https://placehold.co/40x40/ffebee/c62828?text=X" style="width:14px; height:14px;"></div>`;
                     const normalAvatar = `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#f9fafb;"><img src="https://placehold.co/40x40/f2f4f6/4e5968?text=U" style="width:100%; height:100%; object-fit:cover;"></div>`;
                     
@@ -216,16 +262,20 @@ function renderHome() {
                 }).join('');
                 const extraMembers = r.members.length > 4 ? `<div style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:-8px; position:relative; z-index:5; background:#f2f4f6; color:#8b95a1; font-size:10px; font-weight:bold; display:inline-flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,0.1); vertical-align:middle;">+${r.members.length-4}</div>` : '';
                 
+                /* [주석: 클럽방 카드 내부 인원수 아이콘 / 열쇠 아이콘] */
+                const usersImg = `<img src="https://placehold.co/40x40/transparent/8b95a1?text=Usrs" style="width:12px; height:12px; vertical-align:middle; margin-right:2px;">`;
+                const keyImg = `<img src="https://placehold.co/40x40/transparent/3182f6?text=Key" style="width:12px; height:12px; vertical-align:middle; margin-right:2px;">`;
+
                 return `
                     <div onclick="enterRoom('${r.room_code}')" class="info-card" style="cursor:pointer; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; border:2px solid transparent; transition:0.2s;" onmouseover="this.style.borderColor='#3182f6'" onmouseout="this.style.borderColor='transparent'">
                         <div>
                             <div style="font-weight:bold; font-size:16px; color:#333d4b; margin-bottom:6px;">${escapeHtml(displayRoomName)}${aliasTag}</div>
                             <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#8b95a1;">
                                 <div style="display:flex; align-items:center;">${avatars}${extraMembers}</div>
-                                <span>👥 ${r.members.length}명 &nbsp;|&nbsp; 🔑 <span style="color:#3182f6; font-weight:bold;">${r.room_code}</span></span>
+                                <span>${usersImg} ${r.members.length}명 &nbsp;|&nbsp; ${keyImg} <span style="color:#3182f6; font-weight:bold;">${r.room_code}</span></span>
                             </div>
                         </div>
-                        <div style="color:#3182f6; font-size:20px;">👉</div>
+                        <div style="color:#3182f6; display:flex; align-items:center;"><img src="https://placehold.co/40x40/transparent/3182f6?text=Go" style="width:20px; height:20px;"></div>
                     </div>
                 `;
             }).join(''); 
@@ -238,23 +288,23 @@ function renderHome() {
         
         let html = `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:#f2f4f6; padding:15px; border-radius:16px;">
-                <button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968;">🔙 로비</button>
+                <button onclick="exitRoomView()" style="background:white; border:1px solid #e5e8eb; padding:8px 12px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:bold; color:#4e5968; display:flex; align-items:center; gap:4px;"><img src="https://placehold.co/40x40/transparent/4e5968?text=Back" style="width:16px; height:16px;"> 로비</button>
                 <div style="text-align:right;">
                     <div style="font-weight:bold; color:#333d4b; font-size:16px; display:flex; align-items:center; justify-content:flex-end; gap:5px;">
                         ${escapeHtml(displayRoomName)}
-                        <button onclick="changeRoomAlias('${room.room_code}', '${escapeHtml(room.room_name)}')" style="background:none; border:none; cursor:pointer; font-size:15px; padding:0; outline:none;" title="방 별명 변경">✏️</button>
+                        <button onclick="changeRoomAlias('${room.room_code}', '${escapeHtml(room.room_name)}')" style="background:none; border:none; cursor:pointer; padding:0; outline:none; display:flex; align-items:center;" title="방 별명 변경"><img src="https://placehold.co/40x40/transparent/8b95a1?text=Edit" style="width:16px; height:16px;"></button>
                     </div>
                     <div style="font-size:12px; color:#8b95a1; margin-top:4px; display:flex; align-items:center; justify-content:flex-end; gap:5px;">
                         초대 코드: <span style="color:#3182f6; font-weight:bold;">${room.room_code}</span>
-                        <button onclick="copyInviteLink('${room.room_code}')" style="background:#e8f5e9; color:#2e7d32; border:none; padding:3px 8px; border-radius:6px; font-size:10px; font-weight:bold; cursor:pointer;">🔗 복사</button>
+                        <button onclick="copyInviteLink('${room.room_code}')" style="background:#e8f5e9; color:#2e7d32; border:none; padding:3px 8px; border-radius:6px; font-size:10px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:2px;"><img src="https://placehold.co/40x40/transparent/2e7d32?text=Link" style="width:10px; height:10px;"> 복사</button>
                     </div>
                 </div>
             </div>
             
             <div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <div style="font-size:14px; font-weight:bold; color:#333d4b;">💬 클럽 라운지 (채팅)</div>
-                    <button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button>
+                    <div style="font-size:14px; font-weight:bold; color:#333d4b; display:flex; align-items:center; gap:4px;"><img src="https://placehold.co/40x40/transparent/333d4b?text=Chat" style="width:16px; height:16px;"> 클럽 라운지</div>
+                    <button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold; display:flex; align-items:center; gap:4px;"><img src="https://placehold.co/40x40/transparent/3182f6?text=Ref" style="width:14px; height:14px;"> 새로고침</button>
                 </div>
                 <div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">
                 ${room.messages && room.messages.length > 0 ? room.messages.map(m => { 
@@ -271,8 +321,7 @@ function renderHome() {
                 }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}
                 </div>
                 <div style="display:flex; gap:8px;">
-                    <!-- [주석: 채팅창 내 주사위 배팅용 주사위 아이콘 이미지 대체] -->
-                    <button onclick="rollDice()" style="background:#fff3e0; color:#e65100; border:1px solid #ffe0b2; padding:6px 10px; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center;" title="500p 주사위 배팅"><img src="https://placehold.co/40x40/fff3e0/e65100?text=Dice" style="width:20px; height:20px;"></button>
+                    <button onclick="rollDice()" style="background:#fff3e0; color:#e65100; border:1px solid #ffe0b2; padding:6px 10px; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center;" title="500p 주사위 배팅"><img src="https://placehold.co/40x40/transparent/e65100?text=Dice" style="width:20px; height:20px;"></button>
                     <input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()">
                     <button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button>
                 </div>
@@ -289,8 +338,8 @@ function renderHome() {
             const yPrice = getYesterdayClosePrice(f); const cAmt = f.price - yPrice; const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0; 
             const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1'); const cSign = cAmt > 0 ? '+' : '';
             
-            /* [주석: 참여자 목록 및 로비 내 상장폐지 텍스트 옆 해골 마크 이미지 대체] */
-            const delistedLabel = `<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px; display:inline-flex; align-items:center; gap:2px;"><img src="https://placehold.co/40x40/ffffff/ff3b30?text=Skull" style="width:12px; height:12px; vertical-align:middle;">상장폐지</span>`;
+            /* [주석: 참여자 목록 및 로비 내 상장폐지 텍스트 옆 해골 마크] */
+            const delistedLabel = `<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px; display:inline-flex; align-items:center; gap:2px;"><img src="https://placehold.co/40x40/transparent/ff3b30?text=Skull" style="width:12px; height:12px; vertical-align:middle;">상장폐지</span>`;
             const priceHtml = isDelisted ? '-' : `${Math.floor(f.price || 0).toLocaleString()} p<br><span style="font-size:11px; color:${cColor}; font-weight:normal;">${cSign}${Math.floor(cAmt).toLocaleString()}p (${cSign}${cRate}%)</span>`;
             
             return `
@@ -311,7 +360,8 @@ function renderHome() {
             `; 
         }).join('');
         
-        html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer;">이 클럽에서 나가기</button>`;
+        /* [주석: 클럽 나가기 버튼 문 이미지] */
+        html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;"><img src="https://placehold.co/40x40/transparent/ff3b30?text=Exit" style="width:16px; height:16px;"> 이 클럽에서 나가기</button>`;
         list.innerHTML = html; 
         setTimeout(() => { const chatBox = document.getElementById('chat-box'); if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; }, 10);
     }
@@ -344,16 +394,22 @@ function getCalendarHtml(room) {
     let selectedEventsHtml = '';
     if (calSelectedDate) {
         const dayEvents = (room.events || []).filter(e => { const start = e.start_date || e.date; const end = e.end_date || start; return calSelectedDate >= start && calSelectedDate <= end; });
+        
+        /* [주석: 캘린더 개별 일정 텍스트 앞 달력 아이콘] */
+        const calIcon = `<img src="https://placehold.co/40x40/transparent/333d4b?text=Cal" style="width:14px; height:14px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+        /* [주석: 캘린더 개별 일정 닫기(삭제) 아이콘] */
+        const xIcon = `<img src="https://placehold.co/40x40/transparent/ff3b30?text=X" style="width:12px; height:12px; vertical-align:middle;">`;
+        
         selectedEventsHtml = `
             <div style="background:#f9fafb; padding:10px; border-radius:10px; border:1px solid #e5e8eb;">
-                <div style="font-weight:bold; font-size:13px; color:#333d4b; margin-bottom:10px;">📅 ${calSelectedDate} 일정</div>
+                <div style="font-weight:bold; font-size:13px; color:#333d4b; margin-bottom:10px;">${calIcon} ${calSelectedDate} 일정</div>
                 ${dayEvents.map((e, index) => { 
                     const dateTag = (e.start_date !== e.end_date && e.end_date) ? `<span style="font-size:10px; background:#e8f5e9; color:#2e7d32; padding:2px 4px; border-radius:4px;">${e.start_date.slice(5)} ~ ${e.end_date.slice(5)}</span>` : ''; 
                     const dotColors = ['#ff3b30', '#3182f6', '#34c759']; const indicatorColor = index < 3 ? dotColors[index] : '#8b95a1'; 
                     return `
                         <div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:8px; border-radius:6px; margin-bottom:6px; border:1px solid #eee; border-left:4px solid ${indicatorColor};">
                             <div style="font-size:13px; color:#333d4b; text-align:left;"><b>${escapeHtml(e.title)}</b> ${dateTag} <span style="font-size:11px; color:#8b95a1;">(${escapeHtml(e.creator_name)})</span></div>
-                            <button onclick="deleteEvent('${e.id}')" style="background:none; border:none; color:#ff3b30; font-size:12px; cursor:pointer;">❌</button>
+                            <button onclick="deleteEvent('${e.id}')" style="background:none; border:none; padding:4px; cursor:pointer; display:flex; align-items:center;">${xIcon}</button>
                         </div>
                     `; 
                 }).join('')}
@@ -363,14 +419,17 @@ function getCalendarHtml(room) {
         `;
     }
     
+    /* [주석: 클럽 공유 캘린더 헤더 달력 아이콘] */
+    const mainCalIcon = `<img src="https://placehold.co/40x40/transparent/333d4b?text=Cal" style="width:18px; height:18px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+
     return `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #e5e8eb; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                <div style="font-size:14px; font-weight:bold; color:#333d4b;">🗓️ 클럽 공유 캘린더</div>
+                <div style="font-size:14px; font-weight:bold; color:#333d4b;">${mainCalIcon} 클럽 공유 캘린더</div>
                 <div style="display:flex; align-items:center; gap:5px;">
-                    <button onclick="changeCalMonth(-1)" style="background:none; border:none; cursor:pointer; color:#8b95a1; padding:0 5px;">◀</button>
+                    <button onclick="changeCalMonth(-1)" style="background:none; border:none; cursor:pointer; color:#8b95a1; padding:0 5px; font-size:16px; font-weight:bold;">&lt;</button>
                     <input type="date" value="${calSelectedDate}" onchange="handleDatePickerChange(this.value)" style="font-size:14px; font-weight:bold; color:#333d4b; border:none; outline:none; background:transparent; cursor:pointer; font-family:sans-serif; text-align:center; width:125px;">
-                    <button onclick="changeCalMonth(1)" style="background:none; border:none; cursor:pointer; color:#8b95a1; padding:0 5px;">▶</button>
+                    <button onclick="changeCalMonth(1)" style="background:none; border:none; cursor:pointer; color:#8b95a1; padding:0 5px; font-size:16px; font-weight:bold;">&gt;</button>
                 </div>
             </div>
             ${gridHtml}
@@ -385,7 +444,8 @@ function renderMeeting() {
     myRooms.forEach(room => { if (room.agendas) { room.agendas.forEach(a => { allAgendas.push({ ...a, room_name: room.room_name, room_code: room.room_code, totalMembers: room.members.length, members: room.members }); }); } });
     
     if (allAgendas.length === 0) { 
-        list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">🕊️ 현재 진행 중이거나 최근 종료된 재판이 없습니다.</div>`; 
+        /* [주석: 빈 주주총회 보드 중앙 평화의 비둘기 아이콘 대체] */
+        list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;"><img src="https://placehold.co/40x40/transparent/8b95a1?text=Bird" style="width:24px; height:24px; vertical-align:middle; margin-bottom:10px; display:block; margin:0 auto;"> 현재 진행 중이거나 최근 종료된 재판이 없습니다.</div>`; 
         return; 
     }
 
@@ -393,13 +453,24 @@ function renderMeeting() {
     const closed = allAgendas.filter(a => a.status !== 'active').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 10); 
     const displayAgendas = [...actives, ...closed];
 
-    let contentHtml = `<div style="display:flex; justify-content:flex-end; margin-bottom:10px;"><button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold;">🔄 새로고침</button></div>`;
+    /* [주석: 주주총회 상단 새로고침 아이콘] */
+    let contentHtml = `<div style="display:flex; justify-content:flex-end; margin-bottom:10px;"><button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold; display:flex; align-items:center; gap:4px;"><img src="https://placehold.co/40x40/transparent/3182f6?text=Ref" style="width:14px; height:14px;"> 새로고침</button></div>`;
     
     contentHtml += displayAgendas.map(a => {
-        let titleColor = '#ff3b30'; let titleText = '🚨 상장폐지 심사 법정'; 
-        if (a.type === 'revival') { titleColor = '#2e7d32'; titleText = '🌱 코인 회생 재상장 건'; } 
-        else if (a.type === 'defense') { titleColor = '#f39c12'; titleText = '⚖️ 악평 이의제기 방어 법정'; }
-        else if (a.type === 'kick') { titleColor = '#8e44ad'; titleText = '🚪 클럽 내보내기 투표'; }
+        let titleColor = '#ff3b30'; let titleText = '상장폐지 심사 법정'; 
+        /* [주석: 재판별 타이틀 아이콘 분기] */
+        let titleIcon = `<img src="https://placehold.co/40x40/transparent/ff3b30?text=Siren" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+
+        if (a.type === 'revival') { 
+            titleColor = '#2e7d32'; titleText = '코인 회생 재상장 건'; 
+            titleIcon = `<img src="https://placehold.co/40x40/transparent/2e7d32?text=Plant" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+        } else if (a.type === 'defense') { 
+            titleColor = '#f39c12'; titleText = '악평 이의제기 방어 법정'; 
+            titleIcon = `<img src="https://placehold.co/40x40/transparent/f39c12?text=Law" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+        } else if (a.type === 'kick') { 
+            titleColor = '#8e44ad'; titleText = '클럽 내보내기 투표'; 
+            titleIcon = `<img src="https://placehold.co/40x40/transparent/8e44ad?text=Door" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+        }
         
         const targetPerson = a.members.find(f => f.email === a.target_email); 
         const avatarHtml = targetPerson ? getAvatarHtml(targetPerson, 'small') : ''; 
@@ -423,16 +494,24 @@ function renderMeeting() {
         `;
 
         let btnHtml = ''; let stampHtml = ''; let opacityStyle = ''; let timeRemainingHtml = '';
+        /* [주석: 투표 카드 내부 타이머(모래시계), 방 이름(빌딩), 사유(메모장) 아이콘 대체] */
+        const timerIcon = `<img src="https://placehold.co/40x40/transparent/ff3b30?text=Time" style="width:12px; height:12px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+        const buildIcon = `<img src="https://placehold.co/40x40/transparent/4e5968?text=Bldg" style="width:12px; height:12px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+        const memoIcon = `<img src="https://placehold.co/40x40/transparent/4e5968?text=Memo" style="width:14px; height:14px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
 
         if (a.status === 'active') {
             const createdTime = new Date(a.created_at.includes('Z') ? a.created_at : a.created_at + 'Z').getTime();
             const expireTime = createdTime + (24 * 60 * 60 * 1000); const nowTime = new Date().getTime();
             let diffMs = expireTime - nowTime; if (diffMs < 0) diffMs = 0; 
             const diffHrs = Math.floor(diffMs / (1000 * 60 * 60)); const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-            timeRemainingHtml = `<span style="background:#fff3f3; color:#ff3b30; padding:3px 8px; border-radius:10px; font-size:11px; font-weight:bold;">⏳ 마감까지 ${diffHrs}시간 ${diffMins}분</span>`;
             
+            timeRemainingHtml = `<span style="background:#fff3f3; color:#ff3b30; padding:3px 8px; border-radius:10px; font-size:11px; font-weight:bold;">${timerIcon} 마감까지 ${diffHrs}시간 ${diffMins}분</span>`;
+            
+            /* [주석: 투표 완료 저울 아이콘 대체] */
+            const voteDoneIcon = `<img src="https://placehold.co/40x40/transparent/8b95a1?text=Law" style="width:14px; height:14px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+
             btnHtml = hasVoted 
-                ? `<button style="width:100%; background:#e5e8eb; color:#8b95a1; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:not-allowed;" disabled>⚖️ 투표 완료</button>` 
+                ? `<button style="width:100%; background:#e5e8eb; color:#8b95a1; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:not-allowed; display:flex; align-items:center; justify-content:center;" disabled>${voteDoneIcon} 투표 완료</button>` 
                 : `<button class="btn-vote-disagree" style="flex:1; background:#f2f4f6; color:#3182f6; border:1px solid #d6ebff; font-weight:bold; padding:12px; border-radius:10px; cursor:pointer;" onclick="submitVote('${a.room_code}', '${a.id}', 'disagree')">반대 (기각)</button>
                    <button class="btn-vote-agree" style="flex:1; background:${titleColor}; color:white; border:none; font-weight:bold; padding:12px; border-radius:10px; cursor:pointer;" onclick="submitVote('${a.room_code}', '${a.id}', 'agree')">찬성 (가결)</button>`;
         } else {
@@ -448,17 +527,17 @@ function renderMeeting() {
             <div class="info-card" style="border-left: 5px solid ${titleColor}; position:relative; overflow:hidden; ${opacityStyle}; cursor:pointer;" onclick="enterRoom('${a.room_code}'); switchTab('home');">
                 ${stampHtml}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <span style="background:#f2f4f6; color:#4e5968; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">🏢 ${escapeHtml(displayRoomName)}</span>${timeRemainingHtml}
+                    <span style="background:#f2f4f6; color:#4e5968; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">${buildIcon} ${escapeHtml(displayRoomName)}</span>${timeRemainingHtml}
                 </div>
                 <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
                     ${avatarHtml}
                     <div>
-                        <div style="color: ${titleColor}; font-weight: bold; font-size:15px; text-align:left;">[${titleText}]</div>
+                        <div style="color: ${titleColor}; font-weight: bold; font-size:15px; text-align:left;">${titleIcon} [${titleText}]</div>
                         <div style="font-size:13px; color:#333d4b; text-align:left;">대상자: <b>${escapeHtml(a.target_name)}</b></div>
                     </div>
                 </div>
                 <div style="background:#f9fafb; padding:12px; border-radius:10px; font-size:14px; color:#4e5968; line-height:1.5; margin-bottom:12px; border:1px dashed #e5e8eb; text-align:left;">
-                    <b>📝 사유:</b><br>${escapeHtml(a.reason)}
+                    <b>${memoIcon} 사유:</b><br>${escapeHtml(a.reason)}
                 </div>
                 ${gaugeHtml}
                 <div style="display: flex; gap: 10px;">${btnHtml}</div>
@@ -479,20 +558,20 @@ function renderProfile() {
     const hasDailyDone = myProfile.lastDailyAttendance === todayStr; 
     
     /* [주석: 프로필 화면 내 매일 출석 달력 마크 이미지 대체] */
-    const dailyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasDailyDone ? '#e5e8eb' : '#e8f5e9'}; color: ${hasDailyDone ? '#8b95a1' : '#2e7d32'}; font-weight: bold; border: none; cursor: ${hasDailyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="doDailyAttendance()" ${hasDailyDone ? 'disabled' : ''}><img src="https://placehold.co/40x40/e8f5e9/2e7d32?text=CAL" style="width:16px; height:16px;"> ${hasDailyDone ? '✅ 출석 완료' : '매일 출석 (+50p)'}</button>`;
+    const dailyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasDailyDone ? '#e5e8eb' : '#e8f5e9'}; color: ${hasDailyDone ? '#8b95a1' : '#2e7d32'}; font-weight: bold; border: none; cursor: ${hasDailyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="doDailyAttendance()" ${hasDailyDone ? 'disabled' : ''}><img src="https://placehold.co/40x40/transparent/2e7d32?text=Cal" style="width:16px; height:16px;"> ${hasDailyDone ? '✅ 출석 완료' : '매일 출석 (+50p)'}</button>`;
     
     const hasAdBonusDone = myProfile.lastDailyAdBonus === todayStr; 
     let adDoubleBtn = ''; 
     if (hasDailyDone && !hasAdBonusDone) { 
         /* [주석: 프로필 화면 내 광고보고 2배 보너스 슬레이트 마크 이미지 대체] */
-        adDoubleBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #e3f2fd; color: #1565c0; font-weight: bold; border: none; cursor: pointer; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="watchAd('double_attendance')"><img src="https://placehold.co/40x40/e3f2fd/1565c0?text=AD" style="width:16px; height:16px;"> 🎬 광고 보고 2배 출석 (+50p)</button>`; 
+        adDoubleBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #e3f2fd; color: #1565c0; font-weight: bold; border: none; cursor: pointer; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="watchAd('double_attendance')"><img src="https://placehold.co/40x40/transparent/1565c0?text=Ad" style="width:16px; height:16px;"> 광고 보고 2배 출석 (+50p)</button>`; 
     } else if (hasDailyDone && hasAdBonusDone) { 
         adDoubleBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #e5e8eb; color: #8b95a1; font-weight: bold; border: none; cursor: not-allowed; margin-bottom: 10px;" disabled>✅ 출석 보상 2배 완료</button>`; 
     }
     
     const hasWeeklyDone = myProfile.weeklyTicketsClaimed === true; 
     /* [주석: 프로필 화면 내 주간 선물 상자 마크 이미지 대체] */
-    const weeklyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasWeeklyDone ? '#e5e8eb' : '#fff3e0'}; color: ${hasWeeklyDone ? '#8b95a1' : '#e65100'}; font-weight: bold; border: none; cursor: ${hasWeeklyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="claimWeeklyTickets()" ${hasWeeklyDone ? 'disabled' : ''}><img src="https://placehold.co/40x40/fff3e0/e65100?text=GIFT" style="width:16px; height:16px;"> ${hasWeeklyDone ? '✅ 주간 보너스 완료' : '주간 보너스 평가권 (각 +1장)'}</button>`;
+    const weeklyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasWeeklyDone ? '#e5e8eb' : '#fff3e0'}; color: ${hasWeeklyDone ? '#8b95a1' : '#e65100'}; font-weight: bold; border: none; cursor: ${hasWeeklyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="claimWeeklyTickets()" ${hasWeeklyDone ? 'disabled' : ''}><img src="https://placehold.co/40x40/transparent/e65100?text=Gift" style="width:16px; height:16px;"> ${hasWeeklyDone ? '✅ 주간 보너스 완료' : '주간 보너스 평가권 (각 +1장)'}</button>`;
     
     const now = new Date(); const kstNow = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 3600000));
     let day = kstNow.getDay(); let diff = (day === 0 ? 6 : day - 1); let monday = new Date(kstNow); monday.setDate(kstNow.getDate() - diff);
@@ -500,21 +579,26 @@ function renderProfile() {
     const hasAdTicketDone = myProfile.lastAdTicketMonday === mondayStr;
     
     /* [주석: 프로필 화면 내 하단 광고 보기 슬레이트 마크 이미지 대체] */
-    const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasAdTicketDone ? '#e5e8eb' : '#f3e5f5'}; color: ${hasAdTicketDone ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${hasAdTicketDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="watchAd('extra_ticket')" ${hasAdTicketDone ? 'disabled' : ''}><img src="https://placehold.co/40x40/f3e5f5/6a1b9a?text=AD" style="width:16px; height:16px;"> ${hasAdTicketDone ? '✅ 이번 주 추가 평가권 획득 완료' : '🎬 광고 보고 평가권 추가 (주 1회)'}</button>`;
+    const adTicketBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasAdTicketDone ? '#e5e8eb' : '#f3e5f5'}; color: ${hasAdTicketDone ? '#8b95a1' : '#6a1b9a'}; font-weight: bold; border: none; cursor: ${hasAdTicketDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="watchAd('extra_ticket')" ${hasAdTicketDone ? 'disabled' : ''}><img src="https://placehold.co/40x40/transparent/6a1b9a?text=Ad" style="width:16px; height:16px;"> ${hasAdTicketDone ? '✅ 이번 주 추가 평가권 획득 완료' : '광고 보고 평가권 추가 (주 1회)'}</button>`;
     
+    /* [주석: 로그아웃 문/화살표 마크 이미지 대체] */
+    const logoutBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px; margin-bottom: 100px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="handleLogout()"><img src="https://placehold.co/40x40/transparent/c62828?text=Out" style="width:16px; height:16px;"> 로그아웃</button>`;
+
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
     if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
 
     // 포인트 상점
+    /* [주석: 포인트 상점 카트(장바구니) 마크 이미지 대체] */
+    const cartIcon = `<img src="https://placehold.co/40x40/transparent/333d4b?text=Cart" style="width:18px; height:18px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+
     const shopHtml = `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #e5e8eb;">
             <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between; text-align:left;">
-                포인트 상점 <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
+                <div>${cartIcon} 포인트 상점</div> <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
             </h3>
             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- [주석: 포인트 상점 내 무지개 반사 방패 마크 이미지 대체] -->
                         <img src="https://placehold.co/80x80/f2f4f6/333d4b?text=Shield" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
@@ -538,17 +622,18 @@ function renderProfile() {
         ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; flex-shrink:0;" disabled>✅ 보유 중</button>`
         : `<button onclick="buyCashItem('theme_fire')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,500</button>`;
 
-    // ★ [안전 정렬 보완 패치] 캐시 상점 내부 강제 좌측 정렬(text-align:left) 주입 완료
+    /* [주석: 캐시 상점 헤더 다이아몬드 마크 이미지 대체] */
+    const gemIcon = `<img src="https://placehold.co/40x40/transparent/d4af37?text=Gem" style="width:18px; height:18px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+
     const cashShopHtml = `
         <div style="background: linear-gradient(135deg, #1c1c1e, #333d4b); border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.15); color:white;">
             <h3 style="margin-top:0; font-size:15px; display:flex; align-items:center; justify-content:space-between; color:#d4af37; text-align:left;">
-                💎 스페셜 캐시 상점 <span style="font-size:11px; font-weight:normal; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:10px;">가상 결제 테스트 중</span>
+                <div>${gemIcon} 스페셜 캐시 상점</div> <span style="font-size:11px; font-weight:normal; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:10px;">가상 결제 테스트 중</span>
             </h3>
             
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- [주석: 캐시 상점 내 익명 암살권 마크 이미지 대체] -->
                         <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Assassin" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
@@ -562,7 +647,6 @@ function renderProfile() {
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- [주석: 캐시 상점 내 긴급 자금 수혈 마크 이미지 대체] -->
                         <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Money" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
@@ -576,7 +660,6 @@ function renderProfile() {
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- [주석: 캐시 상점 내 글로벌 확성기 마크 이미지 대체] -->
                         <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Speaker" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
@@ -590,7 +673,6 @@ function renderProfile() {
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- [주석: 캐시 상점 내 네온 테마 마크 이미지 대체] -->
                         <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Neon" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
@@ -604,7 +686,6 @@ function renderProfile() {
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="width:28px; height:28px; flex-shrink:0;">
-                        <!-- [주석: 캐시 상점 내 불꽃 테마 마크 이미지 대체] -->
                         <img src="https://placehold.co/80x80/d4af37/1c1c1e?text=Fire" style="width:100%; height:100%; object-fit:contain; border-radius:6px;">
                     </div>
                     <div style="text-align:left; flex:1;">
@@ -617,18 +698,24 @@ function renderProfile() {
         </div>
     `;
 
-    /* [주석: 내 평가권 스탯창 내 손가락 이미지 대체] */
-    const goodThumbImg = `<img src="https://placehold.co/40x40/ffffff/ff3b30?text=UP" style="width:15px; height:16px; vertical-align:middle; margin-left:4px; margin-top:-3px;">`;
-    const badThumbImg = `<img src="https://placehold.co/40x40/ffffff/3182f6?text=DN" style="width:15px; height:16px; vertical-align:middle; margin-left:4px; margin-top:-3px;">`;
+    /* [주석: 내 평가권 스탯창 내 손가락 썸따봉 이미지 대체] */
+    const goodThumbImg = `<img src="https://placehold.co/40x40/transparent/ff3b30?text=UP" style="width:16px; height:16px; vertical-align:middle; margin-left:4px; margin-top:-2px;">`;
+    const badThumbImg = `<img src="https://placehold.co/40x40/transparent/3182f6?text=DN" style="width:16px; height:16px; vertical-align:middle; margin-left:4px; margin-top:-2px;">`;
+
+    /* [주석: 프로필 화면 이름 옆 프로필 관리(연필) 버튼 이미지 대체] */
+    const editIcon = `<img src="https://placehold.co/40x40/transparent/ffffff?text=E" style="width:14px; height:14px;">`;
+
+    /* [주석: 프로필 상장폐지 해골 큰버전 이미지 대체] */
+    const bigSkull = isDelisted ? `<img src="https://placehold.co/60x60/transparent/333d4b?text=Skull" style="width:32px; height:32px; vertical-align:middle;">` : '';
 
     container.innerHTML = `
         <div style="position: relative; display: inline-block;">
             ${getAvatarHtml(myProfile, 'large')}
-            <button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✏️</button>
+            <button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display:flex; align-items:center; justify-content:center;">${editIcon}</button>
         </div>
         <h2 style="margin: 10px 0; color: ${myProfile.nameColor || '#333d4b'}; display:flex; justify-content:center; align-items:center; gap:8px;">
             ${escapeHtml(myProfile.name)} 코인 
-            <span onclick="changeNickname()" style="font-size:14px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
+            <span onclick="changeNickname()" style="font-size:12px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
         </h2>
         <div style="font-size:12px; color:#8b95a1; margin-bottom:10px;">내 주가는 모든 클럽에 적용됩니다.</div>
         ${getBadgeHtml(myProfile)}
@@ -642,13 +729,13 @@ function renderProfile() {
                 <div style="font-size: 20px; font-weight: bold; color: #3182f6;">${myProfile.badTickets} 장</div>
             </div>
         </div>
-        <div style="font-size: 32px; font-weight: bold; color: #333d4b; margin-top: 20px;">${isDelisted ? '💀' : Math.floor(myProfile.price).toLocaleString()} p</div>
+        <div style="font-size: 32px; font-weight: bold; color: #333d4b; margin-top: 20px;">${isDelisted ? bigSkull : Math.floor(myProfile.price).toLocaleString() + ' p'}</div>
         <div style="font-weight: bold; color: ${colorClass}; margin-bottom: 20px;">${isDelisted ? '' : sign + Math.floor(changeAmount).toLocaleString() + ' p (' + sign + changeRate + '%)'}</div>
         <div style="background: white; padding: 15px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); border: 1px solid #f2f4f6;"><canvas id="priceChart" style="width:100%; height:150px;"></canvas></div>
         ${shopHtml}
         ${cashShopHtml}
         ${actionBtn}
-        <button style="width: 100%; padding: 12px; border-radius: 12px; background: #ffebee; color: #c62828; font-weight: bold; border: none; cursor: pointer; margin-top: 20px; margin-bottom: 100px;" onclick="handleLogout()">🚪 로그아웃</button>
+        ${logoutBtn}
     `;
     setTimeout(drawPriceChart, 50); 
 }
@@ -657,11 +744,11 @@ function renderRanking() {
     const container = document.getElementById('ranking-content'); if (!container || !myProfile || globalRanking.length === 0) return;
     const top10 = globalRanking.slice(0, 10);
     const createTotalRankCard = (p, index) => {
-        /* [주석: 통합 랭킹 Top 3 메달 이모지 -> 고유 이미지 태그로 완벽 마이그레이션] */
+        /* [주석: 통합 랭킹 Top 3 메달 이미지 대체] */
         let rankIcon = '';
-        if (index === 0) rankIcon = `<img src="https://placehold.co/40x40/ffffff/d4af37?text=1st" style="width:18px; height:18px; vertical-align:middle;">`;
-        else if (index === 1) rankIcon = `<img src="https://placehold.co/40x40/ffffff/c0c0c0?text=2nd" style="width:18px; height:18px; vertical-align:middle;">`;
-        else if (index === 2) rankIcon = `<img src="https://placehold.co/40x40/ffffff/cd7f32?text=3rd" style="width:18px; height:18px; vertical-align:middle;">`;
+        if (index === 0) rankIcon = `<img src="https://placehold.co/40x40/transparent/d4af37?text=1st" style="width:20px; height:20px; vertical-align:middle;">`;
+        else if (index === 1) rankIcon = `<img src="https://placehold.co/40x40/transparent/c0c0c0?text=2nd" style="width:20px; height:20px; vertical-align:middle;">`;
+        else if (index === 2) rankIcon = `<img src="https://placehold.co/40x40/transparent/cd7f32?text=3rd" style="width:20px; height:20px; vertical-align:middle;">`;
         else rankIcon = `<span style="display:inline-block; width: 24px; text-align:center; color:#8b95a1; font-size:14px; font-weight:bold;">${index+1}</span>`;
 
         const isMe = p.name === myProfile.name; const bg = isMe ? "background:#f0f8ff;" : "";
@@ -683,7 +770,7 @@ function renderRanking() {
     };
     container.innerHTML = `
         <div style="background: white; border-radius: 16px; padding: 20px 15px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee;">
-            <h3 style="margin-top: 0; color: #333d4b;">🌍 전국구 통합 랭킹 Top 10</h3>
+            <h3 style="margin-top: 0; color: #333d4b;">전국구 통합 랭킹 Top 10</h3>
             <p style="font-size:12px; color:#8b95a1; margin-bottom:20px;">모든 클럽의 주가가 합산된 실시간 순위보드입니다.</p>
             ${top10.map((p, i) => createTotalRankCard(p, i)).join('')}
         </div>
@@ -701,7 +788,7 @@ async function joinExistingRoom(codeParam = null) {
         const res = await fetch(`${BACKEND_URL}/api/room/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_code: code.trim().toUpperCase() }) }); 
         const data = await res.json(); 
         if(data.status === 'error') { if (!codeParam) alert(data.message); return; } 
-        if (!codeParam) alert(`🚪 입장 성공!`); 
+        if (!codeParam) alert(`입장 성공!`); 
         window.history.replaceState({}, document.title, window.location.pathname);
         await forceSync(); 
     } catch(err) { alert("서버 오류"); } finally { hideLoading(); }
@@ -729,10 +816,18 @@ async function refreshChat() { showLoading(); await forceSync(); hideLoading(); 
 
 function openFriendDetail(friendEmail) {
     const room = myRooms.find(r => r.room_code === currentRoomCode); const friend = room.members.find(m => m.email === friendEmail); if (!friend) return; currentSelectedFriend = friend;
-    if (friend.status === 'delisted') { alert(`💀 상장폐지된 코인은 더 이상 평가할 수 없습니다.`); return; }
+    if (friend.status === 'delisted') { alert(`상장폐지된 코인은 더 이상 평가할 수 없습니다.`); return; }
     let modal = document.getElementById('eval-modal'); if(!modal) { modal = document.createElement('div'); modal.id = 'eval-modal'; modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:none; justify-content:center; align-items:center;"; document.body.appendChild(modal); }
     evalState.p1 = Math.floor(friend.price * 0.01); evalState.p2 = Math.floor(friend.price * 0.02); evalState.p3 = Math.floor(friend.price * 0.03); evalState.type = null; evalState.intensity = null;
     const yPrice = getYesterdayClosePrice(friend); const cAmt = friend.price - yPrice; const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0; const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1'); const cSign = cAmt > 0 ? '+' : '';
+
+    /* [주석: 피평가자 상세 팝업 내부 익명 암살권 사용 문구 옆 닌자 마크 이미지 대체] */
+    const ninjaIcon = `<img src="https://placehold.co/40x40/transparent/6a1b9a?text=NJ" style="width:14px; height:14px; vertical-align:middle; margin-top:-2px;">`;
+    /* [주석: 평가 버튼 내 호평(따봉) / 악평(역따봉) 로켓 / 문 아이콘 이미지 대체] */
+    const goodIcon = `<img src="https://placehold.co/40x40/transparent/ff3b30?text=UP" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+    const badIcon = `<img src="https://placehold.co/40x40/transparent/3182f6?text=DN" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+    const rocketIcon = `<img src="https://placehold.co/40x40/transparent/ffffff?text=Fly" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+    const doorIcon = `<img src="https://placehold.co/40x40/transparent/4e5968?text=Out" style="width:14px; height:14px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
 
     modal.innerHTML = `
         <div style="background:white; padding:30px 25px; border-radius:20px; width:85%; max-width:340px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;">
@@ -742,13 +837,13 @@ function openFriendDetail(friendEmail) {
             <div style="font-size:14px; font-weight:bold; color:${cColor}; margin-bottom:15px;">${cSign}${Math.floor(cAmt).toLocaleString()} p (${cSign}${cRate}%)</div>
             <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendFriendChartCanvas" style="width:100%; height:110px;"></canvas></div>
             
-            <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: 👍 <b>${myProfile.goodTickets}장</b> | 👎 <b>${myProfile.badTickets}장</b></div>
+            <div style="background:#f9fafb; padding:10px; border-radius:10px; font-size:12px; color:#8b95a1; margin-bottom:20px;">티켓은 무조건 1장 소모됩니다.<br>내 평가권: ${goodIcon} <b>${myProfile.goodTickets}장</b> | ${badIcon} <b>${myProfile.badTickets}장</b></div>
             
             <div style="text-align:left; margin-bottom:15px;">
                 <div style="font-weight:bold; margin-bottom:8px; font-size:13px; color:#4e5968;">1. 평가 종류 선택</div>
                 <div style="display:flex; gap:10px;">
-                    <button id="eval-type-good" onclick="selectEvalType('good')" style="flex:1; padding:12px; border:1px solid #ffdbdb; background:white; color:#ff3b30; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👍 호평하기</button>
-                    <button id="eval-type-bad" onclick="selectEvalType('bad')" style="flex:1; padding:12px; border:1px solid #d6ebff; background:white; color:#3182f6; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">👎 악평하기</button>
+                    <button id="eval-type-good" onclick="selectEvalType('good')" style="flex:1; padding:12px; border:1px solid #ffdbdb; background:white; color:#ff3b30; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">${goodIcon} 호평하기</button>
+                    <button id="eval-type-bad" onclick="selectEvalType('bad')" style="flex:1; padding:12px; border:1px solid #d6ebff; background:white; color:#3182f6; border-radius:10px; font-weight:bold; cursor:pointer; transition:0.2s;">${badIcon} 악평하기</button>
                 </div>
             </div>
             
@@ -767,14 +862,13 @@ function openFriendDetail(friendEmail) {
                 
                 <div id="anon-section" style="display:none; margin-top:10px; padding:10px; background:#f3e5f5; border-radius:8px; border:1px solid #e1bee7;">
                     <label style="font-weight:bold; color:#6a1b9a; cursor:pointer; font-size:12px; display:flex; align-items:center; gap:5px;">
-                        <!-- [주석: 피평가자 상세 팝업 내부 익명 암살권 사용 문구 옆 닌자 마크 이미지 대체] -->
-                        <input type="checkbox" id="use-anon-ticket"> <img src="https://placehold.co/40x40/f3e5f5/6a1b9a?text=NJ" style="width:14px; height:14px; vertical-align:middle; margin-top:-2px;"> 익명 암살권 사용 (보유: ${myProfile.anonTickets || 0}개)
+                        <input type="checkbox" id="use-anon-ticket"> ${ninjaIcon} 익명 암살권 사용 (보유: ${myProfile.anonTickets || 0}개)
                     </label>
                 </div>
             </div>
             
-            <button onclick="submitEvaluationFinal()" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; font-size:15px; cursor:pointer; margin-bottom:10px; transition:0.2s;">🚀 평가 보내기</button>
-            <button onclick="kickUser('${friend.email}', '${escapeHtml(friend.name)}')" style="width:100%; padding:12px; background:#f2f4f6; color:#4e5968; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; font-size:13px; margin-bottom:10px;">이 유저 내보내기 투표 발의</button>
+            <button onclick="submitEvaluationFinal()" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; font-size:15px; cursor:pointer; margin-bottom:10px; transition:0.2s;">${rocketIcon} 평가 보내기</button>
+            <button onclick="kickUser('${friend.email}', '${escapeHtml(friend.name)}')" style="width:100%; padding:12px; background:#f2f4f6; color:#4e5968; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; font-size:13px; margin-bottom:10px;">${doorIcon} 이 유저 내보내기 투표 발의</button>
             <button onclick="document.getElementById('eval-modal').style.display='none'" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">취소</button>
         </div>
     `;
@@ -803,12 +897,19 @@ function selectEvalType(type) {
     evalState.type = type; evalState.intensity = null; 
     const goodBtn = document.getElementById('eval-type-good'); const badBtn = document.getElementById('eval-type-bad'); const intSec = document.getElementById('eval-intensity-section'); 
     goodBtn.style.background = 'white'; goodBtn.style.color = '#ff3b30'; badBtn.style.background = 'white'; badBtn.style.color = '#3182f6'; 
+    
+    // [주석: 버튼 내 호평/악평 아이콘 대체용 (선택 시 화이트 컬러용)]
+    const goodIconW = `<img src="https://placehold.co/40x40/transparent/ffffff?text=UP" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+    const badIconW = `<img src="https://placehold.co/40x40/transparent/ffffff?text=DN" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+    const goodIconR = `<img src="https://placehold.co/40x40/transparent/ff3b30?text=UP" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+    const badIconB = `<img src="https://placehold.co/40x40/transparent/3182f6?text=DN" style="width:16px; height:16px; vertical-align:middle; margin-right:4px; margin-top:-2px;">`;
+
     if (type === 'good') { 
-        goodBtn.style.background = '#ff3b30'; goodBtn.style.color = 'white'; 
+        goodBtn.style.background = '#ff3b30'; goodBtn.style.color = 'white'; goodBtn.innerHTML = `${goodIconW} 호평하기`; badBtn.innerHTML = `${badIconB} 악평하기`;
         document.getElementById('eval-int-1-pct').textContent = '+1%'; document.getElementById('eval-int-2-pct').textContent = '+2%'; document.getElementById('eval-int-3-pct').textContent = '+3%'; document.getElementById('eval-int-1-pts').textContent = `+${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `+${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `+${evalState.p3.toLocaleString()}p`; 
         const sec = document.getElementById('anon-section'); if(sec) { sec.style.display = 'none'; document.getElementById('use-anon-ticket').checked = false; }
     } else { 
-        badBtn.style.background = '#3182f6'; badBtn.style.color = 'white'; 
+        badBtn.style.background = '#3182f6'; badBtn.style.color = 'white'; badBtn.innerHTML = `${badIconW} 악평하기`; goodBtn.innerHTML = `${goodIconR} 호평하기`;
         document.getElementById('eval-int-1-pct').textContent = '-1%'; document.getElementById('eval-int-2-pct').textContent = '-2%'; document.getElementById('eval-int-3-pct').textContent = '-3%'; document.getElementById('eval-int-1-pts').textContent = `-${evalState.p1.toLocaleString()}p`; document.getElementById('eval-int-2-pts').textContent = `-${evalState.p2.toLocaleString()}p`; document.getElementById('eval-int-3-pts').textContent = `-${evalState.p3.toLocaleString()}p`; 
         if (myProfile.anonTickets > 0) { document.getElementById('anon-section').style.display = 'block'; }
     } 
@@ -835,7 +936,7 @@ async function submitEvaluation(evalType, intensity) {
         const expectedPrice = currentSelectedFriend.price - dropAmount;
         const maxPrice = currentSelectedFriend.maxPrice || 20000;
         if (expectedPrice <= maxPrice * 0.3) {
-            const proceed = confirm(`🚨 [경고] 치명타 임박!\n\이 악평이 수락되면 상대방은 최고가 대비 -70% 이하로 폭락하여 즉시 '상장폐지 심사' 위기에 빠집니다.\n\n정말로 쏘시겠습니까? 😈`);
+            const proceed = confirm(`[경고] 치명타 임박!\n\n이 악평이 수락되면 상대방은 최고가 대비 -70% 이하로 폭락하여 즉시 '상장폐지 심사' 위기에 빠집니다.\n\n정말로 쏘시겠습니까?`);
             if (!proceed) return;
         }
     }
@@ -855,11 +956,11 @@ async function submitVote(roomCode, agendaId, voteType) {
     try { 
         const res = await fetch(`${BACKEND_URL}/api/agenda/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ room_code: roomCode, agenda_id: agendaId, voter_email: myEmail, vote_type: voteType }) }); 
         const data = await res.json(); 
-        if (data.status === 'resolved') { alert(`⚖️ [최종 판결]\n${data.message}`); await forceSync(); switchTab('meeting'); } else if (data.status === 'success') { showToast("📥 투표 완료"); await forceSync(); switchTab('meeting'); } else { alert(data.message); } 
+        if (data.status === 'resolved') { alert(`[최종 판결]\n${data.message}`); await forceSync(); switchTab('meeting'); } else if (data.status === 'success') { showToast("투표 완료"); await forceSync(); switchTab('meeting'); } else { alert(data.message); } 
     } catch(err) { alert("네트워크 오류"); } finally { hideLoading(); }
 }
 
-async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; showLoading(); try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await forceSync(); } } catch(err) { alert("서버 오류"); } finally { hideLoading(); } }
+async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; showLoading(); try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await forceSync(); } } catch(err) { alert("서버 오류"); } finally { hideLoading(); } }
 
 async function doDailyAttendance() { 
     showLoading();
@@ -873,14 +974,14 @@ function watchAd(type) {
     currentAdRewardType = type; if (myProfile.isVIP) { claimAdReward(true); return; }
     document.getElementById('ad-modal').style.display = 'flex'; let timeLeft = 3; document.getElementById('ad-timer').textContent = `광고 준비 중... (${timeLeft}초)`;
     const btn = document.getElementById('ad-close-btn'); btn.textContent = "광고를 끝까지 시청해주세요"; btn.style.background = "#e5e8eb"; btn.style.color = "#8b95a1"; btn.disabled = true; btn.onclick = null;
-    adInterval = setInterval(() => { timeLeft--; if (timeLeft > 0) { document.getElementById('ad-timer').textContent = `광고 시청 중... (${timeLeft}초)`; } else { clearInterval(adInterval); document.getElementById('ad-timer').textContent = "✅ 시청 완료!"; btn.textContent = "보상 받기 🎁"; btn.style.background = "#3182f6"; btn.style.color = "white"; btn.disabled = false; btn.onclick = () => claimAdReward(false); } }, 1000);
+    adInterval = setInterval(() => { timeLeft--; if (timeLeft > 0) { document.getElementById('ad-timer').textContent = `광고 시청 중... (${timeLeft}초)`; } else { clearInterval(adInterval); document.getElementById('ad-timer').textContent = "시청 완료!"; btn.textContent = "보상 받기"; btn.style.background = "#3182f6"; btn.style.color = "white"; btn.disabled = false; btn.onclick = () => claimAdReward(false); } }, 1000);
 }
 
 async function claimAdReward(isVipPass = false) { 
     document.getElementById('ad-modal').style.display = 'none'; showLoading();
     try {
         const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: currentAdRewardType }) });
-        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(isVipPass ? `👑 VIP 프리패스! ${data.message}` : data.message); saveData(); renderProfile(); } else { showToast(data.message); }
+        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(isVipPass ? `VIP 프리패스! ${data.message}` : data.message); saveData(); renderProfile(); } else { showToast(data.message); }
     } catch(err) { alert("서버 오류"); } finally { hideLoading(); }
 }
 
@@ -894,8 +995,8 @@ async function claimWeeklyTickets() {
 
 function openVIPModal() { document.getElementById('vip-modal').style.display = 'flex'; if (myProfile.isVIP) { document.getElementById('vip-buy-section').style.display = 'none'; document.getElementById('vip-manage-section').style.display = 'block'; document.getElementById('vip-color-picker').value = myProfile.nameColor || '#333d4b'; } else { document.getElementById('vip-buy-section').style.display = 'block'; document.getElementById('vip-manage-section').style.none; } }
 function closeVIPModal() { document.getElementById('vip-modal').style.display = 'none'; }
-function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("💎 VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); }
-function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
+function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); }
+function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("색상 변경 완료!"); closeVIPModal(); renderProfile(); }
 
 window.buyShopItem = async function(itemType, cost) {
     if (myProfile.price < cost) { alert("잔고가 부족합니다!"); return; }
@@ -924,7 +1025,7 @@ window.buyCashItem = async function(itemType) {
     }
     
     if (itemType !== 'theme_none') {
-        if (!confirm("💳 테스트 환경이므로 실제 과금 없이 [무료 가상 결제]가 진행됩니다.\n계속하시겠습니까?")) return;
+        if (!confirm("테스트 환경이므로 실제 과금 없이 [무료 가상 결제]가 진행됩니다.\n계속하시겠습니까?")) return;
     }
 
     showLoading();
@@ -954,11 +1055,11 @@ function openProfileModal() {
     if (themeContainer) {
         const owned = myProfile.ownedThemes || ['none'];
         
-        /* [주석: 내 프로필 꾸미기 설정창 내부 테마 구별용 미니 이미지 마크 대체] */
+        /* [주석: 프로필 편집 모달 내 테마 구별 아이콘] */
         const themes = [
-            { id: 'none', name: '일반 테마 (기본)', img: 'https://placehold.co/40x40/f2f4f6/4e5968?text=U' },
-            { id: 'neon', name: '홀로그램 네온', img: 'https://placehold.co/40x40/f2f4f6/3182f6?text=Neon', class: 'theme-neon' },
-            { id: 'fire', name: '지옥의 불꽃', img: 'https://placehold.co/40x40/f2f4f6/ff3b30?text=Fire', class: 'theme-fire' }
+            { id: 'none', name: '일반 테마 (기본)', img: 'https://placehold.co/40x40/transparent/4e5968?text=U' },
+            { id: 'neon', name: '홀로그램 네온', img: 'https://placehold.co/40x40/transparent/3182f6?text=Neon', class: 'theme-neon' },
+            { id: 'fire', name: '지옥의 불꽃', img: 'https://placehold.co/40x40/transparent/ff3b30?text=Fire', class: 'theme-fire' }
         ];
         
         themeContainer.innerHTML = themes.map(t => {
@@ -967,7 +1068,7 @@ function openProfileModal() {
             return `
                 <div onclick="selectTheme('${t.id}')" class="${t.id !== 'none' ? t.class : ''}" style="cursor:pointer; padding:12px; border-radius:12px; background:${isEquipped ? '#e8f5e9' : '#f9fafb'}; border:${isEquipped ? '2px solid #2e7d32' : '2px solid transparent'}; display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-weight:bold; font-size:14px; color:#333d4b; display:flex; align-items:center; gap:8px;"><img src="${t.img}" style="width:16px; height:16px; object-fit:contain;"> ${t.name}</div>
-                    ${isEquipped ? '<div style="font-size:12px; color:#2e7d32; font-weight:bold;">✅ 장착 중</div>' : '<div style="font-size:12px; color:#8b95a1; font-weight:bold;">장착하기</div>'}
+                    ${isEquipped ? '<div style="font-size:12px; color:#2e7d32; font-weight:bold;">장착 중</div>' : '<div style="font-size:12px; color:#8b95a1; font-weight:bold;">장착하기</div>'}
                 </div>
             `;
         }).join('');
@@ -988,12 +1089,14 @@ window.selectTheme = function(themeId) {
 async function changeNickname() { const newName = prompt("변경할 닉네임 (최대 8자):"); if(!newName || newName.trim() === "" || newName.trim() === myProfile.name) return; if (/[^a-zA-Z0-9가-힣]/.test(newName.trim())) { alert("특수문자 불가"); return; } try { const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName.trim())}`); const data = await res.json(); if(!data.available) { alert(data.message); return; } myProfile.name = newName.trim(); myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); saveData(); showToast("변경 완료!"); renderProfile(); } catch(err) { alert("오류 발생"); } }
 
 let fileInput = document.getElementById('custom-image-upload');
-if(fileInput) { fileInput.addEventListener('change', async function(e) { const file = e.target.files[0]; if(!file) return; const formData = new FormData(); formData.append("image", file); try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 업로드 완료!"); closeProfileModal(); renderProfile(); } else { showToast("🚨 업로드 실패"); } } catch(err) { showToast("🚨 네트워크 오류"); } }); }
+if(fileInput) { fileInput.addEventListener('change', async function(e) { const file = e.target.files[0]; if(!file) return; const formData = new FormData(); formData.append("image", file); try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("업로드 완료!"); closeProfileModal(); renderProfile(); } else { showToast("업로드 실패"); } } catch(err) { showToast("네트워크 오류"); } }); }
 
 function decodeJwtResponse(token) { let base64Url = token.split('.')[1]; let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) { return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''))); }
 function showLoginScreen() {
     let loginDiv = document.getElementById('login-overlay'); if (!loginDiv) { loginDiv = document.createElement('div'); loginDiv.id = 'login-overlay'; loginDiv.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:#f2f4f6; z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; font-family:sans-serif;"; document.body.appendChild(loginDiv); }
-    loginDiv.innerHTML = `<div style="background:white; padding:40px 30px; border-radius:20px; box-shadow:0 10px 20px rgba(0,0,0,0.1); text-align:center; width:80%; max-width:350px;"><div style="font-size:50px; margin-bottom:15px; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;">💰</div><h1 style="margin:0 0 10px 0; color:#333d4b; font-size:24px;">친구 코인 접속</h1><button onclick="triggerGoogleIntent('login')" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; margin-bottom:10px;">기존 계정으로 로그인</button><button onclick="triggerGoogleIntent('signup')" style="width:100%; padding:15px; background:#e8f5e9; color:#2e7d32; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; margin-bottom:25px;">새로 시작하기 (회원가입)</button><div id="google-btn-container" style="display:none; justify-content:center;"></div></div>`;
+    /* [주석: 로그인 화면 상단 메인 코인 돈주머니 아이콘] */
+    const coinImg = `<img src="https://placehold.co/80x80/transparent/d4af37?text=Coin" style="width:60px; height:60px; margin-bottom:15px; display:inline-block;">`;
+    loginDiv.innerHTML = `<div style="background:white; padding:40px 30px; border-radius:20px; box-shadow:0 10px 20px rgba(0,0,0,0.1); text-align:center; width:80%; max-width:350px;">${coinImg}<h1 style="margin:0 0 10px 0; color:#333d4b; font-size:24px;">친구 코인 접속</h1><button onclick="triggerGoogleIntent('login')" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; margin-bottom:10px;">기존 계정으로 로그인</button><button onclick="triggerGoogleIntent('signup')" style="width:100%; padding:15px; background:#e8f5e9; color:#2e7d32; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; margin-bottom:25px;">새로 시작하기 (회원가입)</button><div id="google-btn-container" style="display:none; justify-content:center;"></div></div>`;
     if (!document.getElementById('google-jssdk')) { const script = document.createElement('script'); script.id = 'google-jssdk'; script.src = "https://accounts.google.com/gsi/client"; script.async = true; script.defer = true; script.onload = () => { google.accounts.id.initialize({ client_id: "837250448431-hrlfbnof2bf4acofs03e28t3qdpkun5g.apps.googleusercontent.com", callback: handleCredentialResponse }); google.accounts.id.renderButton(document.getElementById("google-btn-container"), { theme: "outline", size: "large", shape: "pill" }); }; document.head.appendChild(script); } 
     else { google.accounts.id.initialize({ client_id: "837250448431-hrlfbnof2bf4acofs03e28t3qdpkun5g.apps.googleusercontent.com", callback: handleCredentialResponse }); google.accounts.id.renderButton(document.getElementById("google-btn-container"), { theme: "outline", size: "large", shape: "pill" }); }
 }
@@ -1002,7 +1105,7 @@ function triggerGoogleIntent(intent) { loginIntent = intent; document.getElement
 async function handleCredentialResponse(response) {
     const responsePayload = decodeJwtResponse(response.credential); const tempEmail = responsePayload.email; const idToken = response.credential;
     localStorage.setItem('fc_id_token', idToken); localStorage.setItem('fc_email', tempEmail);
-    const overlay = document.getElementById('login-overlay'); if(overlay) overlay.innerHTML = `<div style="font-size:20px; font-weight:bold; color:#333d4b;">서버 연결 중... ⏳</div>`; 
+    const overlay = document.getElementById('login-overlay'); if(overlay) overlay.innerHTML = `<div style="font-size:20px; font-weight:bold; color:#333d4b;">서버 연결 중...</div>`; 
     try {
         const serverResponse = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${idToken}`, "Cache-Control": "no-cache" } }); 
         const serverData = await serverResponse.json();
@@ -1013,13 +1116,13 @@ async function handleCredentialResponse(response) {
     } catch(err) { alert("연결 실패"); localStorage.clear(); location.reload(); }
 }
 function handleLogout() { localStorage.clear(); location.reload(); }
-function showNicknameSetupScreen(googlePicture) { let overlay = document.getElementById('login-overlay'); overlay.innerHTML = `<div style="background:white; padding:40px 30px; border-radius:20px; text-align:center; width:80%; max-width:350px;"><div style="font-size:40px; margin-bottom:15px;">👋</div><h1 style="margin:0; font-size:22px;">닉네임 설정</h1><input type="text" id="new-nickname-input" placeholder="닉네임" style="width:100%; padding:15px; border:1px solid #e5e8eb; border-radius:12px; text-align:center; margin:15px 0 10px 0;"><p id="nickname-error" style="color:#ff3b30; font-size:12px; margin-bottom:20px; height:15px;"></p><button onclick="submitNewNickname('${googlePicture || ''}')" style="width:100%; padding:15px; background:#3182f6; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">시작하기 🚀</button></div>`; }
+function showNicknameSetupScreen(googlePicture) { let overlay = document.getElementById('login-overlay'); overlay.innerHTML = `<div style="background:white; padding:40px 30px; border-radius:20px; text-align:center; width:80%; max-width:350px;"><div style="font-size:40px; margin-bottom:15px;">👋</div><h1 style="margin:0; font-size:22px;">닉네임 설정</h1><input type="text" id="new-nickname-input" placeholder="닉네임" style="width:100%; padding:15px; border:1px solid #e5e8eb; border-radius:12px; text-align:center; margin:15px 0 10px 0;"><p id="nickname-error" style="color:#ff3b30; font-size:12px; margin-bottom:20px; height:15px;"></p><button onclick="submitNewNickname('${googlePicture || ''}')" style="width:100%; padding:15px; background:#3182f6; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">시작하기</button></div>`; }
 async function submitNewNickname(googlePicture) { const inputEl = document.getElementById('new-nickname-input'); const errorEl = document.getElementById('nickname-error'); const newName = inputEl.value.trim(); if(!newName) { errorEl.textContent = "닉네임을 입력하세요."; return; } if (/[^a-zA-Z0-9가-힣]/.test(newName)) { errorEl.textContent = "특수문자 금지"; return; } try { const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName)}`); const data = await res.json(); if(!data.available) { errorEl.textContent = data.message; return; } myProfile = JSON.parse(JSON.stringify(defaultProfile)); myProfile.name = newName; if (googlePicture) myProfile.profileImage = googlePicture; myUsername = newName; localStorage.setItem('fc_username', myUsername); saveData(); const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup(); } catch(err) { errorEl.textContent = "서버 오류"; } }
 
 async function initializeApp() { 
     try { 
         const token = localStorage.getItem('fc_id_token'); if(!token) { showLoginScreen(); return; }
-        const homeView = document.getElementById('friend-list'); if(homeView && (!myProfile)) { homeView.innerHTML = `<div style="text-align:center; padding:60px 20px; color:#3182f6; font-weight:bold; font-size:16px;">💤 서버 데이터 불러오는 중...</div>`; }
+        const homeView = document.getElementById('friend-list'); if(homeView && (!myProfile)) { homeView.innerHTML = `<div style="text-align:center; padding:60px 20px; color:#3182f6; font-weight:bold; font-size:16px;">서버 데이터 불러오는 중...</div>`; }
         showLoading();
         const serverResponse = await fetch(`${BACKEND_URL}/api/data?t=${new Date().getTime()}`, { headers: { "Authorization": `Bearer ${token}`, "Cache-Control": "no-cache" } }); 
         const serverData = await serverResponse.json(); 
