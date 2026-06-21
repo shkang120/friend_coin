@@ -70,34 +70,28 @@ function getAvatarHtml(person, size = 'small') {
     return `<div class="${themeClass}" style="width:${sizePx}; height:${sizePx}; border-radius:${radius}; filter:${filter}; display:inline-block; vertical-align:middle; background:white; ${themeClass ? '' : 'box-shadow: 0 2px 8px rgba(0,0,0,0.1);'}">${inner}</div>`;
 }
 
+// 🔥 수정됨: 이모지 뱃지 중복 방지 처리
 function getBadgeHtml(person) { 
     let allBadges = [...(person.dynamicBadges || []), ...(person.badges || [])]; 
     if (allBadges.length === 0) return ''; 
     return `<div style="display:flex; gap:4px; margin-top:4px; flex-wrap:wrap;">` + allBadges.map(b => {
-        let badgeEmoji = '';
-        if(b.includes('천사')) badgeEmoji = '👼';
-        else if(b.includes('악마')) badgeEmoji = '😈';
-        else if(b.includes('단골')) badgeEmoji = '⚖️';
-        else if(b.includes('VIP')) badgeEmoji = '👑';
-        else if(b.includes('1위')) badgeEmoji = '🥇';
-        else if(b.includes('떡상왕')) badgeEmoji = '🚀';
-        return `<span style="font-size:11px; background:#f2f4f6; padding:3px 6px; border-radius:6px; color:#4e5968; display:inline-flex; align-items:center; gap:2px;">${badgeEmoji} ${b}</span>`;
+        return `<span style="font-size:11px; background:#f2f4f6; padding:3px 6px; border-radius:6px; color:#4e5968; display:inline-flex; align-items:center; gap:2px;">${b}</span>`;
     }).join('') + `</div>`; 
 }
 
 function checkBadges() {
     if (!myProfile || !myProfile.badges) return;
-    if (myProfile.stats.goodGiven >= 2 && !myProfile.badges.includes('천사')) { myProfile.badges.push('천사'); showToast('🎉 [칭호 획득] 👼천사'); }
-    if (myProfile.stats.badGiven >= 2 && !myProfile.badges.includes('악마')) { myProfile.badges.push('악마'); showToast('🎉 [칭호 획득] 😈악마'); }
-    if (myProfile.stats.trialCount >= 2 && !myProfile.badges.includes('법정단골')) { myProfile.badges.push('법정단골'); showToast('🎉 [칭호 획득] ⚖️법정단골'); }
+    if (myProfile.stats.goodGiven >= 2 && !myProfile.badges.includes('👼천사')) { myProfile.badges.push('👼천사'); showToast('🎉 [칭호 획득] 👼천사'); }
+    if (myProfile.stats.badGiven >= 2 && !myProfile.badges.includes('😈악마')) { myProfile.badges.push('😈악마'); showToast('🎉 [칭호 획득] 😈악마'); }
+    if (myProfile.stats.trialCount >= 2 && !myProfile.badges.includes('⚖️법정단골')) { myProfile.badges.push('⚖️법정단골'); showToast('🎉 [칭호 획득] ⚖️법정단골'); }
     if (globalRanking.length === 0) return;
     const top1 = globalRanking[0]; 
     const topGainer = [...globalRanking].sort((a,b) => ((b.price||0) - (b.basePrice||0)) - ((a.price||0) - (a.basePrice||0)))[0];
     globalRanking.forEach(p => { 
         p.dynamicBadges = []; 
-        if (p.isVIP) p.dynamicBadges.push('VIP'); 
-        if (top1 && p.name === top1.name) p.dynamicBadges.push('1위'); 
-        if (topGainer && p.name === topGainer.name && (p.price - p.basePrice) > 0) p.dynamicBadges.push('떡상왕'); 
+        if (p.isVIP) p.dynamicBadges.push('👑VIP'); 
+        if (top1 && p.name === top1.name) p.dynamicBadges.push('👑1위'); 
+        if (topGainer && p.name === topGainer.name && (p.price - p.basePrice) > 0) p.dynamicBadges.push('🚀떡상왕'); 
     });
 }
 
@@ -985,8 +979,10 @@ let fileInput = document.getElementById('custom-image-upload');
 if(fileInput) { fileInput.addEventListener('change', async function(e) { const file = e.target.files[0]; if(!file) return; const formData = new FormData(); formData.append("image", file); try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 업로드 완료!"); closeProfileModal(); renderProfile(); } else { showToast("🚨 업로드 실패"); } } catch(err) { showToast("🚨 네트워크 오류"); } }); }
 
 function decodeJwtResponse(token) { let base64Url = token.split('.')[1]; let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) { return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''))); }
+
+// 🔥 수정됨: 로그인 화면 폰트 깨짐 해결 (font-family 제거)
 function showLoginScreen() {
-    let loginDiv = document.getElementById('login-overlay'); if (!loginDiv) { loginDiv = document.createElement('div'); loginDiv.id = 'login-overlay'; loginDiv.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:#f2f4f6; z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; font-family:sans-serif;"; document.body.appendChild(loginDiv); }
+    let loginDiv = document.getElementById('login-overlay'); if (!loginDiv) { loginDiv = document.createElement('div'); loginDiv.id = 'login-overlay'; loginDiv.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:#f2f4f6; z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center;"; document.body.appendChild(loginDiv); }
     loginDiv.innerHTML = `<div style="background:white; padding:40px 30px; border-radius:20px; box-shadow:0 10px 20px rgba(0,0,0,0.1); text-align:center; width:80%; max-width:350px;"><div style="font-size:60px; margin-bottom:15px;">💰</div><h1 style="margin:0 0 10px 0; color:#333d4b; font-size:24px;">친구 코인 접속</h1><button onclick="triggerGoogleIntent('login')" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; margin-bottom:10px;">기존 계정으로 로그인</button><button onclick="triggerGoogleIntent('signup')" style="width:100%; padding:15px; background:#e8f5e9; color:#2e7d32; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; margin-bottom:25px;">새로 시작하기 (회원가입)</button><div id="google-btn-container" style="display:none; justify-content:center;"></div></div>`;
     if (!document.getElementById('google-jssdk')) { const script = document.createElement('script'); script.id = 'google-jssdk'; script.src = "https://accounts.google.com/gsi/client"; script.async = true; script.defer = true; script.onload = () => { google.accounts.id.initialize({ client_id: "837250448431-hrlfbnof2bf4acofs03e28t3qdpkun5g.apps.googleusercontent.com", callback: handleCredentialResponse }); google.accounts.id.renderButton(document.getElementById("google-btn-container"), { theme: "outline", size: "large", shape: "pill" }); }; document.head.appendChild(script); } 
     else { google.accounts.id.initialize({ client_id: "837250448431-hrlfbnof2bf4acofs03e28t3qdpkun5g.apps.googleusercontent.com", callback: handleCredentialResponse }); google.accounts.id.renderButton(document.getElementById("google-btn-container"), { theme: "outline", size: "large", shape: "pill" }); }

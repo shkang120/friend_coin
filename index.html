@@ -11,9 +11,17 @@
 
     <!-- 앱 전체 글꼴 적용 -->
     <style>
-        body, button, input, textarea {
-            /* 글꼴 맨 앞에 'Tossface'를 선언하면 이모지는 무조건 토스페이스로 렌더링됩니다 */
-            font-family: 'Tossface', 'Pretendard', -apple-system, sans-serif !important;
+        /* 토스페이스를 '이모지'에만 적용하도록 유니코드 범위(unicode-range) 한정 */
+        @font-face {
+            font-family: 'TossfaceEmoji';
+            src: url('https://cdn.jsdelivr.net/gh/toss/tossface/dist/tossface.ttf') format('truetype');
+            unicode-range: U+1F000-1F9FF, U+2600-26FF, U+2700-27BF, U+2300-23FF, U+1FA70-1FAFF, U+2B50, U+2B55;
+        }
+
+        /* 폰트 적용 (이모지는 토스페이스, 글씨는 프리텐다드 및 시스템 폰트가 렌더링되게 됨) */
+        body, button, input, textarea, div, span {
+            font-family: 'TossfaceEmoji', 'Pretendard', -apple-system, sans-serif !important;
+            letter-spacing: normal !important;
         }
 </style>
 </head>
