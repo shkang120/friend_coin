@@ -7,7 +7,37 @@ let autoSyncInterval = null;
 let isSyncing = false; 
 let globalMegaphone = ""; 
 
-// 🔥 [신규 추가] 타격감 애니메이션 함수
+// 🔥 [스마트 로드] 폭죽 라이브러리와 흔들림 CSS를 app.js에서 자동 주입!
+if (!document.getElementById('confetti-script')) {
+    const script = document.createElement('script');
+    script.id = 'confetti-script';
+    script.src = "https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js";
+    document.head.appendChild(script);
+}
+
+if (!document.getElementById('shake-style')) {
+    const style = document.createElement('style');
+    style.id = 'shake-style';
+    style.innerHTML = `
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .shake-effect { animation: shake 0.4s 1; }
+    `;
+    document.head.appendChild(style);
+}
+
+// 애니메이션 실행 함수
 function triggerConfetti() {
     if (typeof confetti === 'function') {
         confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, zIndex: 999999 });
@@ -223,7 +253,7 @@ window.rollDice = async function() {
         if(data.status === 'success') {
             if(data.message.includes('승리')) { triggerConfetti(); } 
             else { triggerShake(); }
-            alert(data.message);
+            showToast(data.message); // alert 대신 깔끔한 토스트 알림으로 변경
             await forceSync();
         } else {
             alert(data.message);
@@ -873,7 +903,6 @@ async function submitEvaluation(evalType, intensity) {
         });
         const data = await res.json(); 
         if (data.status === 'success') { 
-            // 🔥 [신규 추가] 평가 종류에 따른 타격감 발동
             if (evalType === 'good') triggerConfetti();
             else triggerShake();
             alert(data.message); 
