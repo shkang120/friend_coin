@@ -889,7 +889,7 @@ window.buyShopItem = async function(itemType, cost) {
     if (myProfile.price < cost) { alert("잔고가 부족합니다!"); return; }
     let extraData = "";
     if (itemType === 'megaphone') { 
-        extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자):"); 
+        extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자, 1시간 유지):"); 
         if (!extraData || extraData.trim() === "") return; 
         if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } 
     } else { 
@@ -906,7 +906,7 @@ window.buyShopItem = async function(itemType, cost) {
 window.buyCashItem = async function(itemType) {
     let extraData = "";
     if (itemType === 'megaphone') { 
-        extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자):"); 
+        extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자, 1시간 유지):"); 
         if (!extraData || extraData.trim() === "") return; 
         if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } 
     }

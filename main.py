@@ -288,8 +288,20 @@ def get_user_data(authorization: str = Header(None)):
     all_users = list(db["users"].find({}, {"profile": 1}))
     sorted_users = sorted(all_users, key=lambda x: x.get("profile", {}).get("price", 0), reverse=True)[:10]
     global_ranking = [u.get("profile") for u in sorted_users if "profile" in u]
+    
+    # 🔥 확성기 1시간 소멸 체크 로직 추가
     sys_data = db["system"].find_one({"_id": "global"})
-    megaphone_msg = sys_data.get("megaphone", "") if sys_data else ""
+    megaphone_msg = ""
+    if sys_data and sys_data.get("megaphone"):
+        mega_time_str = sys_data.get("megaphone_time")
+        if mega_time_str:
+            mega_time = parse_time_safe(mega_time_str)
+            # 현재 시간이 등록 시간으로부터 1시간(hours=1) 이내인지 검사
+            if mega_time and datetime.utcnow() <= mega_time + timedelta(hours=1):
+                megaphone_msg = sys_data.get("megaphone")
+            else:
+                # 1시간이 지났으면 DB에서 깔끔하게 삭제
+                db["system"].update_one({"_id": "global"}, {"$set": {"megaphone": "", "megaphone_time": None}})
 
     return {"isNewUser": False, "profile": profile, "noti": user_data.get("noti", []), "my_rooms": my_rooms, "global_ranking": global_ranking, "megaphone_msg": megaphone_msg}
 
@@ -765,10 +777,18 @@ def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
         profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
         msg = "💰 10,000p 긴급 자금 수혈 완료!"
         
+    # 🔥 확성기 결제 시 'megaphone_time' 추가 저장
     elif data.item_type == "megaphone":
         if not data.extra_data.strip(): return {"status": "error", "message": "메시지를 입력하세요."}
-        db["system"].update_one({"_id": "global"}, {"$set": {"megaphone": f"[{profile.get('name')}] {data.extra_data}"}}, upsert=True)
-        msg = "📢 확성기 적용 완료! 티커가 곧 업데이트됩니다."
+        db["system"].update_one(
+            {"_id": "global"}, 
+            {"$set": {
+                "megaphone": f"[{profile.get('name')}] {data.extra_data}",
+                "megaphone_time": datetime.utcnow().isoformat()
+            }}, 
+            upsert=True
+        )
+        msg = "📢 확성기 적용 완료! (1시간 동안 유지됩니다)"
 
     elif data.item_type.startswith("theme_"):
         theme_name = data.item_type.split("_")[1]
