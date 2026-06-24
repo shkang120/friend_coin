@@ -7,6 +7,17 @@ let autoSyncInterval = null;
 let isSyncing = false; 
 let globalMegaphone = ""; 
 
+// 🔥 [신규 추가] 타격감 애니메이션 함수
+function triggerConfetti() {
+    if (typeof confetti === 'function') {
+        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, zIndex: 999999 });
+    }
+}
+function triggerShake() {
+    document.body.classList.add('shake-effect');
+    setTimeout(() => { document.body.classList.remove('shake-effect'); }, 400);
+}
+
 if (!document.getElementById('global-loader')) {
     const loader = document.createElement('div');
     loader.id = 'global-loader';
@@ -152,7 +163,7 @@ window.changeRoomAlias = function(roomCode, originalName) {
         showToast("원래 이름으로 복구되었습니다."); 
     } else { 
         myProfile.roomAliases[roomCode] = newName.trim(); 
-        showToast("방 별명이 변경되었습니다! ✨"); 
+        showToast("방 별명이 변경되었습니다! ✨"); triggerConfetti();
     }
     saveData(); 
     renderHome();
@@ -192,6 +203,32 @@ window.openAddEventModal = function(dateStr) {
         </div> 
     `; 
     modal.style.display = 'flex'; 
+};
+
+// 🔥 [신규 추가] 주사위 도박 로직 연동
+window.rollDice = async function() {
+    const guess = prompt("주사위 결과가 홀일까요, 짝일까요? (홀/짝 중 1개 입력)\n* 참가비: 500p\n* 승리시: 1,000p 획득");
+    if(!guess) return;
+    if(guess !== "홀" && guess !== "짝") { alert("홀 또는 짝만 입력해주세요."); return; }
+    
+    showLoading();
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/room/gamble`, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` },
+            body: JSON.stringify({ room_code: currentRoomCode, email: myEmail, guess: guess })
+        });
+        const data = await res.json();
+        
+        if(data.status === 'success') {
+            if(data.message.includes('승리')) { triggerConfetti(); } 
+            else { triggerShake(); }
+            alert(data.message);
+            await forceSync();
+        } else {
+            alert(data.message);
+        }
+    } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 };
 
 function renderHome() {
@@ -691,7 +728,7 @@ async function joinExistingRoom(codeParam = null) {
         if(data.status === 'error') { if (!codeParam) alert(data.message); return; } 
         if (!codeParam) alert(`🚪 입장 성공!`); 
         window.history.replaceState({}, document.title, window.location.pathname);
-        await forceSync(); 
+        await forceSync(); triggerConfetti();
     } catch(err) { alert("서버 오류"); } finally { hideLoading(); }
 }
 
@@ -782,7 +819,7 @@ window.kickUser = async function(targetEmail, targetName) {
             body: JSON.stringify({ room_code: currentRoomCode, creator_email: myEmail, target_email: targetEmail, agenda_type: 'kick', reason: reason.trim() })
         });
         const data = await res.json();
-        if(data.status === 'success') { showToast(data.message); await forceSync(); switchTab('meeting'); } else { alert(data.message); }
+        if(data.status === 'success') { showToast(data.message); await forceSync(); switchTab('meeting'); triggerShake(); } else { alert(data.message); }
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
 
@@ -834,7 +871,14 @@ async function submitEvaluation(evalType, intensity) {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, 
             body: JSON.stringify({ evaluator_email: myEmail, target_email: currentSelectedFriend.email, eval_type: evalType, intensity: intensity, reason: reasonText, is_anonymous: isAnonymous }) 
         });
-        const data = await res.json(); if (data.status === 'success') { alert(data.message); await forceSync(); } else { alert(data.message); }
+        const data = await res.json(); 
+        if (data.status === 'success') { 
+            // 🔥 [신규 추가] 평가 종류에 따른 타격감 발동
+            if (evalType === 'good') triggerConfetti();
+            else triggerShake();
+            alert(data.message); 
+            await forceSync(); 
+        } else { alert(data.message); }
     } catch(err) { alert("네트워크 오류 발생"); } finally { hideLoading(); }
 }
 
@@ -847,13 +891,13 @@ async function submitVote(roomCode, agendaId, voteType) {
     } catch(err) { alert("네트워크 오류"); } finally { hideLoading(); }
 }
 
-async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; showLoading(); try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await forceSync(); } } catch(err) { alert("서버 오류"); } finally { hideLoading(); } }
+async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; showLoading(); try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await forceSync(); triggerConfetti(); } } catch(err) { alert("서버 오류"); } finally { hideLoading(); } }
 
 async function doDailyAttendance() { 
     showLoading();
     try {
         const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: 'attendance' }) });
-        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); } else { showToast(data.message); }
+        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); triggerConfetti(); } else { showToast(data.message); }
     } catch(err) { alert("서버 오류"); } finally { hideLoading(); }
 }
 
@@ -868,7 +912,7 @@ async function claimAdReward(isVipPass = false) {
     document.getElementById('ad-modal').style.display = 'none'; showLoading();
     try {
         const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: currentAdRewardType }) });
-        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(isVipPass ? `👑 VIP 프리패스! ${data.message}` : data.message); saveData(); renderProfile(); } else { showToast(data.message); }
+        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(isVipPass ? `👑 VIP 프리패스! ${data.message}` : data.message); saveData(); renderProfile(); triggerConfetti(); } else { showToast(data.message); }
     } catch(err) { alert("서버 오류"); } finally { hideLoading(); }
 }
 
@@ -876,13 +920,13 @@ async function claimWeeklyTickets() {
     showLoading();
     try {
         const res = await fetch(`${BACKEND_URL}/api/reward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, reward_type: 'weekly' }) });
-        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); } else { showToast(data.message); }
+        const data = await res.json(); if(data.status === 'success') { myProfile = data.profile; showToast(data.message); saveData(); renderProfile(); triggerConfetti(); } else { showToast(data.message); }
     } catch(err) { alert("서버 오류"); } finally { hideLoading(); }
 }
 
 function openVIPModal() { document.getElementById('vip-modal').style.display = 'flex'; if (myProfile.isVIP) { document.getElementById('vip-buy-section').style.display = 'none'; document.getElementById('vip-manage-section').style.display = 'block'; document.getElementById('vip-color-picker').value = myProfile.nameColor || '#333d4b'; } else { document.getElementById('vip-buy-section').style.display = 'block'; document.getElementById('vip-manage-section').style.none; } }
 function closeVIPModal() { document.getElementById('vip-modal').style.display = 'none'; }
-function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("💎 VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); }
+function buyVIP() { myProfile.isVIP = true; myProfile.nameColor = '#d4af37'; saveData(); showToast("💎 VIP 멤버십 가입 완료!"); openVIPModal(); renderProfile(); triggerConfetti(); }
 function applyVIPColor() { const color = document.getElementById('vip-color-picker').value; myProfile.nameColor = color; saveData(); showToast("🎨 색상 변경!"); closeVIPModal(); renderProfile(); }
 
 window.buyShopItem = async function(itemType, cost) {
@@ -899,7 +943,7 @@ window.buyShopItem = async function(itemType, cost) {
     showLoading();
     try {
         const res = await fetch(`${BACKEND_URL}/api/shop/buy`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, item_type: itemType, extra_data: extraData }) });
-        const data = await res.json(); if (data.status === 'success') { showToast(data.message); await forceSync(); } else { alert(data.message); }
+        const data = await res.json(); if (data.status === 'success') { showToast(data.message); await forceSync(); triggerConfetti(); } else { alert(data.message); }
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
 
@@ -923,7 +967,7 @@ window.buyCashItem = async function(itemType) {
             body: JSON.stringify({ email: myEmail, item_type: itemType, extra_data: extraData }) 
         });
         const data = await res.json(); 
-        if (data.status === 'success') { showToast(data.message); await forceSync(); } 
+        if (data.status === 'success') { showToast(data.message); await forceSync(); triggerConfetti(); } 
         else { alert(data.message); }
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 }
@@ -970,12 +1014,13 @@ window.selectTheme = function(themeId) {
     showToast("테마 장착 완료!");
     openProfileModal(); 
     renderProfile();
+    triggerConfetti();
 };
 
 async function changeNickname() { const newName = prompt("변경할 닉네임 (최대 8자):"); if(!newName || newName.trim() === "" || newName.trim() === myProfile.name) return; if (/[^a-zA-Z0-9가-힣]/.test(newName.trim())) { alert("특수문자 불가"); return; } try { const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName.trim())}`); const data = await res.json(); if(!data.available) { alert(data.message); return; } myProfile.name = newName.trim(); myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); saveData(); showToast("변경 완료!"); renderProfile(); } catch(err) { alert("오류 발생"); } }
 
 let fileInput = document.getElementById('custom-image-upload');
-if(fileInput) { fileInput.addEventListener('change', async function(e) { const file = e.target.files[0]; if(!file) return; const formData = new FormData(); formData.append("image", file); try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 업로드 완료!"); closeProfileModal(); renderProfile(); } else { showToast("🚨 업로드 실패"); } } catch(err) { showToast("🚨 네트워크 오류"); } }); }
+if(fileInput) { fileInput.addEventListener('change', async function(e) { const file = e.target.files[0]; if(!file) return; const formData = new FormData(); formData.append("image", file); try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 업로드 완료!"); closeProfileModal(); renderProfile(); triggerConfetti(); } else { showToast("🚨 업로드 실패"); } } catch(err) { showToast("🚨 네트워크 오류"); } }); }
 
 function decodeJwtResponse(token) { let base64Url = token.split('.')[1]; let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) { return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''))); }
 
