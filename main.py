@@ -757,7 +757,7 @@ def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
     
     if data.item_type == "anon_ticket":
         profile["anonTickets"] = profile.get("anonTickets", 0) + 1
-        msg = "🥷 익명 암살권 결제 및 지급 완료!"
+        msg = "👻 익명 암살권 결제 및 지급 완료!"
         
     elif data.item_type == "fund_pack":
         profile["price"] = profile.get("price", 20000) + 10000

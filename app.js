@@ -70,7 +70,6 @@ function getAvatarHtml(person, size = 'small') {
     return `<div class="${themeClass}" style="width:${sizePx}; height:${sizePx}; border-radius:${radius}; filter:${filter}; display:inline-block; vertical-align:middle; background:white; ${themeClass ? '' : 'box-shadow: 0 2px 8px rgba(0,0,0,0.1);'}">${inner}</div>`;
 }
 
-// 🔥 수정됨: 이모지 뱃지 중복 방지 처리
 function getBadgeHtml(person) { 
     let allBadges = [...(person.dynamicBadges || []), ...(person.badges || [])]; 
     if (allBadges.length === 0) return ''; 
@@ -556,7 +555,7 @@ function renderProfile() {
             
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
-                    <div style="font-size:28px; flex-shrink:0;">🥷</div>
+                    <div style="font-size:28px; flex-shrink:0;">👻</div>
                     <div style="text-align:left; flex:1;">
                         <div style="font-weight:bold; font-size:14px; color:white;">익명 암살권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.anonTickets || 0}개)</span></div>
                         <div style="font-size:11px; color:#8b95a1; margin-top:2px;">악평 시 내 정체 100% 은폐</div>
@@ -756,7 +755,7 @@ function openFriendDetail(friendEmail) {
                 
                 <div id="anon-section" style="display:none; margin-top:10px; padding:10px; background:#f3e5f5; border-radius:8px; border:1px solid #e1bee7;">
                     <label style="font-weight:bold; color:#6a1b9a; cursor:pointer; font-size:12px; display:flex; align-items:center; gap:5px;">
-                        <input type="checkbox" id="use-anon-ticket"> 🥷 익명 암살권 사용 (보유: ${myProfile.anonTickets || 0}개)
+                        <input type="checkbox" id="use-anon-ticket"> 👻 익명 암살권 사용 (보유: ${myProfile.anonTickets || 0}개)
                     </label>
                 </div>
             </div>
@@ -980,7 +979,6 @@ if(fileInput) { fileInput.addEventListener('change', async function(e) { const f
 
 function decodeJwtResponse(token) { let base64Url = token.split('.')[1]; let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) { return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''))); }
 
-// 🔥 수정됨: 로그인 화면 폰트 깨짐 해결 (font-family 제거)
 function showLoginScreen() {
     let loginDiv = document.getElementById('login-overlay'); if (!loginDiv) { loginDiv = document.createElement('div'); loginDiv.id = 'login-overlay'; loginDiv.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:#f2f4f6; z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center;"; document.body.appendChild(loginDiv); }
     loginDiv.innerHTML = `<div style="background:white; padding:40px 30px; border-radius:20px; box-shadow:0 10px 20px rgba(0,0,0,0.1); text-align:center; width:80%; max-width:350px;"><div style="font-size:60px; margin-bottom:15px;">💰</div><h1 style="margin:0 0 10px 0; color:#333d4b; font-size:24px;">친구 코인 접속</h1><button onclick="triggerGoogleIntent('login')" style="width:100%; padding:15px; background:#333d4b; color:white; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; margin-bottom:10px;">기존 계정으로 로그인</button><button onclick="triggerGoogleIntent('signup')" style="width:100%; padding:15px; background:#e8f5e9; color:#2e7d32; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; margin-bottom:25px;">새로 시작하기 (회원가입)</button><div id="google-btn-container" style="display:none; justify-content:center;"></div></div>`;
