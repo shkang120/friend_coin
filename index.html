@@ -1,150 +1,144 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <!-- index.html의 <head> 태그 안에 아래 코드로 교체/추가하세요 -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>친구 코인</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f2f4f6;
+            color: #333d4b;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        .app-container {
+            max-width: 500px;
+            margin: 0 auto;
+            background-color: width;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.05);
+        }
 
-<!-- 🎉 폭죽 효과를 위한 외부 라이브러리 로드 -->
-<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-
-<!-- index.html의 <head> 태그 안에 아래 코드로 교체/추가하세요 -->
-
-<!-- 🎉 폭죽 효과를 위한 외부 라이브러리 로드 -->
-<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-
-<style>
-    /* 토스페이스를 '이모지'에만 적용 */
-    @font-face {
-        font-family: 'TossfaceEmoji';
-        src: url('https://cdn.jsdelivr.net/gh/toss/tossface/dist/tossface.ttf') format('truetype');
-        unicode-range: U+1F000-1F9FF, U+2600-26FF, U+2700-27BF, U+2300-23FF, U+1FA70-1FAFF, U+2B50, U+2B55;
-    }
-
-    body, button, input, textarea, div, span {
-        font-family: 'TossfaceEmoji', 'Pretendard', -apple-system, sans-serif !important;
-        letter-spacing: normal !important;
-    }
-
-    /* 💥 화면 지진(흔들림) 애니메이션 정의 */
-    @keyframes shake {
-        0% { transform: translate(1px, 1px) rotate(0deg); }
-        10% { transform: translate(-1px, -2px) rotate(-1deg); }
-        20% { transform: translate(-3px, 0px) rotate(1deg); }
-        30% { transform: translate(3px, 2px) rotate(0deg); }
-        40% { transform: translate(1px, -1px) rotate(1deg); }
-        50% { transform: translate(-1px, 2px) rotate(-1deg); }
-        60% { transform: translate(-3px, 1px) rotate(0deg); }
-        70% { transform: translate(3px, 1px) rotate(-1deg); }
-        80% { transform: translate(-1px, -1px) rotate(1deg); }
-        90% { transform: translate(1px, 2px) rotate(0deg); }
-        100% { transform: translate(1px, -2px) rotate(-1deg); }
-    }
-    .shake-effect {
-        animation: shake 0.4s;
-        animation-iteration-count: 1;
-    }
-</style>
+        /* 💥 화면 흔들림(지진) 애니메이션 */
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .shake-effect {
+            animation: shake 0.4s;
+            animation-iteration-count: 1;
+        }
+        /* 기본 토스트 스타일 */
+        #toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 999999;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        #toast.show { opacity: 1; }
+        .view { display: none; padding: 20px; padding-bottom: 100px; flex: 1; }
+        .view-active { display: block; }
+        .info-card { background: white; border-radius: 20px; padding: 20px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); border: 1px solid #f2f4f6; }
+        .nav-bar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 500px; height: 75px; background: rgba(255,255,255,0.92); backdrop-filter: blur(10px); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #e5e8eb; z-index: 9999; }
+        .nav-item { display: flex; flex-direction: column; align-items: center; color: #8b95a1; font-size: 11px; font-weight: bold; cursor: pointer; text-decoration: none; flex: 1; }
+        .nav-item.active { color: #3182f6; }
+        .nav-icon { margin-bottom: 4px; font-size: 22px; }
+        .spinner { border: 4px solid rgba(0,0,0,0.1); width: 36px; height: 46px; border-radius: 50%; border-left-color: #3182f6; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .ticker-container { background: #333d4b; color: #fff; padding: 10px; font-size: 13px; font-weight: bold; overflow: hidden; white-space: nowrap; box-sizing: border-box; }
+        .ticker-wrapper { display: inline-block; padding-left: 100%; animation: ticker 25s linear infinite; }
+        @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
+        /* 프로필 테마 커스텀 효과 */
+        .theme-neon { box-shadow: 0 0 15px #3182f6, inset 0 0 15px #3182f6 !important; border: 2px solid #3182f6 !important; }
+        .theme-fire { box-shadow: 0 0 15px #ff3b30, inset 0 0 15px #ff3b30 !important; border: 2px solid #ff3b30 !important; }
+        .verdict-stamp { position: absolute; right: 20px; top: 15px; border: 3px solid; transform: rotate(15deg); padding: 5px 12px; font-weight: bold; border-radius: 8px; font-size: 14px; z-index: 10; text-transform: uppercase; }
+    </style>
 </head>
 <body>
-    <!-- 전역 로딩 스피너 및 알림창 -->
-    <div id="global-loader"><div class="spinner"></div></div>
-    <div id="toast"></div>
-
     <div class="app-container">
-        <!-- 최상단 글로벌 뉴스 티커 -->
-        <div class="news-ticker"><div class="ticker-text" id="ticker-text">[속보] 코인 데이터 불러오는 중...</div></div>
-
-        <!-- 메인 화면 뷰 컨테이너 -->
-        <div class="view-container">
-            <div id="home-view" class="view">
-                <div class="header-top"><div>📈 내 클럽 로비</div></div>
-                <div id="friend-list" style="padding: 10px 20px;"></div>
-            </div>
-            
-            <div id="meeting-view" class="view">
-                <div class="header-top"><div>⚖️ 주주총회 보드</div></div>
-                <div id="meeting-list" style="padding: 10px 20px;"></div>
-            </div>
-            
-            <div id="ranking-view" class="view">
-                <div class="header-top"><div>🏆 전국 실시간 랭킹</div></div>
-                <div id="ranking-content" style="padding: 15px 20px;"></div>
-            </div>
-            
-            <div id="noti-view" class="view">
-                <div class="header-top"><div>🔔 알림함</div></div>
-                <div id="noti-list" style="padding: 10px 20px;"></div>
-            </div>
-            
-            <div id="profile-view" class="view">
-                <div class="header-top"><div>👤 내 정보</div></div>
-                <div id="my-profile-info" style="padding: 15px 20px; text-align: center;"></div>
-            </div>
+        <div class="ticker-container"><div class="ticker-wrapper" id="ticker-text">[글로벌 시황] 서버 연결 대기 중...</div></div>
+        
+        <div id="home-view" class="view view-active"><div id="friend-list"></div></div>
+        <div id="meeting-view" class="view"><div id="meeting-list"></div></div>
+        <div id="ranking-view" class="view"><div id="ranking-content"></div></div>
+        <div id="noti-view" class="view">
+            <h2 style="margin-top:0; color:#333d4b;">🔔 알림함</h2>
+            <div id="noti-list"></div>
         </div>
+        <div id="profile-view" class="view"><div id="my-profile-info"></div></div>
 
-        <!-- 하단 네비게이션 바 -->
-        <div class="bottom-nav">
-            <div class="nav-item" onclick="switchTab('home')"><span class="nav-icon">📈</span>로비</div>
-            <div class="nav-item" onclick="switchTab('meeting')"><span class="nav-icon">⚖️</span>총회</div>
-            <div class="nav-item" onclick="switchTab('ranking')"><span class="nav-icon">🏆</span>랭킹</div>
-            <div class="nav-item" onclick="switchTab('noti')"><span class="nav-icon">🔔</span>알림</div>
-            <div class="nav-item" onclick="switchTab('profile')"><span class="nav-icon">👤</span>내정보</div>
+        <div class="nav-bar">
+            <div class="nav-item active" onclick="switchTab('home')"><span class="nav-icon">📈</span><span>로비</span></div>
+            <div class="nav-item" onclick="switchTab('meeting')"><span class="nav-icon">⚖️</span><span>총회</span></div>
+            <div class="nav-item" onclick="switchTab('ranking')"><span class="nav-icon">🏆</span><span>랭킹</span></div>
+            <div class="nav-item" onclick="switchTab('noti')"><span class="nav-icon">🔔</span><span>알림</span></div>
+            <div class="nav-item" onclick="switchTab('profile')"><span class="nav-icon">👤</span><span>내정보</span></div>
         </div>
     </div>
 
-    <!-- ===== 정적 모달창(팝업) 영역 ===== -->
+    <div id="vip-modal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:99999; display:none; justify-content:center; align-items:center;">
+        <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:center;">
+            <h3 style="color:#333d4b;">💎 프리미엄 VIP 멤버십</h3>
+            <div id="vip-buy-section">
+                <p style="font-size:14px; color:#4e5968;">가입 즉시 상점 광고가 영구 제거되며,<br>나만의 고유한 이름 색상을 적용할 수 있습니다!</p>
+                <button onclick="buyVIP()" style="width:100%; padding:12px; background:#d4af37; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">₩9,900 결제하기</button>
+            </div>
+            <div id="vip-manage-section" style="display:none; text-align:left;">
+                <label style="font-size:13px; font-weight:bold; color:#4e5968;">🎨 이름 색상 커스텀</label>
+                <input type="color" id="vip-color-picker" style="width:100%; height:40px; border:1px solid #eee; border-radius:8px; margin:10px 0 20px 0; cursor:pointer;">
+                <button onclick="applyVIPColor()" style="width:100%; padding:12px; background:#3182f6; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer; margin-bottom:8px;">색상 저장하기</button>
+            </div>
+            <button onclick="closeVIPModal()" style="width:100%; padding:12px; background:#f2f4f6; color:#8b95a1; border:none; border-radius:10px; font-weight:bold; cursor:pointer; margin-top:8px;">닫기</button>
+        </div>
+    </div>
 
-    <!-- ★ [패치] 프로필 통합 꾸미기 모달 -->
-    <div id="profile-modal" class="modal-overlay">
-        <div class="modal-content" style="text-align: center; max-height:85vh; overflow-y:auto;">
+    <div id="profile-modal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:99999; display:none; justify-content:center; align-items:center;">
+        <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:center;">
             <h3 style="margin-top:0; color:#333d4b;">🎨 프로필 꾸미기</h3>
-            
-            <div style="font-weight:bold; font-size:14px; color:#4e5968; margin-bottom:10px; text-align:left;">1. 내 아바타 변경</div>
-            <div id="default-profiles-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px;"></div>
-            <div style="margin: 15px 0; border-top: 1px dashed #e5e8eb; padding-top: 15px;">
-                <label for="custom-image-upload" style="display:block; padding:12px; background:#f2f4f6; color:#4e5968; border-radius:10px; font-weight:bold; cursor:pointer;">📸 내 갤러리 사진 올리기 (5MB 이하)</label>
-                <input type="file" id="custom-image-upload" accept="image/*" style="display:none;">
-            </div>
-            
-            <div style="font-weight:bold; font-size:14px; color:#4e5968; margin-top:25px; margin-bottom:10px; text-align:left;">2. 스페셜 테마 장착</div>
-            <div id="owned-themes-container" style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
-                <!-- JS에서 내가 보유한 테마 목록을 그려줍니다 -->
-            </div>
-
+            <h4 style="text-align:left; font-size:13px; color:#4e5968; margin-bottom:10px;">1. 기본 아바타 변경</h4>
+            <div id="default-profiles-grid" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; margin-bottom:20px;"></div>
+            <h4 style="text-align:left; font-size:13px; color:#4e5968; margin-bottom:10px;">2. 내 갤러리 사진 올리기 (5MB 이하)</h4>
+            <input type="file" id="custom-image-upload" accept="image/*" style="display:none;">
+            <button onclick="document.getElementById('custom-image-upload').click()" style="width:100%; padding:12px; background:#f2f4f6; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; color:#4e5968; cursor:pointer; margin-bottom:20px;">📁 사진 선택하기</button>
+            <h4 style="text-align:left; font-size:13px; color:#4e5968; margin-bottom:10px;">3. 스페셜 테마 장착</h4>
+            <div id="owned-themes-container" style="display:flex; flex-direction:column; gap:8px; text-align:left; margin-bottom:20px;"></div>
             <button onclick="closeProfileModal()" style="width:100%; padding:12px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">닫기</button>
         </div>
     </div>
 
-    <!-- VIP 결제 모달 -->
-    <div id="vip-modal" class="modal-overlay">
-        <div class="modal-content">
-            <h3 style="margin-top: 0; color: #333d4b; text-align:center;">💎 프리미엄 VIP 가입</h3>
-            <div id="vip-buy-section">
-                <p style="font-size: 14px; color: #8b95a1; margin-bottom: 20px; line-height: 1.5; text-align:center;">광고 3초 대기 <b>영구 삭제!</b><br>내 이름 색상 <b>자유 커스텀!</b><br>전용 <b>👑VIP 칭호</b> 즉시 지급!</p>
-                <button style="width: 100%; padding: 15px; border-radius: 12px; border: none; background: linear-gradient(135deg, #d4af37, #f3e5f5); color: #333d4b; font-weight: bold; cursor: pointer; margin-bottom: 10px; font-size: 16px;" onclick="buyVIP()">결제하고 VIP 되기 (월 1,900원)</button>
-            </div>
-            <div id="vip-manage-section" style="display: none;">
-                <p style="font-size: 14px; font-weight: bold; margin-bottom: 10px; text-align:left;">🎨 내 이름 색상 선택</p>
-                <input type="color" id="vip-color-picker" style="width: 100%; height: 50px; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 20px;">
-                <button style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: #333d4b; color: white; font-weight: bold; cursor: pointer; margin-bottom: 10px;" onclick="applyVIPColor()">색상 저장하기</button>
-            </div>
-            <button onclick="closeVIPModal()" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #e5e8eb; background: white; color: #8b95a1; font-weight: bold; cursor: pointer;">취소</button>
-        </div>
+    <div id="ad-modal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:999999; display:none; flex-direction:column; justify-content:center; align-items:center; color:white;">
+        <div style="font-size:80px; margin-bottom:20px;">🎬</div>
+        <div id="ad-timer" style="font-size:18px; font-weight:bold; margin-bottom:30px;">광고 시청 중... (3초)</div>
+        <button id="ad-close-btn" style="padding:15px 30px; border-radius:12px; font-weight:bold; border:none; font-size:16px;" disabled>시청 완료 후 보상 받기</button>
     </div>
 
-    <!-- 광고 시청 모달 -->
-    <div id="ad-modal" class="modal-overlay">
-        <div class="modal-content" style="text-align: center;">
-            <div style="font-size: 50px; margin-bottom: 10px;">📺</div>
-            <h3 style="margin-top: 0; color: #333d4b;">스폰서 광고 시청</h3>
-            <p style="font-size: 14px; color: #8b95a1; margin-bottom: 20px;">서버 유지비를 위해 광고를 시청해 주셔서 감사합니다!</p>
-            <div style="background: #f2f4f6; padding: 40px 20px; border-radius: 12px; margin-bottom: 20px; border: 1px dashed #d1d6db;">
-                <p id="ad-timer" style="margin: 0; font-size: 18px; font-weight: bold; color: #3182f6;">광고 준비 중...</p>
-            </div>
-            <button id="ad-close-btn" style="width: 100%; padding: 15px; border-radius: 12px; border: none; background: #e5e8eb; color: #8b95a1; font-weight: bold; cursor: not-allowed;" disabled>광고를 끝까지 시청해주세요</button>
-        </div>
-    </div>
-
-    <!-- 앱 엔진 로드 -->
-    <script src="app.js"></script>
+    <div id="toast"></div>
 </body>
 </html>
