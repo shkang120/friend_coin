@@ -1,0 +1,15 @@
+{
+  "name": "친구 코인",
+  "short_name": "친구코인",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2f4f6",
+  "theme_color": "#3182f6",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
