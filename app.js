@@ -1210,7 +1210,7 @@ async function subscribeToPush() {
     }
 }
 
-// 🔥 [신규 추가] 설정(⚙️) 창 열기 기능
+// 🔥 변경됨: 현재 푸시 상태(On/Off)를 기억하고 스위치처럼 작동하는 설정창
 window.openSettingsModal = function() {
     let modal = document.getElementById('settings-modal');
     if (!modal) {
@@ -1219,15 +1219,22 @@ window.openSettingsModal = function() {
         modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:99999; display:none; justify-content:center; align-items:center;";
         document.body.appendChild(modal);
     }
+
+    // 현재 알림이 켜져 있는지 확인
+    const isPushEnabled = localStorage.getItem('fc_push_enabled') === 'true';
+    const pushBtnText = isPushEnabled ? "끄기" : "켜기";
+    const pushBtnColor = isPushEnabled ? "#ff3b30" : "#3182f6";
+    const pushBgColor = isPushEnabled ? "#fff2f2" : "#f2f4f6";
+
     modal.innerHTML = `
         <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:left; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
             <h3 style="margin-top:0; color:#333d4b; text-align:center;">⚙️ 앱 설정</h3>
             
             <div style="margin-bottom: 20px;">
                 <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:8px;">알림 설정</label>
-                <button onclick="subscribeToPush()" style="width:100%; padding:12px; background:#f2f4f6; color:#333d4b; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
+                <button onclick="togglePushNotification()" style="width:100%; padding:12px; background:${pushBgColor}; color:#333d4b; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:space-between; transition: 0.2s;">
                     <span>🚨 잠금화면 푸시 알림</span>
-                    <span style="color:#3182f6;">켜기</span>
+                    <span style="color:${pushBtnColor};">${pushBtnText}</span>
                 </button>
             </div>
 
