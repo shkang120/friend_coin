@@ -1210,7 +1210,7 @@ async function subscribeToPush() {
     }
 }
 
-// 🔥 변경됨: 현재 푸시 상태(On/Off)를 기억하고 스위치처럼 작동하는 설정창
+// 🔥 개선됨: 버튼 클릭 시 즉시 화면 내용이 갱신되는 스위치 함수
 window.openSettingsModal = function() {
     let modal = document.getElementById('settings-modal');
     if (!modal) {
@@ -1220,31 +1220,36 @@ window.openSettingsModal = function() {
         document.body.appendChild(modal);
     }
 
-    // 현재 알림이 켜져 있는지 확인
-    const isPushEnabled = localStorage.getItem('fc_push_enabled') === 'true';
-    const pushBtnText = isPushEnabled ? "끄기" : "켜기";
-    const pushBtnColor = isPushEnabled ? "#ff3b30" : "#3182f6";
-    const pushBgColor = isPushEnabled ? "#fff2f2" : "#f2f4f6";
+    // 창을 그리는 부분을 별도 함수로 분리하여 즉시 갱신 가능하게 만듦
+    function drawSettingsContent() {
+        const isPushEnabled = localStorage.getItem('fc_push_enabled') === 'true';
+        const pushBtnText = isPushEnabled ? "끄기" : "켜기";
+        const pushBtnColor = isPushEnabled ? "#ff3b30" : "#3182f6";
+        const pushBgColor = isPushEnabled ? "#fff2f2" : "#f2f4f6";
 
-    modal.innerHTML = `
-        <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:left; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
-            <h3 style="margin-top:0; color:#333d4b; text-align:center;">⚙️ 앱 설정</h3>
-            
-            <div style="margin-bottom: 20px;">
-                <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:8px;">알림 설정</label>
-                <button onclick="togglePushNotification()" style="width:100%; padding:12px; background:${pushBgColor}; color:#333d4b; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:space-between; transition: 0.2s;">
-                    <span>🚨 잠금화면 푸시 알림</span>
-                    <span style="color:${pushBtnColor};">${pushBtnText}</span>
-                </button>
+        modal.innerHTML = `
+            <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:left; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+                <h3 style="margin-top:0; color:#333d4b; text-align:center;">⚙️ 앱 설정</h3>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:8px;">알림 설정</label>
+                    <button onclick="togglePushNotification(); drawSettingsContent();" style="width:100%; padding:12px; background:${pushBgColor}; color:#333d4b; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:space-between; transition: 0.2s;">
+                        <span>🚨 잠금화면 푸시 알림</span>
+                        <span style="color:${pushBtnColor}; font-weight:bold;">${pushBtnText}</span>
+                    </button>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:8px;">계정 관리</label>
+                    <button onclick="handleLogout()" style="width:100%; padding:12px; background:#ffebee; color:#c62828; border:none; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">🚪 로그아웃 (계정 전환)</button>
+                </div>
+
+                <button onclick="document.getElementById('settings-modal').style.display='none'" style="width:100%; padding:12px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">닫기</button>
             </div>
+        `;
+    }
 
-            <div style="margin-bottom: 20px;">
-                <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:8px;">계정 관리</label>
-                <button onclick="handleLogout()" style="width:100%; padding:12px; background:#ffebee; color:#c62828; border:none; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">🚪 로그아웃 (계정 전환)</button>
-            </div>
-
-            <button onclick="document.getElementById('settings-modal').style.display='none'" style="width:100%; padding:12px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">닫기</button>
-        </div>
-    `;
+    drawSettingsContent(); // 초기 창 그리기
+    window.drawSettingsContent = drawSettingsContent; // 전역 스코프에 등록하여 버튼에서 사용 가능하게 함
     modal.style.display = 'flex';
 };
