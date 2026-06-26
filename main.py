@@ -144,6 +144,11 @@ def get_user_data(authorization: str = Header(None)):
     profile = user_data.get("profile", {})
     profile_modified = False
 
+    # 🔥 [신규 추가] 알림이 15개가 넘어가면 가장 오래된 것부터 잘라내고(Slice) 자동 저장!
+    if "noti" in user_data and len(user_data["noti"]) > 15:
+        user_data["noti"] = user_data["noti"][:15]
+        profile_modified = True
+
     kst_now = datetime.utcnow() + timedelta(hours=9)
     days_since_monday = kst_now.weekday()
     if kst_now.weekday() == 0 and kst_now.hour < 8: days_since_monday = 7
