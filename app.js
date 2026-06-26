@@ -648,8 +648,10 @@ function renderProfile() {
         </div>
     `;
 
+    // 🔥 변경됨: 우측 상단 설정 버튼(⚙️) 추가 및 하단 로그아웃 버튼 제거
     container.innerHTML = `
-        <div style="text-align: center;"> <!-- 🔥 상단 프로필 전체 중앙 정렬 래퍼 -->
+        <div style="position: relative; text-align: center; padding-top: 10px;"> 
+            <button onclick="openSettingsModal()" style="position: absolute; top: -10px; right: 0; background: none; border: none; font-size: 24px; cursor: pointer; z-index: 10;">⚙️</button>
             <div style="position: relative; display: inline-block;">
                 ${getAvatarHtml(myProfile, 'large')}
                 <button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✏️</button>
@@ -673,7 +675,7 @@ function renderProfile() {
             </div>
         </div>
 
-        <div style="text-align: center;"> <!-- 🔥 주가 정보 중앙 정렬 -->
+        <div style="text-align: center;"> 
             <div style="font-size: 32px; font-weight: bold; color: #333d4b; margin-top: 20px;">${isDelisted ? '💀' : Math.floor(myProfile.price).toLocaleString() + ' p'}</div>
             <div style="font-weight: bold; color: ${colorClass}; margin-bottom: 20px;">${isDelisted ? '' : sign + Math.floor(changeAmount).toLocaleString() + ' p (' + sign + changeRate + '%)'}</div>
         </div>
@@ -682,7 +684,7 @@ function renderProfile() {
         ${shopHtml}
         ${cashShopHtml}
         ${actionBtn}
-        ${logoutBtn}
+        <div style="height: 100px;"></div>
     `;
     setTimeout(drawPriceChart, 50); 
 }
@@ -723,19 +725,16 @@ function renderRanking() {
     `;
 }
 
-// 🔥 빠져있던 알림함 렌더링 + 잠금화면 알림 버튼 기능 추가
+// 🔥 변경됨: 알림함 상단의 푸시 알림 버튼을 제거 (설정창으로 이동)
 function renderNoti() {
     const list = document.getElementById('noti-list'); if(!list) return;
     
-    // 푸시 켜기 버튼 추가
-    let pushBtnHtml = `<button onclick="subscribeToPush()" style="width:100%; padding:12px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer; margin-bottom:15px; font-size:14px; box-shadow:0 4px 6px rgba(0,0,0,0.1);">🚨 스마트폰 잠금화면 알림 켜기</button>`;
-    
     if (myNotifications.length === 0) {
-        list.innerHTML = pushBtnHtml + `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">수신된 평판 알림이 없습니다.</div>`;
+        list.innerHTML = `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">수신된 평판 알림이 없습니다.</div>`;
         return;
     }
     
-    list.innerHTML = pushBtnHtml + myNotifications.map(n => {
+    list.innerHTML = myNotifications.map(n => {
         let cardStyle = "background:white;";
         if (n.includes('👍 [호평]')) cardStyle = "border-left: 4px solid #ff3b30;";
         else if (n.includes('🛡️ [무지개')) cardStyle = "border-left: 4px solid #34c759; background:#f4fbf7;";
@@ -1210,3 +1209,35 @@ async function subscribeToPush() {
         console.error(e);
     }
 }
+
+// 🔥 [신규 추가] 설정(⚙️) 창 열기 기능
+window.openSettingsModal = function() {
+    let modal = document.getElementById('settings-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'settings-modal';
+        modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:99999; display:none; justify-content:center; align-items:center;";
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+        <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:left; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+            <h3 style="margin-top:0; color:#333d4b; text-align:center;">⚙️ 앱 설정</h3>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:8px;">알림 설정</label>
+                <button onclick="subscribeToPush()" style="width:100%; padding:12px; background:#f2f4f6; color:#333d4b; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
+                    <span>🚨 잠금화면 푸시 알림</span>
+                    <span style="color:#3182f6;">켜기</span>
+                </button>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:8px;">계정 관리</label>
+                <button onclick="handleLogout()" style="width:100%; padding:12px; background:#ffebee; color:#c62828; border:none; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">🚪 로그아웃 (계정 전환)</button>
+            </div>
+
+            <button onclick="document.getElementById('settings-modal').style.display='none'" style="width:100%; padding:12px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">닫기</button>
+        </div>
+    `;
+    modal.style.display = 'flex';
+};
