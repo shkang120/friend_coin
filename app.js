@@ -723,6 +723,58 @@ function renderRanking() {
     `;
 }
 
+// 🔥 빠져있던 알림함 렌더링 + 잠금화면 알림 버튼 기능 추가
+function renderNoti() {
+    const list = document.getElementById('noti-list'); if(!list) return;
+    
+    // 푸시 켜기 버튼 추가
+    let pushBtnHtml = `<button onclick="subscribeToPush()" style="width:100%; padding:12px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer; margin-bottom:15px; font-size:14px; box-shadow:0 4px 6px rgba(0,0,0,0.1);">🚨 스마트폰 잠금화면 알림 켜기</button>`;
+    
+    if (myNotifications.length === 0) {
+        list.innerHTML = pushBtnHtml + `<div style="text-align:center; padding:50px 20px; color:#8b95a1; background:#f9fafb; border-radius:16px;">수신된 평판 알림이 없습니다.</div>`;
+        return;
+    }
+    
+    list.innerHTML = pushBtnHtml + myNotifications.map(n => {
+        let cardStyle = "background:white;";
+        if (n.includes('👍 [호평]')) cardStyle = "border-left: 4px solid #ff3b30;";
+        else if (n.includes('🛡️ [무지개')) cardStyle = "border-left: 4px solid #34c759; background:#f4fbf7;";
+        else if (n.includes('⏳ [자동 수락]') || n.includes('👎 [악평]')) cardStyle = "border-left: 4px solid #3182f6;";
+        
+        let actionBtn = "";
+        if (myProfile.pending_evals && myProfile.pending_evals.length > 0) {
+            const pending = myProfile.pending_evals.find(p => n.includes(p.reason) && n.includes(p.evaluator_name));
+            if (pending) {
+                actionBtn = `
+                    <div style="display:flex; gap:8px; margin-top:12px;">
+                        <button onclick="respondPending('${pending.id}', 'defend')" style="flex:1; padding:8px; background:#f39c12; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">⚖️ 이의제기 방어 (1,000p)</button>
+                        <button onclick="respondPending('${pending.id}', 'approve')" style="flex:1; padding:8px; background:#3182f6; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">👍 승인 (감수)</button>
+                    </div>
+                `;
+            }
+        }
+        return `<div class="info-card" style="${cardStyle} text-align:left; font-size:14px; line-height:1.5;">${escapeHtml(n)}${actionBtn}</div>`;
+    }).join('');
+}
+
+// 🔥 빠져있던 알림 응답(수락/방어) 처리 로직
+window.respondPending = async function(evalId, action) {
+    if (action === 'defend' && !confirm("정식 재판을 개최하시겠습니까?\n소송비용 1,000p가 계좌에서 선차감됩니다.")) return;
+    showLoading();
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/evaluate/respond`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` },
+            body: JSON.stringify({ email: myEmail, eval_id: evalId, action: action })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            if(action === 'defend') triggerShake();
+            else triggerConfetti();
+            alert(data.message); await forceSync(); switchTab('noti');
+        } else { alert(data.message); }
+    } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
+};
+
 function enterRoom(code) { currentRoomCode = code; const now = new Date(); calYear = now.getFullYear(); calMonth = now.getMonth(); calSelectedDate = getFormattedDate(now); renderHome(); forceSync(); }
 function exitRoomView() { currentRoomCode = null; renderHome(); }
 
@@ -1130,4 +1182,31 @@ function drawFriendPriceChart(friend) {
     else { history = [friend.basePrice || 20000, friend.price]; labels = ["시작", getCurrentTime()]; }
     const isUp = history[history.length - 1] >= history[0]; const lineColor = isUp ? '#ff3b30' : '#3182f6'; const bgColor = isUp ? 'rgba(255, 59, 48, 0.1)' : 'rgba(49, 130, 246, 0.1)';
     friendChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: '주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { bottom: 10 } }, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0, callback: function(val, index) { const label = this.getLabelForValue(val); if (label && label.includes(' ')) { return label.split(' ')[0]; } return label; } } }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } } });
+}
+
+// 🔥 [신규 추가] 푸시 알림 권한 요청 및 테스트 발송 로직
+async function subscribeToPush() {
+    if (!('serviceWorker' in navigator) || !('Notification' in window)) { 
+        alert("푸시 알림을 지원하지 않는 브라우저입니다."); return; 
+    }
+    
+    // 유저에게 권한 팝업 띄우기
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') { 
+        alert("알림 권한이 거부되었습니다. 스마트폰 설정에서 허용해주세요."); return; 
+    }
+    
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        
+        // 1단계 테스트용 브라우저 자체 알림 발송 (서버 연동 전)
+        registration.showNotification('🔔 친구 코인', {
+            body: '스마트폰 잠금화면 알림 설정이 완료되었습니다! (테스트)',
+            icon: 'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4',
+            vibrate: [200, 100, 200]
+        });
+        showToast("🔔 알림 설정 완료! 백엔드 연동을 준비하세요!");
+    } catch (e) {
+        console.error(e);
+    }
 }
