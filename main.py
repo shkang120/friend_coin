@@ -10,6 +10,8 @@ import string
 import random
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from pywebpush import webpush, WebPushException
+import json
 
 load_dotenv()
 
@@ -25,7 +27,31 @@ app.add_middleware(
 
 MONGO_URL = os.getenv("MONGO_URL")
 client = MongoClient(MONGO_URL)
-db = client["friend_coin_db"] 
+db = client["friend_coin_db"]
+
+# 🔥 [신규 추가] VAPID 비공개 키 및 푸시 발송 함수
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
+VAPID_CLAIMS = {"sub": "mailto:shkang04120@gmail.com"}
+
+def send_push_notification(target_email: str, title: str, body: str):
+    # 유저 DB에서 스마트폰 주소(push_subscription) 가져오기
+    user = db["users"].find_one({"_id": target_email})
+    if not user or "push_subscription" not in user:
+        return False
+    
+    try:
+        webpush(
+            subscription_info=user["push_subscription"],
+            data=json.dumps({"title": title, "body": body}),
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims=VAPID_CLAIMS
+        )
+        return True
+    except WebPushException as ex:
+        # 유저가 알림을 차단했거나 앱을 지웠다면 DB에서 주소 삭제
+        if ex.response and ex.response.status_code == 410:
+            db["users"].update_one({"_id": target_email}, {"$unset": {"push_subscription": ""}})
+        return False
 
 class EvalData(BaseModel):
     evaluator_email: str
@@ -426,6 +452,7 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
 
         if "noti" not in target: target["noti"] = []
         target["noti"].insert(0, f"👍 [호평] {evaluator_name}님의 평가 (+{data.intensity}%): {data.reason}")
+        send_push_notification(data.target_email, "👍 호평 도착!", f"{evaluator_name}님이 주가를 올려주셨습니다!")
 
         if target["profile"].get("narackStartTime") and target["profile"]["price"] > (target["profile"].get("maxPrice", 20000) * 0.3):
             target["profile"]["narackStartTime"] = None; target["profile"]["narackLastHitEmail"] = None
@@ -443,6 +470,7 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
             target_noti = target.get("noti", [])
             target_noti.insert(0, f"🛡️ [무지개 반사 방어 성공!] {evaluator_name}님이 나에게 악평(-{data.intensity}%)을 날렸지만, 방어권이 자동 사용되어 완벽하게 튕겨냈습니다! (남은 방어권: {target['profile']['shieldCount']}개)")
             db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"], "noti": target_noti}})
+            send_push_notification(data.target_email, "🛡️ 무지개 반사 발동!", f"{evaluator_name}님의 악평을 방어했습니다!")
             
             eval_noti = evaluator.get("noti", [])
             eval_noti.insert(0, f"💥 [공격 실패] {target['profile']['name']}님이 '무지개 반사'를 사용하여 악평이 무효화되었습니다!")
@@ -457,6 +485,7 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
         if "pending_evals" not in target["profile"]: target["profile"]["pending_evals"] = []
         pending_item = { "id": str(uuid.uuid4()), "evaluator_email": data.evaluator_email, "evaluator_name": evaluator_name, "intensity": data.intensity, "reason": data.reason, "timestamp": datetime.utcnow().isoformat() }
         target["profile"]["pending_evals"].append(pending_item)
+        send_push_notification(data.target_email, "🚨 악평 도착!", f"{evaluator_name}님이 악평을 날렸습니다. 재판을 열거나 수락하세요!")
         db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"]}})
         return {"status": "success", "message": "악평 전송 완료! 피평가자의 승인/이의제기를 대기합니다."}
 
