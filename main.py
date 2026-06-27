@@ -100,6 +100,11 @@ class GambleData(BaseModel):
     email: str
     guess: str
 
+class PushSubscriptionData(BaseModel):
+    endpoint: str
+    expirationTime: str | None = None
+    keys: dict
+
 api_cooldowns = { "chat": {}, "evaluate": {}, "agenda": {}, "join": {}, "gamble": {} }
 
 def is_spamming(email: str, action_type: str, cooldown_seconds: int) -> bool:
@@ -863,3 +868,15 @@ async def upload_image(image: UploadFile = File(...)):
     data = res.json()
     if data.get("success"): return {"url": data["data"]["url"]}
     return {"error": "업로드 실패"}
+
+@app.post("/api/push/subscribe")
+def subscribe_push(data: PushSubscriptionData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email: return {"status": "error", "message": "인증 실패"}
+
+    # 유저 DB에 스마트폰 푸시 알림 주소(subscription) 저장
+    db["users"].update_one(
+        {"_id": email},
+        {"$set": {"push_subscription": data.dict()}}
+    )
+    return {"status": "success"}

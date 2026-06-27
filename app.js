@@ -1183,21 +1183,18 @@ function drawFriendPriceChart(friend) {
     friendChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: '주가 흐름', data: history, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { bottom: 10 } }, animation: { duration: 1200, easing: 'easeOutQuart' }, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#8b95a1', maxTicksLimit: 5, maxRotation: 0, callback: function(val, index) { const label = this.getLabelForValue(val); if (label && label.includes(' ')) { return label.split(' ')[0]; } return label; } } }, y: { display: true, position: 'right', grid: { color: '#f2f4f6', drawBorder: false }, ticks: { font: { size: 10 }, color: '#8b95a1' } } }, interaction: { intersect: false, mode: 'index' } } });
 }
 
-// 🔥 변경됨: 푸시 알림 권한 요청 및 On/Off 토글 스위치 로직
+// 🔥 변경됨: 알림을 켤 때 서버에 내 스마트폰 주소(구독 정보)를 전송하는 로직 추가
 window.togglePushNotification = async function() {
     const isCurrentlyEnabled = localStorage.getItem('fc_push_enabled') === 'true';
     
     if (isCurrentlyEnabled) {
-        // 끄기: 상태만 변경하고 저장
         localStorage.setItem('fc_push_enabled', 'false');
         showToast("🔕 푸시 알림이 꺼졌습니다.");
     } else {
-        // 켜기: 지원 여부 및 권한 체크 후 진행
         if (!('serviceWorker' in navigator) || !('Notification' in window)) { 
             alert("푸시 알림을 지원하지 않는 브라우저/기기입니다."); return; 
         }
         
-        // 권한이 없으면 요청, 있으면 통과
         let permission = Notification.permission;
         if (permission !== 'granted') {
             permission = await Notification.requestPermission();
@@ -1211,18 +1208,31 @@ window.togglePushNotification = async function() {
         localStorage.setItem('fc_push_enabled', 'true');
         try {
             const registration = await navigator.serviceWorker.ready;
+            
+            // 🔥 [핵심] 브라우저 푸시 매니저를 통해 내 기기 고유 주소(Subscription) 발급받기
+            const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
+            });
+
+            // 🔥 [핵심] 발급받은 주소를 백엔드(서버)로 전송하여 DB에 저장
+            await fetch(`${BACKEND_URL}/api/push/subscribe`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` },
+                body: JSON.stringify(subscription)
+            });
+
             registration.showNotification('🔔 친구 코인', {
-                body: '스마트폰 잠금화면 알림이 켜졌습니다!',
-                icon: 'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4',
-                vibrate: [200, 100, 200]
+                body: '서버와 푸시 알림 연결이 완료되었습니다!',
+                icon: 'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&backgroundColor=b6e3f4'
             });
             showToast("🔔 알림이 켜졌습니다!");
         } catch (e) {
             console.error(e);
+            showToast("🚨 푸시 알림 설정 중 오류가 발생했습니다.");
         }
     }
     
-    // 🔥 설정창 화면 즉시 새로고침 (버튼 글씨/색상 변경)
     if (window.drawSettingsContent) window.drawSettingsContent();
 };
 
@@ -1269,3 +1279,15 @@ window.openSettingsModal = function() {
     window.drawSettingsContent = drawSettingsContent; // 전역 스코프에 등록하여 버튼에서 사용 가능하게 함
     modal.style.display = 'flex';
 };
+
+// 🔥 [신규 추가] VAPID 키 변환 함수 및 공개키 설정
+const PUBLIC_VAPID_KEY = "BPll-SjWR6p8HDTuUEJTUREqvjSCQn8kfLbfZMwRVR59FGf2onwcOvvqw-7zZR-EGeJ4gVXnnBtsU3TRj7Ja1q0";
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i); }
+    return outputArray;
+}
