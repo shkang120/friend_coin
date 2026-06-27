@@ -1226,7 +1226,7 @@ window.togglePushNotification = async function() {
     if (window.drawSettingsContent) window.drawSettingsContent();
 };
 
-// 🔥 개선됨: 버튼 클릭 시 즉시 화면 내용이 갱신되는 스위치 함수
+// 🔥 변경됨: iOS/안드로이드 스타일의 원형 스위치(토글) UI 적용
 window.openSettingsModal = function() {
     let modal = document.getElementById('settings-modal');
     if (!modal) {
@@ -1239,9 +1239,6 @@ window.openSettingsModal = function() {
     // 창을 그리는 부분을 별도 함수로 분리하여 즉시 갱신 가능하게 만듦
     function drawSettingsContent() {
         const isPushEnabled = localStorage.getItem('fc_push_enabled') === 'true';
-        const pushBtnText = isPushEnabled ? "끄기" : "켜기";
-        const pushBtnColor = isPushEnabled ? "#ff3b30" : "#3182f6";
-        const pushBgColor = isPushEnabled ? "#fff2f2" : "#f2f4f6";
 
         modal.innerHTML = `
             <div style="background:white; padding:25px; border-radius:20px; width:85%; max-width:340px; text-align:left; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
@@ -1249,10 +1246,13 @@ window.openSettingsModal = function() {
                 
                 <div style="margin-bottom: 20px;">
                     <label style="font-size:12px; font-weight:bold; color:#4e5968; display:block; margin-bottom:8px;">알림 설정</label>
-                    <button onclick="togglePushNotification(); drawSettingsContent();" style="width:100%; padding:12px; background:${pushBgColor}; color:#333d4b; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:space-between; transition: 0.2s;">
-                        <span>🚨 잠금화면 푸시 알림</span>
-                        <span style="color:${pushBtnColor}; font-weight:bold;">${pushBtnText}</span>
-                    </button>
+                    <!-- 🔥 원이 좌우로 움직이는 스위치 UI 적용 -->
+                    <div onclick="togglePushNotification(); drawSettingsContent();" style="display:flex; justify-content:space-between; align-items:center; padding:12px; border:1px solid #e5e8eb; border-radius:12px; background:#f9fafb; cursor:pointer;">
+                        <span style="font-weight:bold; color:#333d4b; font-size:14px;">🚨 잠금화면 푸시 알림</span>
+                        <div style="width:48px; height:28px; background:${isPushEnabled ? '#3182f6' : '#d1d6db'}; border-radius:14px; position:relative; transition:background 0.3s ease;">
+                            <div style="width:24px; height:24px; background:white; border-radius:50%; position:absolute; top:2px; left:${isPushEnabled ? '22px' : '2px'}; box-shadow:0 2px 4px rgba(0,0,0,0.2); transition:left 0.3s ease;"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <div style="margin-bottom: 20px;">
