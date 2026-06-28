@@ -472,6 +472,8 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.evaluator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     if data.evaluator_email == data.target_email: return {"status": "error", "message": "자신을 평가할 수 없습니다."}
+    
+    # 1차 방어막: 3초 쿨타임
     if is_spamming(email, "evaluate", 3): return {"status": "error", "message": "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요."}
     if data.intensity not in [1, 2, 3]: return {"status": "error", "message": "올바르지 않은 변동 수치입니다."}
 
@@ -481,23 +483,36 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
 
     evaluator_name = evaluator.get("profile", {}).get("name", "익명")
 
+    # 🔥 1. 익명권 원자적 차감 (따닥 방지)
     if data.is_anonymous and data.eval_type == 'bad':
-        if evaluator["profile"].get("anonTickets", 0) <= 0: return {"status": "error", "message": "보유한 익명 암살권이 없습니다."}
-        evaluator["profile"]["anonTickets"] -= 1
-        db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": evaluator["profile"]}})
+        anon_update = db["users"].update_one(
+            {"_id": data.evaluator_email, "profile.anonTickets": {"$gt": 0}},
+            {"$inc": {"profile.anonTickets": -1}}
+        )
+        if anon_update.modified_count == 0: 
+            return {"status": "error", "message": "보유한 익명 암살권이 없습니다."}
         evaluator_name = "익명(???)"
 
     if data.eval_type == 'good':
-        if evaluator["profile"].get("goodTickets", 0) <= 0: return {"status": "error", "message": "호평권 부족"}
-        evaluator["profile"]["goodTickets"] -= 1; evaluator["profile"]["stats"]["goodGiven"] = evaluator["profile"]["stats"].get("goodGiven", 0) + 1
-        db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": evaluator["profile"]}})
+        # 🔥 2. 호평권 원자적 차감 (따닥 방지)
+        good_update = db["users"].update_one(
+            {"_id": data.evaluator_email, "profile.goodTickets": {"$gt": 0}},
+            {"$inc": {"profile.goodTickets": -1, "profile.stats.goodGiven": 1}}
+        )
+        if good_update.modified_count == 0: 
+            return {"status": "error", "message": "호평권이 부족합니다!"}
 
+        # 타겟 유저 주가 즉시 올려주기
         base_price = target["profile"].get("basePrice", 20000)
         change_amount = base_price * (data.intensity * 0.01)
-        target["profile"]["price"] += change_amount
-        if target["profile"]["price"] > target["profile"].get("maxPrice", 20000): target["profile"]["maxPrice"] = target["profile"]["price"]
+        target["profile"]["price"] = target["profile"].get("price", 20000) + change_amount
+        if target["profile"]["price"] > target["profile"].get("maxPrice", 20000): 
+            target["profile"]["maxPrice"] = target["profile"]["price"]
 
-        if "priceHistory" not in target["profile"]: target["profile"]["priceHistory"] = [target["profile"].get("basePrice", 20000)]; target["profile"]["timeHistory"] = ["시작"]
+        if "priceHistory" not in target["profile"]: 
+            target["profile"]["priceHistory"] = [base_price]
+            target["profile"]["timeHistory"] = ["시작"]
+            
         target["profile"]["priceHistory"].append(target["profile"]["price"])
         kst_now = datetime.utcnow() + timedelta(hours=9)
         target["profile"]["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
@@ -507,37 +522,65 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
         send_push_notification(data.target_email, "👍 호평 도착!", f"{evaluator_name}님이 주가를 올려주셨습니다!")
 
         if target["profile"].get("narackStartTime") and target["profile"]["price"] > (target["profile"].get("maxPrice", 20000) * 0.3):
-            target["profile"]["narackStartTime"] = None; target["profile"]["narackLastHitEmail"] = None
+            target["profile"]["narackStartTime"] = None
+            target["profile"]["narackLastHitEmail"] = None
 
         db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"], "noti": target["noti"]}})
         return {"status": "success", "message": "호평이 즉시 반영되었습니다."}
 
     else:
+        # 무지개 반사 방어 확인
         if target["profile"].get("shieldCount", 0) > 0:
-            if evaluator["profile"].get("badTickets", 0) <= 0: return {"status": "error", "message": "악평권 부족"}
-            evaluator["profile"]["badTickets"] -= 1; evaluator["profile"]["stats"]["badGiven"] = evaluator["profile"]["stats"].get("badGiven", 0) + 1
-            db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": evaluator["profile"]}})
+            # 🔥 3. 악평권 원자적 차감 (실드 확인 시점)
+            bad_update = db["users"].update_one(
+                {"_id": data.evaluator_email, "profile.badTickets": {"$gt": 0}},
+                {"$inc": {"profile.badTickets": -1, "profile.stats.badGiven": 1}}
+            )
+            if bad_update.modified_count == 0: 
+                return {"status": "error", "message": "악평권이 부족합니다!"}
             
-            target["profile"]["shieldCount"] -= 1
-            target_noti = target.get("noti", [])
-            target_noti.insert(0, f"🛡️ [무지개 반사 방어 성공!] {evaluator_name}님이 나에게 악평(-{data.intensity}%)을 날렸지만, 방어권이 자동 사용되어 완벽하게 튕겨냈습니다! (남은 방어권: {target['profile']['shieldCount']}개)")
-            db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"], "noti": target_noti}})
-            send_push_notification(data.target_email, "🛡️ 무지개 반사 발동!", f"{evaluator_name}님의 악평을 방어했습니다!")
+            # 🔥 실드 원자적 차감
+            shield_update = db["users"].update_one(
+                {"_id": data.target_email, "profile.shieldCount": {"$gt": 0}},
+                {"$inc": {"profile.shieldCount": -1}}
+            )
             
-            eval_noti = evaluator.get("noti", [])
-            eval_noti.insert(0, f"💥 [공격 실패] {target['profile']['name']}님이 '무지개 반사'를 사용하여 악평이 무효화되었습니다!")
-            db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"noti": eval_noti}})
-            
-            return {"status": "success", "message": f"앗! 상대방이 '무지개 반사'를 사용하여 악평이 튕겨나갔습니다!"}
+            if shield_update.modified_count > 0:
+                target_user = db["users"].find_one({"_id": data.target_email})
+                target_noti = target_user.get("noti", [])
+                target_noti.insert(0, f"🛡️ [무지개 반사 방어 성공!] {evaluator_name}님이 나에게 악평(-{data.intensity}%)을 날렸지만, 방어권이 자동 사용되어 완벽하게 튕겨냈습니다! (남은 방어권: {target_user['profile']['shieldCount']}개)")
+                db["users"].update_one({"_id": data.target_email}, {"$set": {"noti": target_noti}})
+                send_push_notification(data.target_email, "🛡️ 무지개 반사 발동!", f"{evaluator_name}님의 악평을 방어했습니다!")
+                
+                eval_noti = evaluator.get("noti", [])
+                eval_noti.insert(0, f"💥 [공격 실패] {target['profile']['name']}님이 '무지개 반사'를 사용하여 악평이 무효화되었습니다!")
+                db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"noti": eval_noti}})
+                
+                return {"status": "success", "message": f"앗! 상대방이 '무지개 반사'를 사용하여 악평이 튕겨나갔습니다!"}
 
-        if evaluator["profile"].get("badTickets", 0) <= 0: return {"status": "error", "message": "악평권 부족"}
-        evaluator["profile"]["badTickets"] -= 1; evaluator["profile"]["stats"]["badGiven"] = evaluator["profile"]["stats"].get("badGiven", 0) + 1
-        db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": evaluator["profile"]}})
+        # 🔥 4. 실드가 없을 때 악평권 원자적 차감
+        bad_update = db["users"].update_one(
+            {"_id": data.evaluator_email, "profile.badTickets": {"$gt": 0}},
+            {"$inc": {"profile.badTickets": -1, "profile.stats.badGiven": 1}}
+        )
+        if bad_update.modified_count == 0: 
+            return {"status": "error", "message": "악평권이 부족합니다!"}
 
-        if "pending_evals" not in target["profile"]: target["profile"]["pending_evals"] = []
-        pending_item = { "id": str(uuid.uuid4()), "evaluator_email": data.evaluator_email, "evaluator_name": evaluator_name, "intensity": data.intensity, "reason": data.reason, "timestamp": datetime.utcnow().isoformat() }
+        # 악평 대기열 추가
+        if "pending_evals" not in target["profile"]: 
+            target["profile"]["pending_evals"] = []
+        
+        pending_item = { 
+            "id": str(uuid.uuid4()), 
+            "evaluator_email": data.evaluator_email, 
+            "evaluator_name": evaluator_name, 
+            "intensity": data.intensity, 
+            "reason": data.reason, 
+            "timestamp": datetime.utcnow().isoformat() 
+        }
         target["profile"]["pending_evals"].append(pending_item)
         send_push_notification(data.target_email, "🚨 악평 도착!", f"{evaluator_name}님이 악평을 날렸습니다. 재판을 열거나 수락하세요!")
+        
         db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"]}})
         return {"status": "success", "message": "악평 전송 완료! 피평가자의 승인/이의제기를 대기합니다."}
 
