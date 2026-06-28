@@ -6,3 +6,5 @@ python-multipart
 httpx
 python-dotenv
 pywebpush==1.14.0
+google-auth
+requests

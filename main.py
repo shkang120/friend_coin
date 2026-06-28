@@ -14,6 +14,8 @@ from pywebpush import webpush, WebPushException
 import json
 import asyncio
 from contextlib import asynccontextmanager
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 load_dotenv()
 
@@ -261,15 +263,31 @@ def is_spamming(email: str, action_type: str, cooldown_seconds: int) -> bool:
     return False
 
 def verify_google_token(auth_header: str):
-    if not auth_header or not auth_header.startswith("Bearer "): return None
+    """구글 서버 통신 없이 로컬에서 JWT 서명을 고속 검증하는 함수"""
+    if not auth_header or not auth_header.startswith("Bearer "): 
+        return None
+        
     token = auth_header.split(" ")[1]
+    
     try:
-        response = httpx.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={token}")
-        if response.status_code != 200: return None
-        data = response.json()
-        if data.get("aud") != "837250448431-hrlfbnof2bf4acofs03e28t3qdpkun5g.apps.googleusercontent.com": return None
-        return data.get("email").strip().lower()
-    except Exception: return None
+        # 프론트엔드 코드(app.js)에 있는 본인의 Google Client ID
+        CLIENT_ID = "837250448431-hrlfbnof2bf4acofs03e28t3qdpkun5g.apps.googleusercontent.com"
+        
+        # 구글 서버로 네트워크 요청을 보내는 대신, 캐싱된 공개키로 즉시 서명 검증
+        idinfo = id_token.verify_oauth2_token(
+            token, 
+            google_requests.Request(), 
+            CLIENT_ID
+        )
+        
+        return idinfo.get("email").strip().lower()
+        
+    except ValueError:
+        # 토큰 만료 또는 서명 위조 시 차단
+        return None
+    except Exception as e:
+        print(f"Token Verification Error: {e}")
+        return None
 
 def parse_time_safe(time_str):
     if not time_str: return None
