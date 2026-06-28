@@ -414,58 +414,54 @@ def save_user_data(data: UserData, authorization: str = Header(None)):
     return {"status": "success"}
 
 @app.post("/api/reward")
-def claim_reward(data: RewardData, authorization: str = Header(None)):
+def claim_attendance_reward(authorization: str = Header(None)):
     email = verify_google_token(authorization)
-    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
-    user = db["users"].find_one({"_id": email})
-    if not user: return {"status": "error", "message": "유저 없음"}
+    if not email: 
+        return {"status": "error", "message": "인증 실패"}
 
-    profile = user["profile"]
     kst_now = datetime.utcnow() + timedelta(hours=9)
-    server_today_str = kst_now.strftime("%Y-%m-%d")
-    time_str = kst_now.strftime("%m.%d %H:%M")
-    msg = ""
+    today_str = kst_now.strftime("%Y-%m-%d")
 
-    if data.reward_type == 'attendance':
-        if profile.get("lastDailyAttendance") == server_today_str: return {"status": "error", "message": "이미 완료하셨습니다!"}
-        profile["price"] = profile.get("price", 20000) + 50
-        profile["lastDailyAttendance"] = server_today_str
-        msg = "📅 일일 출석 완료!"
-        
-    elif data.reward_type == 'double_attendance':
-        if profile.get("lastDailyAdBonus") == server_today_str: return {"status": "error", "message": "이미 완료하셨습니다!"}
-        profile["price"] = profile.get("price", 20000) + 50
-        profile["lastDailyAdBonus"] = server_today_str
-        msg = "🎬 50p가 추가 상승했습니다."
-        
-    elif data.reward_type == 'extra_ticket':
-        days_since_monday = kst_now.weekday()
-        if kst_now.weekday() == 0 and kst_now.hour < 8: days_since_monday = 7
-        recent_monday = (kst_now - timedelta(days=days_since_monday)).strftime("%Y-%m-%d")
-        
-        if profile.get("lastAdTicketMonday") == recent_monday:
-            return {"status": "error", "message": "이번 주 광고 보상을 이미 받으셨습니다."}
-            
-        profile["goodTickets"] = profile.get("goodTickets", 0) + 1
-        profile["badTickets"] = profile.get("badTickets", 0) + 1
-        profile["lastAdTicketMonday"] = recent_monday
-        msg = "🎬 이번 주 추가 평가권 각 +1장 획득!"
-        
-    elif data.reward_type == 'weekly':
-        if profile.get("weeklyTicketsClaimed"): return {"status": "error", "message": "이미 완료하셨습니다!"}
-        profile["goodTickets"] = profile.get("goodTickets", 0) + 1; profile["badTickets"] = profile.get("badTickets", 0) + 1
-        profile["weeklyTicketsClaimed"] = True
-        msg = "🎁 주간 보너스 평가권 획득!"
+    # 🔥 방어 코드 핵심: "오늘 날짜가 아닌 경우에만 50원 추가하고 오늘 날짜로 덮어써라!"
+    # 이렇게 하면 따닥을 100번 눌러도 DB가 찰나의 순간에 첫 번째 요청만 승인하고 나머지는 전부 거절합니다.
+    result = db["users"].update_one(
+        {
+            "_id": email,
+            "$or": [
+                {"profile.lastAttendanceDate": {"$ne": today_str}},
+                {"profile.lastAttendanceDate": {"$exists": False}}
+            ]
+        },
+        {
+            "$inc": {"profile.price": 50},
+            "$set": {"profile.lastAttendanceDate": today_str}
+        }
+    )
 
-    if profile["price"] > profile.get("maxPrice", 20000): profile["maxPrice"] = profile["price"]
-    if data.reward_type in ['attendance', 'double_attendance']:
-        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
-        profile["priceHistory"].append(profile["price"])
-        if "timeHistory" not in profile: profile["timeHistory"] = [""] * (len(profile["priceHistory"]) - 1)
-        profile["timeHistory"].append(time_str)
+    # 업데이트된 문서가 없다면 (이미 오늘 출석을 했다면)
+    if result.modified_count == 0:
+        return {"status": "error", "message": "이미 오늘 출석 보상을 받으셨습니다!"}
 
-    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-    return {"status": "success", "message": msg, "profile": profile}
+    # 성공적으로 50원이 추가되었으니, 변동된 내역을 히스토리 차트에 기록하고 알림을 보냅니다.
+    target_user = db["users"].find_one({"_id": email})
+    profile = target_user.get("profile", {})
+    
+    if "priceHistory" not in profile: 
+        profile["priceHistory"] = [profile.get("basePrice", 20000)]
+        profile["timeHistory"] = ["시작"]
+        
+    profile["priceHistory"].append(profile["price"])
+    profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
+    
+    target_noti = target_user.get("noti", [])
+    target_noti.insert(0, f"🎁 [출석체크] 매일 출석 보상으로 주가가 50원 상승했습니다!")
+
+    db["users"].update_one(
+        {"_id": email}, 
+        {"$set": {"profile.priceHistory": profile["priceHistory"], "profile.timeHistory": profile["timeHistory"], "noti": target_noti}}
+    )
+
+    return {"status": "success", "message": "출석 완료! 주가가 50원 상승했습니다."}
 
 @app.post("/api/evaluate")
 def evaluate_user(data: EvalData, authorization: str = Header(None)):
