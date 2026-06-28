@@ -615,10 +615,24 @@ def check_nickname(nickname: str):
 @app.post("/api/room/create")
 def create_room(data: RoomData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
-    if not email or email != data.creator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    if not email: 
+        return {"status": "error", "message": "인증 실패"}
+        
+    # 🔥 기존 data.creator_email 에서 data.email 로 올바르게 수정되었습니다!
+    if email != data.email.strip().lower(): 
+        return {"status": "error", "message": "인증 실패"}
+        
     alphabet = string.ascii_letters + string.digits
     code = ''.join(secrets.choice(alphabet) for _ in range(8))
-    db["rooms"].insert_one({"_id": code, "name": data.room_name, "members": [email], "agendas": [], "messages": [], "events": []})
+    
+    db["rooms"].insert_one({
+        "_id": code, 
+        "name": data.room_name, 
+        "members": [email], 
+        "agendas": [], 
+        "messages": [], 
+        "events": []
+    })
     return {"status": "success", "room_code": code}
 
 @app.post("/api/room/join")

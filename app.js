@@ -1291,3 +1291,85 @@ function urlBase64ToUint8Array(base64String) {
     for (let i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i); }
     return outputArray;
 }
+
+// 🔥 [신규 추가] 달력 일정 추가 기능 구현부
+window.submitNewEvent = async function() {
+    const titleInput = document.getElementById('event-title-input');
+    const startInput = document.getElementById('event-start-input');
+    const endInput = document.getElementById('event-end-input');
+    
+    if (!titleInput || !startInput || !endInput) return;
+    
+    const title = titleInput.value.trim();
+    const start_date = startInput.value;
+    const end_date = endInput.value;
+    
+    if (!title) { alert("일정 내용을 입력해주세요!"); return; }
+    if (!start_date || !end_date) { alert("날짜를 올바르게 선택해주세요!"); return; }
+    
+    // 모달창 닫고 로딩 스피너 작동
+    document.getElementById('event-modal').style.display = 'none';
+    showLoading();
+    
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/room/event/add`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` 
+            },
+            body: JSON.stringify({
+                room_code: currentRoomCode,
+                start_date: start_date,
+                end_date: end_date,
+                title: title,
+                creator_name: myProfile.name,
+                creator_email: myEmail
+            })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            showToast("📅 새 일정이 클럽에 공유되었습니다!");
+            await forceSync(); // 화면 실시간 갱신
+            triggerConfetti();  // 성공 폭죽 효과
+        } else {
+            alert("일정 등록 실패: " + data.message);
+        }
+    } catch (err) {
+        alert("일정 등록 중 서버 통신 오류가 발생했습니다.");
+    } finally {
+        hideLoading();
+    }
+};
+
+// 🔥 [신규 추가] 달력 일정 삭제 기능 구현부
+window.deleteEvent = async function(eventId) {
+    if (!confirm("정말 이 공유 일정을 삭제하시겠습니까?")) return;
+    
+    showLoading();
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/room/event/delete`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` 
+            },
+            body: JSON.stringify({
+                room_code: currentRoomCode,
+                event_id: eventId,
+                deleter_email: myEmail
+            })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            showToast("❌ 일정을 삭제했습니다.");
+            await forceSync(); // 화면 실시간 갱신
+        } else {
+            alert("일정 삭제에 실패했습니다.");
+        }
+    } catch (err) {
+        alert("일정 삭제 중 서버 통신 오류가 발생했습니다.");
+    } finally {
+        hideLoading();
+    }
+};
