@@ -657,8 +657,7 @@ function renderProfile() {
                 <button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✏️</button>
             </div>
             <h2 style="margin: 10px 0; color: ${myProfile.nameColor || '#333d4b'}; display:flex; justify-content:center; align-items:center; gap:8px;">
-                ${escapeHtml(myProfile.name)} 코인 
-                <span onclick="changeNickname()" style="font-size:12px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
+                ${displayTitle}${escapeHtml(myProfile.name)} 코인  <span onclick="changeNickname()" style="font-size:12px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
             </h2>
             <div style="font-size:12px; color:#8b95a1; margin-bottom:10px;">내 주가는 모든 클럽에 적용됩니다.</div>
             <div style="display:flex; justify-content:center;">${getBadgeHtml(myProfile)}</div>
@@ -1057,7 +1056,8 @@ window.buyCashItem = async function(itemType) {
 }
 
 function openProfileModal() { 
-    document.getElementById('profile-modal').style.display = 'flex'; 
+    document.getElementById('profile-modal').style.display = 'flex';
+    renderTitleSelect();
     
     const grid = document.getElementById('default-profiles-grid'); 
     grid.innerHTML = DEFAULT_AVATARS.map(url => {
@@ -1397,4 +1397,54 @@ window.deleteEvent = async function(eventId) {
     } finally {
         hideLoading();
     }
+};
+
+// 🔥 1. 칭호 적용 버튼을 눌렀을 때 실행되는 함수
+window.changeEquippedTitle = async function() {
+    const selectedTitle = document.getElementById('title-select').value;
+    
+    showLoading();
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/title/equip`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` 
+            },
+            body: JSON.stringify({ title: selectedTitle })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            showToast("🏷️ 칭호가 장착되었습니다!");
+            await forceSync(); // 데이터 동기화로 화면 즉시 업데이트
+        } else {
+            alert(data.message);
+        }
+    } catch (err) {
+        alert("통신 오류가 발생했습니다.");
+    } finally {
+        hideLoading();
+    }
+};
+
+// 🔥 2. 프로필 모달창이 열릴 때 드롭다운에 내가 가진 칭호 목록을 채워주는 함수
+window.renderTitleSelect = function() {
+    const titleSelect = document.getElementById('title-select');
+    if (!titleSelect || !myProfile) return;
+
+    // 백엔드에서 받은 칭호 배열 (없으면 테스트용 기본 칭호 표시)
+    const ownedTitles = myProfile.titles || ["초보 투자자", "눈팅족", "주린이"];
+    const currentTitle = myProfile.equippedTitle || "";
+
+    // 드롭다운 초기화
+    titleSelect.innerHTML = '<option value="">(칭호 없음)</option>';
+
+    // 내가 가진 칭호들을 옵션으로 추가
+    ownedTitles.forEach(title => {
+        const option = document.createElement('option');
+        option.value = title;
+        option.text = `[${title}]`;
+        if (title === currentTitle) option.selected = true; // 현재 장착 중인 칭호 자동 선택
+        titleSelect.appendChild(option);
+    });
 };

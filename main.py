@@ -1014,3 +1014,35 @@ def subscribe_push(data: PushSubscriptionData, authorization: str = Header(None)
         {"$set": {"push_subscription": data.dict()}}
     )
     return {"status": "success"}
+
+# 기존 스키마들이 모여있는 곳(파일 위쪽)에 아래 클래스를 추가해 주세요.
+class TitleData(BaseModel):
+    title: str
+
+# 파일 아래쪽 API 모음 쪽에 아래 함수를 추가해 주세요.
+@app.post("/api/title/equip")
+def equip_title(data: TitleData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email: 
+        return {"status": "error", "message": "인증 실패"}
+
+    user = db["users"].find_one({"_id": email})
+    if not user: 
+        return {"status": "error", "message": "유저 정보 없음"}
+        
+    profile = user.get("profile", {})
+    
+    # 지금은 테스트를 위해 기본 칭호 3개를 줍니다. (나중에 업적 달성 시 추가하는 로직을 만들면 됩니다)
+    owned_titles = profile.get("titles", ["초보 투자자", "눈팅족", "주린이"])
+    
+    # 칭호를 해제(빈 문자열 "")하거나, 내가 보유한 칭호일 때만 저장 허용
+    if data.title != "" and data.title not in owned_titles:
+        return {"status": "error", "message": "보유하지 않은 칭호입니다."}
+
+    # DB에 장착한 칭호 업데이트
+    db["users"].update_one(
+        {"_id": email}, 
+        {"$set": {"profile.equippedTitle": data.title, "profile.titles": owned_titles}}
+    )
+    
+    return {"status": "success", "message": "칭호가 멋지게 장착되었습니다!"}

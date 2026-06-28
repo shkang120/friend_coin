@@ -139,6 +139,13 @@
             <h4 style="text-align:left; font-size:13px; color:#4e5968; margin-bottom:10px;">2. 내 갤러리 사진 올리기 (5MB 이하)</h4>
             <input type="file" id="custom-image-upload" accept="image/*" style="display:none;">
             <button onclick="document.getElementById('custom-image-upload').click()" style="width:100%; padding:12px; background:#f2f4f6; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; color:#4e5968; cursor:pointer; margin-bottom:20px;">📁 사진 선택하기</button>
+            <h4 style="text-align:left; font-size:13px; color:#4e5968; margin-bottom:10px;">🏷️ 내 칭호 장착</h4>
+            <div style="display:flex; gap:10px; margin-bottom:20px;">
+                <select id="title-select" style="flex:1; padding:12px; border:1px solid #e5e8eb; border-radius:12px; font-weight:bold; color:#333d4b;">
+                    <option value="">(칭호 없음)</option>
+                </select>
+                <button onclick="changeEquippedTitle()" style="padding:12px 15px; background:#3182f6; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">적용</button>
+            </div>
             <h4 style="text-align:left; font-size:13px; color:#4e5968; margin-bottom:10px;">3. 스페셜 테마 장착</h4>
             <div id="owned-themes-container" style="display:flex; flex-direction:column; gap:8px; text-align:left; margin-bottom:20px;"></div>
             <button onclick="closeProfileModal()" style="width:100%; padding:12px; background:#333d4b; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">닫기</button>
