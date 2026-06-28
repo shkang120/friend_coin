@@ -949,7 +949,33 @@ async function submitVote(roomCode, agendaId, voteType) {
     } catch(err) { alert("네트워크 오류"); } finally { hideLoading(); }
 }
 
-async function createNewRoom() { const name = prompt("새 투자 클럽 이름을 입력하세요:"); if(!name || name.trim() === "") return; showLoading(); try { const res = await fetch(`${BACKEND_URL}/api/room/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ email: myEmail, room_name: name.trim() }) }); const data = await res.json(); if(data.status === 'success') { alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); await forceSync(); triggerConfetti(); } } catch(err) { alert("서버 오류"); } finally { hideLoading(); } }
+async function createNewRoom() { 
+    const name = prompt("새 투자 클럽 이름을 입력하세요:"); 
+    if(!name || name.trim() === "") return; 
+    
+    showLoading(); 
+    try { 
+        const res = await fetch(`${BACKEND_URL}/api/room/create`, { 
+            method: 'POST', 
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` 
+            }, 
+            body: JSON.stringify({ email: myEmail, room_name: name.trim() }) 
+        }); 
+        
+        const data = await res.json(); 
+        if(data.status === 'success') { 
+            alert(`🎉 클럽 생성 완료!\n초대 코드: [ ${data.room_code} ]`); 
+            await forceSync(); 
+            // triggerConfetti(); <-- 이 줄이 삭제되었습니다!
+        } 
+    } catch(err) { 
+        alert("서버 오류"); 
+    } finally { 
+        hideLoading(); 
+    } 
+}
 
 async function doDailyAttendance() { 
     showLoading();
@@ -1292,7 +1318,7 @@ function urlBase64ToUint8Array(base64String) {
     return outputArray;
 }
 
-// 🔥 [신규 추가] 달력 일정 추가 기능 구현부
+// 🔥 달력 일정 추가 기능 (폭죽 제거 버전)
 window.submitNewEvent = async function() {
     const titleInput = document.getElementById('event-title-input');
     const startInput = document.getElementById('event-start-input');
@@ -1307,7 +1333,6 @@ window.submitNewEvent = async function() {
     if (!title) { alert("일정 내용을 입력해주세요!"); return; }
     if (!start_date || !end_date) { alert("날짜를 올바르게 선택해주세요!"); return; }
     
-    // 모달창 닫고 로딩 스피너 작동
     document.getElementById('event-modal').style.display = 'none';
     showLoading();
     
@@ -1330,8 +1355,8 @@ window.submitNewEvent = async function() {
         const data = await res.json();
         if (data.status === 'success') {
             showToast("📅 새 일정이 클럽에 공유되었습니다!");
-            await forceSync(); // 화면 실시간 갱신
-            triggerConfetti();  // 성공 폭죽 효과
+            await forceSync(); 
+            // triggerConfetti(); <-- 이 줄이 삭제되었습니다!
         } else {
             alert("일정 등록 실패: " + data.message);
         }
