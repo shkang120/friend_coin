@@ -921,13 +921,18 @@ def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
         profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
         msg = "💰 10,000p 긴급 자금 수혈 완료!"
         
-    # 🔥 확성기 결제 시 'megaphone_time' 추가 저장
+    # 🔥 확성기 결제 시 'megaphone_time' 추가 저장 및 칭호 노출
     elif data.item_type == "megaphone":
         if not data.extra_data.strip(): return {"status": "error", "message": "메시지를 입력하세요."}
+        
+        # 🔥 추가된 부분: 장착 중인 칭호가 있다면 확성기에도 표시
+        equipped_title = profile.get("equippedTitle", "")
+        display_name = f"[{equipped_title}] {profile.get('name')}" if equipped_title else profile.get('name')
+        
         db["system"].update_one(
             {"_id": "global"}, 
             {"$set": {
-                "megaphone": f"[{profile.get('name')}] {data.extra_data}",
+                "megaphone": f"[{display_name}] {data.extra_data}",
                 "megaphone_time": datetime.utcnow().isoformat()
             }}, 
             upsert=True

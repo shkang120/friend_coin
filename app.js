@@ -334,7 +334,26 @@ function renderHome() {
             
             const delistedLabel = `<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px; display:inline-flex; align-items:center; gap:2px;">💀 상장폐지</span>`;
             const priceHtml = isDelisted ? '-' : `${Math.floor(f.price || 0).toLocaleString()} p<br><span style="font-size:11px; color:${cColor}; font-weight:normal;">${cSign}${Math.floor(cAmt).toLocaleString()}p (${cSign}${cRate}%)</span>`;
-            
+            // 🔥 추가된 부분: 칭호가 있으면 표시하고 없으면 빈칸
+            const displayTitle = f.equippedTitle ? `<span style="font-size:12px; color:#8b95a1; margin-right:4px;">[${escapeHtml(f.equippedTitle)}]</span>` : '';
+
+            return `
+                <div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        ${getAvatarHtml(f, 'small')}
+                        <div>
+                            <div style="font-size: 16px; font-weight: bold; text-align:left;">
+                                ${displayTitle}<span style="color: ${f.nameColor || '#333d4b'};">${escapeHtml(f.name)}</span> 
+                                ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} 
+                                ${isDelisted ? delistedLabel : ''}
+                            </div>
+                            ${getBadgeHtml(f)}
+                        </div>
+                    </div>
+                    <div style="text-align: right; font-size: 16px; font-weight: bold; color: #333d4b;">${priceHtml}</div>
+                </div>
+            `;
+
             return `
                 <div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}>
                     <div style="display: flex; align-items: center; gap: 15px;">
@@ -528,7 +547,11 @@ function renderProfile() {
     const yesterdayPrice = getYesterdayClosePrice(myProfile); const changeAmount = myProfile.price - yesterdayPrice; const changeRate = yesterdayPrice > 0 ? ((changeAmount / yesterdayPrice) * 100).toFixed(1) : 0;
     const colorClass = changeAmount > 0 ? '#ff3b30' : (changeAmount < 0 ? '#3182f6' : '#8b95a1'); const sign = changeAmount > 0 ? '+' : '';
     
-    const todayStr = getFormattedDate(new Date()); 
+    // 🔥 수정된 부분: 프론트엔드도 무조건 서버와 동일하게 한국 시간(KST) 기준으로 날짜를 계산하도록 변경!
+    const now = new Date(); 
+    const kstNow = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 3600000));
+    const todayStr = getFormattedDate(kstNow); 
+    
     const hasDailyDone = myProfile.lastDailyAttendance === todayStr; 
     
     const dailyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasDailyDone ? '#e5e8eb' : '#e8f5e9'}; color: ${hasDailyDone ? '#8b95a1' : '#2e7d32'}; font-weight: bold; border: none; cursor: ${hasDailyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:14px;" onclick="doDailyAttendance()" ${hasDailyDone ? 'disabled' : ''}>📅 ${hasDailyDone ? '출석 완료' : '매일 출석 (+50p)'}</button>`;
@@ -703,12 +726,15 @@ function renderRanking() {
 
         const isMe = p.name === myProfile.name; const bg = isMe ? "background:#f0f8ff;" : "";
         const yPrice = getYesterdayClosePrice(p); const cAmt = p.price - yPrice; const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0; const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1'); const cSign = cAmt > 0 ? '+' : '';
+        // 🔥 추가된 부분: 칭호가 있으면 표시하고 없으면 빈칸
+        const displayTitle = p.equippedTitle ? `<span style="font-size:12px; color:#8b95a1; margin-right:4px;">[${escapeHtml(p.equippedTitle)}]</span>` : '';
+
         return `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid #f9fafb; border-radius:8px; ${bg}">
                 <div style="display: flex; align-items: center; font-size: 15px; font-weight: bold;">
                     <span style="font-size: 20px; margin-right: 10px; width:24px; text-align:center; display:inline-flex; align-items:center; justify-content:center;">${rankIcon}</span>
                     ${getAvatarHtml(p, 'small')}
-                    <span style="margin-left:10px; color: ${p.nameColor || '#333d4b'};">${escapeHtml(p.name)}</span> 
+                    <span style="margin-left:10px;">${displayTitle}</span><span style="color: ${p.nameColor || '#333d4b'};">${escapeHtml(p.name)}</span> 
                     ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''}
                 </div>
                 <div style="text-align: right; font-weight: bold; color: #333d4b;">
