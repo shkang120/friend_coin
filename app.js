@@ -540,14 +540,14 @@ function renderMeeting() {
     list.innerHTML = contentHtml;
 }
 
-// 🔥 프로필 렌더링 화면 중앙 정렬 수정 적용 완료
+// 🔥 전체 함수 통째로 교체
 function renderProfile() {
     const container = document.getElementById('my-profile-info'); if(!container || !myProfile) return;
     const isDelisted = myProfile.status === 'delisted'; 
     const yesterdayPrice = getYesterdayClosePrice(myProfile); const changeAmount = myProfile.price - yesterdayPrice; const changeRate = yesterdayPrice > 0 ? ((changeAmount / yesterdayPrice) * 100).toFixed(1) : 0;
     const colorClass = changeAmount > 0 ? '#ff3b30' : (changeAmount < 0 ? '#3182f6' : '#8b95a1'); const sign = changeAmount > 0 ? '+' : '';
     
-    // 🔥 수정된 부분: 프론트엔드도 무조건 서버와 동일하게 한국 시간(KST) 기준으로 날짜를 계산하도록 변경!
+    // 🔥 프론트엔드 한국 시간(KST) 동기화 및 변수명 중복 에러 해결 완료!
     const now = new Date(); 
     const kstNow = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 3600000));
     const todayStr = getFormattedDate(kstNow); 
@@ -567,7 +567,7 @@ function renderProfile() {
     const hasWeeklyDone = myProfile.weeklyTicketsClaimed === true; 
     const weeklyBtn = `<button style="width: 100%; padding: 12px; border-radius: 12px; background: ${hasWeeklyDone ? '#e5e8eb' : '#fff3e0'}; color: ${hasWeeklyDone ? '#8b95a1' : '#e65100'}; font-weight: bold; border: none; cursor: ${hasWeeklyDone ? 'not-allowed' : 'pointer'}; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:14px;" onclick="claimWeeklyTickets()" ${hasWeeklyDone ? 'disabled' : ''}>🎁 ${hasWeeklyDone ? '주간 보너스 완료' : '주간 보너스 평가권 (각 +1장)'}</button>`;
     
-    const now = new Date(); const kstNow = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 3600000));
+    // 🔥 중복된 now, kstNow 선언을 제거하고 위에서 선언한 kstNow를 안전하게 재활용합니다.
     let day = kstNow.getDay(); let diff = (day === 0 ? 6 : day - 1); let monday = new Date(kstNow); monday.setDate(kstNow.getDate() - diff);
     const mondayStr = getFormattedDate(monday);
     const hasAdTicketDone = myProfile.lastAdTicketMonday === mondayStr;
@@ -647,7 +647,7 @@ function renderProfile() {
                 <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩500</button>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="font-size:28px; flex-shrink:0;">✨</div>
                     <div style="text-align:left; flex:1;">
@@ -671,10 +671,9 @@ function renderProfile() {
         </div>
     `;
 
-    // 🔥 칭호가 있으면 [칭호] 형태의 글자를 만들고, 없으면 빈 칸으로 두는 변수입니다.
+    // 🔥 칭호 표시 로직 적용
     const displayTitle = myProfile.equippedTitle ? `<span style="font-size:16px; color:#8b95a1;">[${escapeHtml(myProfile.equippedTitle)}]</span> ` : '';
 
-    // 🔥 변경됨: 우측 상단 설정 버튼(⚙️) 추가 및 하단 로그아웃 버튼 제거
     container.innerHTML = `
         <div style="position: relative; text-align: center; padding-top: 10px;"> 
             <button onclick="openSettingsModal()" style="position: absolute; top: -10px; right: 0; background: none; border: none; font-size: 24px; cursor: pointer; z-index: 10;">⚙️</button>
@@ -683,7 +682,8 @@ function renderProfile() {
                 <button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✏️</button>
             </div>
             <h2 style="margin: 10px 0; color: ${myProfile.nameColor || '#333d4b'}; display:flex; justify-content:center; align-items:center; gap:8px;">
-                ${displayTitle}${escapeHtml(myProfile.name)} 코인  <span onclick="changeNickname()" style="font-size:12px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
+                ${displayTitle}${escapeHtml(myProfile.name)} 코인 
+                <span onclick="changeNickname()" style="font-size:12px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
             </h2>
             <div style="font-size:12px; color:#8b95a1; margin-bottom:10px;">내 주가는 모든 클럽에 적용됩니다.</div>
             <div style="display:flex; justify-content:center;">${getBadgeHtml(myProfile)}</div>
