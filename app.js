@@ -648,6 +648,9 @@ function renderProfile() {
         </div>
     `;
 
+    // 🔥 칭호가 있으면 [칭호] 형태의 글자를 만들고, 없으면 빈 칸으로 두는 변수입니다.
+    const displayTitle = myProfile.equippedTitle ? `<span style="font-size:16px; color:#8b95a1;">[${escapeHtml(myProfile.equippedTitle)}]</span> ` : '';
+
     // 🔥 변경됨: 우측 상단 설정 버튼(⚙️) 추가 및 하단 로그아웃 버튼 제거
     container.innerHTML = `
         <div style="position: relative; text-align: center; padding-top: 10px;"> 
