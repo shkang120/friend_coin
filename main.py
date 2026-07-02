@@ -39,6 +39,28 @@ async def run_background_scheduler():
             await asyncio.sleep(600) 
             
             kst_now = datetime.utcnow() + timedelta(hours=9)
+
+            kst_today_str = kst_now.strftime("%Y-%m-%d")
+            sys_data = db["system"].find_one({"_id": "global"}) or {}
+            
+            # 오늘 날짜의 이벤트가 아직 안 뽑혔다면 새로 추첨!
+            if sys_data.get("daily_event_date") != kst_today_str:
+                events = [
+                    {"id": "bull", "msg": "🐂 [불장] 오늘 하루 출석체크 보상이 3배(150p)로 폭등합니다!"},
+                    {"id": "bear", "msg": "🐻 [베어 마켓] 오늘 하루 악평 피격 시 주가 하락폭이 1.5배 증가합니다!"},
+                    {"id": "angel", "msg": "👼 [천사의 날] 오늘 하루 호평 시 주가 상승폭이 1.5배 증가합니다!"},
+                    {"id": "none", "msg": "☁️ [평온한 하루] 오늘은 특별한 경제 이벤트가 없습니다."}
+                ]
+                today_event = random.choice(events)
+                db["system"].update_one(
+                    {"_id": "global"},
+                    {"$set": {
+                        "daily_event_date": kst_today_str,
+                        "daily_event_id": today_event["id"],
+                        "daily_event_msg": today_event["msg"]
+                    }},
+                    upsert=True
+                )
             
             # 1. 만료된 악평(pending_evals) 검사 및 강제 수락
             for user in db["users"].find({"profile.pending_evals": {"$exists": True, "$not": {"$size": 0}}}):
@@ -308,6 +330,25 @@ def get_user_data(authorization: str = Header(None)):
     profile = user_data.get("profile", {})
     profile_modified = False
 
+    owned_titles = profile.get("titles", ["초보 투자자", "눈팅족", "주린이"])
+    stats = profile.get("stats", {})
+    new_titles = []
+    
+    # [업적 조건 검사]
+    if stats.get("goodGiven", 0) >= 5 and "날개 잃은 천사" not in owned_titles: new_titles.append("날개 잃은 천사")
+    if stats.get("badGiven", 0) >= 5 and "어둠의 암살자" not in owned_titles: new_titles.append("어둠의 암살자")
+    if profile.get("price", 20000) <= 5000 and "지하암반수" not in owned_titles: new_titles.append("지하암반수")
+    if profile.get("price", 20000) >= 50000 and "워렌 버핏" not in owned_titles: new_titles.append("워렌 버핏")
+    if profile.get("anonTickets", 0) >= 3 and "스파이" not in owned_titles: new_titles.append("스파이")
+
+    if new_titles:
+        owned_titles.extend(new_titles)
+        profile["titles"] = owned_titles
+        profile_modified = True
+        if "noti" not in user_data: user_data["noti"] = []
+        for t in new_titles:
+            user_data["noti"].insert(0, f"🏅 [업적 달성] 새로운 칭호 '{t}'을(를) 획득했습니다! 프로필에서 장착해보세요.")
+
     # 🔥 알림이 15개가 넘어가면 가장 오래된 것부터 슬라이스 후 자동 저장
     if "noti" in user_data and len(user_data["noti"]) > 15:
         user_data["noti"] = user_data["noti"][:15]
@@ -384,13 +425,11 @@ def get_user_data(authorization: str = Header(None)):
             else:
                 db["system"].update_one({"_id": "global"}, {"$set": {"megaphone": "", "megaphone_time": None}})
 
+    daily_event_msg = sys_data.get("daily_event_msg", "") if sys_data else ""
     return {
-        "isNewUser": False, 
-        "profile": profile, 
-        "noti": user_data.get("noti", []), 
-        "my_rooms": my_rooms, 
-        "global_ranking": global_ranking, 
-        "megaphone_msg": megaphone_msg
+        "isNewUser": False, "profile": profile, "noti": user_data.get("noti", []), 
+        "my_rooms": my_rooms, "global_ranking": global_ranking, "megaphone_msg": megaphone_msg,
+        "daily_event_msg": daily_event_msg # 🔥 이벤트 속보 데이터 추가
     }
 
 @app.post("/api/save")
@@ -416,42 +455,41 @@ def save_user_data(data: UserData, authorization: str = Header(None)):
 @app.post("/api/reward")
 def claim_reward(data: RewardData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
-    if not email or email != data.email.strip().lower(): 
-        return {"status": "error", "message": "인증 실패"}
-
+    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     user = db["users"].find_one({"_id": email})
-    if not user: 
-        return {"status": "error", "message": "유저 없음"}
+    if not user: return {"status": "error", "message": "유저 없음"}
 
     kst_now = datetime.utcnow() + timedelta(hours=9)
     server_today_str = kst_now.strftime("%Y-%m-%d")
     time_str = kst_now.strftime("%m.%d %H:%M")
-    msg = ""
+    
+    # 🔥 오늘의 이벤트 확인
+    sys_data = db["system"].find_one({"_id": "global"}) or {}
+    event_id = sys_data.get("daily_event_id", "none")
 
-    # 🔥 1. 매일 출석 (+50p) - 변수명 수정 및 따닥 방지 완벽 적용
+    msg = ""
     if data.reward_type == 'attendance':
+        reward_amount = 150 if event_id == "bull" else 50  # 🐂 불장이면 150p!
         result = db["users"].update_one(
             {"_id": email, "$or": [{"profile.lastDailyAttendance": {"$ne": server_today_str}}, {"profile.lastDailyAttendance": {"$exists": False}}]},
-            {"$inc": {"profile.price": 50}, "$set": {"profile.lastDailyAttendance": server_today_str}}
+            {"$inc": {"profile.price": reward_amount}, "$set": {"profile.lastDailyAttendance": server_today_str}}
         )
         if result.modified_count == 0: return {"status": "error", "message": "이미 완료하셨습니다!"}
-        msg = "📅 일일 출석 완료!"
+        msg = f"📅 일일 출석 완료! (+{reward_amount}p)"
         
-    # 🔥 2. 광고 보고 2배 출석 (+50p) - 누락 복구 및 따닥 방지 적용
     elif data.reward_type == 'double_attendance':
+        reward_amount = 150 if event_id == "bull" else 50
         result = db["users"].update_one(
             {"_id": email, "profile.lastDailyAttendance": server_today_str, "$or": [{"profile.lastDailyAdBonus": {"$ne": server_today_str}}, {"profile.lastDailyAdBonus": {"$exists": False}}]},
-            {"$inc": {"profile.price": 50}, "$set": {"profile.lastDailyAdBonus": server_today_str}}
+            {"$inc": {"profile.price": reward_amount}, "$set": {"profile.lastDailyAdBonus": server_today_str}}
         )
         if result.modified_count == 0: return {"status": "error", "message": "이미 보상을 받았거나 출석을 먼저 해야 합니다."}
-        msg = "🎬 50p가 추가 상승했습니다."
+        msg = f"🎬 {reward_amount}p가 추가 상승했습니다."
 
-    # 🔥 3. 광고 보고 평가권 추가 (주 1회) - 누락 복구 및 따닥 방지 적용
     elif data.reward_type == 'extra_ticket':
         days_since_monday = kst_now.weekday()
         if kst_now.weekday() == 0 and kst_now.hour < 8: days_since_monday = 7
         recent_monday = (kst_now - timedelta(days=days_since_monday)).strftime("%Y-%m-%d")
-        
         result = db["users"].update_one(
             {"_id": email, "$or": [{"profile.lastAdTicketMonday": {"$ne": recent_monday}}, {"profile.lastAdTicketMonday": {"$exists": False}}]},
             {"$inc": {"profile.goodTickets": 1, "profile.badTickets": 1}, "$set": {"profile.lastAdTicketMonday": recent_monday}}
@@ -459,7 +497,6 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
         if result.modified_count == 0: return {"status": "error", "message": "이번 주 광고 보상을 이미 받으셨습니다."}
         msg = "🎬 이번 주 추가 평가권 각 +1장 획득!"
 
-    # 🔥 4. 주간 보너스 평가권 - 누락 복구 및 따닥 방지 적용
     elif data.reward_type == 'weekly':
         result = db["users"].update_one(
             {"_id": email, "$or": [{"profile.weeklyTicketsClaimed": False}, {"profile.weeklyTicketsClaimed": {"$exists": False}}]},
@@ -467,35 +504,17 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
         )
         if result.modified_count == 0: return {"status": "error", "message": "이미 완료하셨습니다!"}
         msg = "🎁 주간 보너스 평가권 획득!"
-        
     else:
         return {"status": "error", "message": "알 수 없는 보상 타입입니다."}
 
-    # 업데이트된 유저 정보를 DB에서 다시 가져와서 프론트엔드로 전달
     updated_user = db["users"].find_one({"_id": email})
     profile = updated_user["profile"]
 
-    # 주가가 변동된 경우(돈을 받는 출석체크)에만 차트 히스토리 추가
     if data.reward_type in ['attendance', 'double_attendance']:
-        if "priceHistory" not in profile: 
-            profile["priceHistory"] = [profile.get("basePrice", 20000)]
-            profile["timeHistory"] = ["시작"]
-        
-        profile["priceHistory"].append(profile["price"])
-        profile["timeHistory"].append(time_str)
-        
-        if profile["price"] > profile.get("maxPrice", 20000):
-            profile["maxPrice"] = profile["price"]
-        
-        # 히스토리 배열을 DB에 안전하게 반영
-        db["users"].update_one(
-            {"_id": email}, 
-            {"$set": {
-                "profile.priceHistory": profile["priceHistory"], 
-                "profile.timeHistory": profile["timeHistory"], 
-                "profile.maxPrice": profile.get("maxPrice", 20000)
-            }}
-        )
+        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
+        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(time_str)
+        if profile["price"] > profile.get("maxPrice", 20000): profile["maxPrice"] = profile["price"]
+        db["users"].update_one({"_id": email}, {"$set": {"profile.priceHistory": profile["priceHistory"], "profile.timeHistory": profile["timeHistory"], "profile.maxPrice": profile.get("maxPrice", 20000)}})
 
     return {"status": "success", "message": msg, "profile": profile}
 
@@ -525,32 +544,31 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
             return {"status": "error", "message": "보유한 익명 암살권이 없습니다."}
         evaluator_name = "익명(???)"
 
+    sys_data = db["system"].find_one({"_id": "global"}) or {}
+    event_id = sys_data.get("daily_event_id", "none")
+
     if data.eval_type == 'good':
-        # 🔥 2. 호평권 원자적 차감 (따닥 방지)
-        good_update = db["users"].update_one(
-            {"_id": data.evaluator_email, "profile.goodTickets": {"$gt": 0}},
-            {"$inc": {"profile.goodTickets": -1, "profile.stats.goodGiven": 1}}
-        )
-        if good_update.modified_count == 0: 
-            return {"status": "error", "message": "호평권이 부족합니다!"}
+        if evaluator["profile"].get("goodTickets", 0) <= 0: return {"status": "error", "message": "호평권 부족"}
+        evaluator["profile"]["goodTickets"] -= 1; evaluator["profile"]["stats"]["goodGiven"] = evaluator["profile"]["stats"].get("goodGiven", 0) + 1
+        db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": evaluator["profile"]}})
 
-        # 타겟 유저 주가 즉시 올려주기
+        # 👼 천사의 날이면 1.5배 곱하기!
+        multiplier = 1.5 if event_id == "angel" else 1.0
         base_price = target["profile"].get("basePrice", 20000)
-        change_amount = base_price * (data.intensity * 0.01)
-        target["profile"]["price"] = target["profile"].get("price", 20000) + change_amount
-        if target["profile"]["price"] > target["profile"].get("maxPrice", 20000): 
-            target["profile"]["maxPrice"] = target["profile"]["price"]
+        change_amount = base_price * (data.intensity * 0.01) * multiplier
+        
+        target["profile"]["price"] += change_amount
+        if target["profile"]["price"] > target["profile"].get("maxPrice", 20000): target["profile"]["maxPrice"] = target["profile"]["price"]
 
-        if "priceHistory" not in target["profile"]: 
-            target["profile"]["priceHistory"] = [base_price]
-            target["profile"]["timeHistory"] = ["시작"]
-            
+        if "priceHistory" not in target["profile"]: target["profile"]["priceHistory"] = [target["profile"].get("basePrice", 20000)]; target["profile"]["timeHistory"] = ["시작"]
         target["profile"]["priceHistory"].append(target["profile"]["price"])
         kst_now = datetime.utcnow() + timedelta(hours=9)
         target["profile"]["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
 
         if "noti" not in target: target["noti"] = []
-        target["noti"].insert(0, f"👍 [호평] {evaluator_name}님의 평가 (+{data.intensity}%): {data.reason}")
+        # 알림 메시지에도 소수점(1.5%)이 제대로 찍히도록 수정
+        actual_pct = data.intensity * multiplier
+        target["noti"].insert(0, f"👍 [호평] {evaluator_name}님의 평가 (+{actual_pct}%): {data.reason}")
         send_push_notification(data.target_email, "👍 호평 도착!", f"{evaluator_name}님이 주가를 올려주셨습니다!")
 
         if target["profile"].get("narackStartTime") and target["profile"]["price"] > (target["profile"].get("maxPrice", 20000) * 0.3):
