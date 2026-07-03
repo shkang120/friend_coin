@@ -436,20 +436,23 @@ def get_user_data(authorization: str = Header(None)):
 def save_user_data(data: UserData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email: return {"status": "error", "message": "인증 실패"}
-    existing_user = db["users"].find_one({"_id": email})
-    if existing_user and "profile" in existing_user:
-        db_profile = existing_user["profile"]
-        db_profile["name"] = data.profile.get("name", db_profile.get("name"))
-        db_profile["profileImage"] = data.profile.get("profileImage", db_profile.get("profileImage"))
-        db_profile["nameColor"] = data.profile.get("nameColor", db_profile.get("nameColor"))
-        db_profile["isVIP"] = data.profile.get("isVIP", db_profile.get("isVIP"))
-        db_profile["badges"] = data.profile.get("badges", db_profile.get("badges", []))
-        db_profile["roomAliases"] = data.profile.get("roomAliases", db_profile.get("roomAliases", {}))
-        db_profile["profileTheme"] = data.profile.get("profileTheme", db_profile.get("profileTheme", "none")) 
-        db_profile["ownedThemes"] = data.profile.get("ownedThemes", db_profile.get("ownedThemes", ["none"])) 
-        final_profile = db_profile
-    else: final_profile = data.profile
-    db["users"].update_one({"_id": email}, {"$set": {"profile": final_profile, "noti": data.noti}}, upsert=True)
+    
+    user = db["users"].find_one({"_id": email})
+    # 기존 유저가 있으면 프로필 가져오기, 없으면 빈 딕셔너리 생성
+    db_profile = user.get("profile", {}) if user else {}
+    
+    # 🔥 보안 포인트: 허용된 필드만 골라서 업데이트
+    # 유저가 강제로 price나 tickets를 조작해서 보내도 이 리스트에 없으면 서버는 무시합니다.
+    allowed_fields = ["name", "profileImage", "nameColor", "roomAliases", "profileTheme", "ownedThemes"]
+    for field in allowed_fields:
+        if field in data.profile:
+            db_profile[field] = data.profile[field]
+            
+    db["users"].update_one(
+        {"_id": email}, 
+        {"$set": {"profile": db_profile, "noti": data.noti}}, 
+        upsert=True
+    )
     return {"status": "success"}
 
 @app.post("/api/reward")
@@ -701,6 +704,15 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
 
 @app.get("/api/check-nickname")
 def check_nickname(nickname: str):
+    # 🔥 보안 포인트: 닉네임 길이 제한 (2~8자)
+    if len(nickname) < 2 or len(nickname) > 8:
+        return {"available": False, "message": "닉네임은 2~8자 사이여야 합니다."}
+    
+    # 욕설 필터링 (간단한 예시 목록, 더 추가 가능)
+    bad_words = ["욕설1", "욕설2", "비속어"] 
+    if any(word in nickname for word in bad_words):
+        return {"available": False, "message": "사용할 수 없는 단어가 포함되어 있습니다."}
+
     user = db["users"].find_one({"profile.name": nickname})
     if user: return {"available": False, "message": "이미 사용 중인 닉네임입니다."}
     return {"available": True}
