@@ -715,27 +715,41 @@ function renderProfile() {
 }
 
 function renderRanking() {
-    const container = document.getElementById('ranking-content'); if (!container || !myProfile || globalRanking.length === 0) return;
+    const container = document.getElementById('ranking-content');
+    if (!container || !myProfile || globalRanking.length === 0) return;
+
     const top10 = globalRanking.slice(0, 10);
     const createTotalRankCard = (p, index) => {
+        // 1. 1위 하이라이트 로직 (이번에 추가된 부분)
+        const isHot = index === 0;
+        
+        // 기존 랭킹 아이콘 로직 유지
         let rankIcon = '';
         if (index === 0) rankIcon = `🥇`;
         else if (index === 1) rankIcon = `🥈`;
         else if (index === 2) rankIcon = `🥉`;
         else rankIcon = `<span style="display:inline-block; width: 24px; text-align:center; color:#8b95a1; font-size:14px; font-weight:bold;">${index+1}</span>`;
 
-        const isMe = p.name === myProfile.name; const bg = isMe ? "background:#f0f8ff;" : "";
-        const yPrice = getYesterdayClosePrice(p); const cAmt = p.price - yPrice; const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0; const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1'); const cSign = cAmt > 0 ? '+' : '';
-        // 🔥 추가된 부분: 칭호가 있으면 표시하고 없으면 빈칸
+        // 기존 등락률 및 사용자 정보 로직 유지
+        const isMe = p.name === myProfile.name;
+        const bg = isMe ? "background:#f0f8ff;" : "";
+        const yPrice = getYesterdayClosePrice(p);
+        const cAmt = p.price - yPrice;
+        const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0;
+        const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1');
+        const cSign = cAmt > 0 ? '+' : '';
         const displayTitle = p.equippedTitle ? `<span style="font-size:12px; color:#8b95a1; margin-right:4px;">[${escapeHtml(p.equippedTitle)}]</span>` : '';
 
+        // 2. hot-ranker 클래스를 1위에게만 적용
         return `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid #f9fafb; border-radius:8px; ${bg}">
+            <div class="ranking-card ${isHot ? 'hot-ranker' : ''}" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid #f9fafb; border-radius:8px; ${bg}">
                 <div style="display: flex; align-items: center; font-size: 15px; font-weight: bold;">
                     <span style="font-size: 20px; margin-right: 10px; width:24px; text-align:center; display:inline-flex; align-items:center; justify-content:center;">${rankIcon}</span>
                     ${getAvatarHtml(p, 'small')}
-                    <span style="margin-left:10px;">${displayTitle}</span><span style="color: ${p.nameColor || '#333d4b'};">${escapeHtml(p.name)}</span> 
+                    <span style="margin-left:10px;">${displayTitle}</span>
+                    <span style="color: ${p.nameColor || '#333d4b'};">${escapeHtml(p.name)}</span> 
                     ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''}
+                    ${isHot ? '<span style="margin-left:5px;">🚀</span>' : ''}
                 </div>
                 <div style="text-align: right; font-weight: bold; color: #333d4b;">
                     ${Math.floor(p.price||0).toLocaleString()} p<br>
@@ -744,6 +758,7 @@ function renderRanking() {
             </div>
         `;
     };
+
     container.innerHTML = `
         <div style="background: white; border-radius: 16px; padding: 20px 15px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee;">
             <h3 style="margin-top: 0; color: #333d4b;">🌍 전국구 통합 랭킹 Top 10</h3>

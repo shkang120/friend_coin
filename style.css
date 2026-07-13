@@ -114,3 +114,20 @@ body {
     from { box-shadow: 0 0 5px #ff4500, 0 0 10px #ff8c00; }
     to { box-shadow: 0 0 15px #ff0000, 0 0 25px #ff4500; }
 }
+
+/* 랭킹 카드 기본 스타일 */
+.ranking-list { padding: 10px; }
+.ranking-card {
+    display: flex; justify-content: space-between; 
+    padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);
+    color: var(--text-main);
+}
+
+/* 1위 강조 스타일 (Hot 🚀) */
+.hot-ranker {
+    background: rgba(255, 214, 10, 0.1); /* 연한 노란색 유리 질감 */
+    border-radius: 16px;
+    border: 1px solid #ffd60a; 
+    font-weight: bold;
+    margin: 10px 0;
+}
