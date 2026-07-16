@@ -131,3 +131,20 @@ body {
     font-weight: bold;
     margin: 10px 0;
 }
+
+/* 칭호 기본 스타일 */
+.badge-title {
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px; /* 아이콘과 텍스트 사이 간격 */
+}
+
+/* 칭호 특수 효과 (추후 계속 확장 가능) */
+.title-glow {
+    text-shadow: 0 0 8px currentColor; /* 칭호 색상으로 빛나는 효과 */
+}
+
+.title-shadow {
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4); /* 어두운 그림자 효과 */
+}

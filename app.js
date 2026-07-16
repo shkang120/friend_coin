@@ -5,7 +5,32 @@ let myUsername = localStorage.getItem('fc_username') || null;
 let loginIntent = ''; 
 let autoSyncInterval = null; 
 let isSyncing = false; 
-let globalMegaphone = ""; 
+let globalMegaphone = "";
+
+// --- 칭호 시스템 통합 데이터 ---
+const TITLE_DATA = {
+    '1위': { icon: '👑', color: '#f1c40f', effect: 'bold' },
+    '떡상왕': { icon: '🚀', color: '#e67e22', effect: 'glow' },
+    '악마': { icon: '😈', color: '#e74c3c', effect: 'shadow' },
+    '천사': { icon: '😇', color: '#3498db', effect: 'shine' },
+    '날개 잃은 천사': { icon: '🪽', color: '#95a5a6', effect: 'italic' }
+};
+
+// 칭호 이름을 받아서 아이콘과 스타일이 적용된 HTML을 반환하는 함수
+function getTitleHtml(titleName) {
+    const data = TITLE_DATA[titleName];
+    if (!data) return ''; // 등록되지 않은 칭호면 빈칸 반환
+
+    // 효과(effect)에 따라 CSS 클래스 이름 결정
+    let effectClass = '';
+    if (data.effect === 'glow') effectClass = 'title-glow';
+    else if (data.effect === 'shadow') effectClass = 'title-shadow';
+
+    // 폰트 굵기 등 인라인 스타일 적용하여 반환
+    return `<span class="badge-title ${effectClass}" style="color: ${data.color}; font-weight: ${data.effect === 'bold' ? 'bold' : 'normal'}; margin-right: 4px;">
+        ${data.icon} [${escapeHtml(titleName)}]
+    </span>`;
+}
 
 // 🔥 애니메이션 효과 실현부 (폭죽 및 흔들림)
 function triggerConfetti() {
@@ -738,7 +763,7 @@ function renderRanking() {
         const cRate = yPrice > 0 ? ((cAmt / yPrice) * 100).toFixed(1) : 0;
         const cColor = cAmt > 0 ? '#ff3b30' : (cAmt < 0 ? '#3182f6' : '#8b95a1');
         const cSign = cAmt > 0 ? '+' : '';
-        const displayTitle = p.equippedTitle ? `<span style="font-size:12px; color:#8b95a1; margin-right:4px;">[${escapeHtml(p.equippedTitle)}]</span>` : '';
+        const displayTitle = p.equippedTitle ? getTitleHtml(p.equippedTitle) : '';
 
         // 2. hot-ranker 클래스를 1위에게만 적용
         return `
