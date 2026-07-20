@@ -674,8 +674,8 @@ function renderProfile() {
         </div>
     `;
 
-    // 🔥 칭호 표시 로직 적용
-    const displayTitle = myProfile.equippedTitle ? `<span style="font-size:16px; color:#8b95a1;">[${escapeHtml(myProfile.equippedTitle)}]</span> ` : '';
+    // 🔥 칭호 표시 로직 적용 (통합 칭호 시스템 연결)
+    const displayTitle = myProfile.equippedTitle ? getTitleHtml(myProfile.equippedTitle) : '';
 
     container.innerHTML = `
         <div style="position: relative; text-align: center; padding-top: 10px;"> 
@@ -1489,7 +1489,11 @@ window.renderTitleSelect = function() {
     ownedTitles.forEach(title => {
         const option = document.createElement('option');
         option.value = title;
-        option.text = `[${title}]`;
+        
+        // TITLE_DATA에서 이모티콘을 가져옵니다. (데이터에 없는 칭호일 경우 빈 문자열 처리)
+        const icon = TITLE_DATA[title] ? TITLE_DATA[title].icon : ''; 
+        option.text = `${icon} [${title}]`;
+        
         if (title === currentTitle) option.selected = true; // 현재 장착 중인 칭호 자동 선택
         titleSelect.appendChild(option);
     });
