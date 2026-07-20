@@ -7,21 +7,33 @@ let autoSyncInterval = null;
 let isSyncing = false; 
 let globalMegaphone = "";
 
-// --- 칭호 시스템 통합 데이터 (모든 백엔드 칭호 반영 완료) ---
+// --- 칭호 시스템 통합 데이터 (총 20종 완성) ---
 const TITLE_DATA = {
-    // 1. 기본 칭호
+    // 1. 기본 칭호 (3종)
     '초보 투자자': { icon: '🌱', color: '#f39c12', effect: 'normal' },
     '눈팅족': { icon: '👀', color: '#95a5a6', effect: 'normal' },
     '주린이': { icon: '🍼', color: '#3498db', effect: 'normal' },
     
-    // 2. 활동 업적 칭호
+    // 2. 기존 업적 칭호 (5종)
     '날개 잃은 천사': { icon: '🪽', color: '#3498db', effect: 'italic' },
     '어둠의 암살자': { icon: '🥷', color: '#8e44ad', effect: 'shadow' },
     '스파이': { icon: '🕵️', color: '#2c3e50', effect: 'bold' },
-    
-    // 3. 자산 업적 칭호
     '워렌 버핏': { icon: '📈', color: '#2ecc71', effect: 'bold' },
-    '지하암반수': { icon: '💧', color: '#34495e', effect: 'normal' }
+    '지하암반수': { icon: '💧', color: '#34495e', effect: 'normal' },
+
+    // 3. 신규 추가 칭호 (12종)
+    '평화주의자': { icon: '🕊️', color: '#27ae60', effect: 'shine' },
+    '냉혹한 심판관': { icon: '⚖️', color: '#c0392b', effect: 'shadow' },
+    '프로 평가러': { icon: '✍️', color: '#8e44ad', effect: 'bold' },
+    '회색분자': { icon: '🌗', color: '#7f8c8d', effect: 'normal' },
+    '만수르': { icon: '👑', color: '#f1c40f', effect: 'glow' },
+    '휴지조각': { icon: '🗑️', color: '#bdc3c7', effect: 'italic' },
+    '절대 방어': { icon: '🛡️', color: '#2980b9', effect: 'shine' },
+    '그림자 군주': { icon: '👤', color: '#2c3e50', effect: 'shadow' },
+    '트렌드 세터': { icon: '✨', color: '#e056fd', effect: 'glow' },
+    '법정 단골': { icon: '👨‍⚖️', color: '#d35400', effect: 'bold' },
+    '도마 위의 생선': { icon: '🐟', color: '#16a085', effect: 'italic' },
+    '롤러코스터': { icon: '🎢', color: '#eb4d4b', effect: 'bold' }
 };
 
 // 칭호 이름을 받아서 아이콘과 스타일이 적용된 HTML을 반환하는 함수

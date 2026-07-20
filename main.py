@@ -335,12 +335,41 @@ def get_user_data(authorization: str = Header(None)):
     new_titles = []
     
     # [업적 조건 검사]
-    if stats.get("goodGiven", 0) >= 5 and "날개 잃은 천사" not in owned_titles: new_titles.append("날개 잃은 천사")
-    if stats.get("badGiven", 0) >= 5 and "어둠의 암살자" not in owned_titles: new_titles.append("어둠의 암살자")
-    if profile.get("price", 20000) <= 5000 and "지하암반수" not in owned_titles: new_titles.append("지하암반수")
-    if profile.get("price", 20000) >= 50000 and "워렌 버핏" not in owned_titles: new_titles.append("워렌 버핏")
-    if profile.get("anonTickets", 0) >= 3 and "스파이" not in owned_titles: new_titles.append("스파이")
+    good_given = stats.get("goodGiven", 0)
+    bad_given = stats.get("badGiven", 0)
+    current_price = profile.get("price", 20000)
+    max_price = profile.get("maxPrice", 20000)
+    shield_count = profile.get("shieldCount", 0)
+    anon_tickets = profile.get("anonTickets", 0)
+    owned_themes = profile.get("ownedThemes", [])
+    pending_evals = profile.get("pending_evals", [])
+    defense_count = profile.get("defense_count", 0)
 
+    # 1. 기존 조건 (5종)
+    if good_given >= 15 and "날개 잃은 천사" not in owned_titles: new_titles.append("날개 잃은 천사")
+    if bad_given >= 15 and "어둠의 암살자" not in owned_titles: new_titles.append("어둠의 암살자")
+    if anon_tickets >= 10 and "스파이" not in owned_titles: new_titles.append("스파이")
+    if current_price >= 50000 and "워렌 버핏" not in owned_titles: new_titles.append("워렌 버핏")
+    if current_price <= 5000 and "지하암반수" not in owned_titles: new_titles.append("지하암반수")
+
+    # 2. 신규 평가 성향 조건
+    if good_given >= 40 and "평화주의자" not in owned_titles: new_titles.append("평화주의자")
+    if bad_given >= 40 and "냉혹한 심판관" not in owned_titles: new_titles.append("냉혹한 심판관")
+    if (good_given + bad_given) >= 80 and "프로 평가러" not in owned_titles: new_titles.append("프로 평가러")
+    if good_given >= 10 and bad_given >= 30 and "회색분자" not in owned_titles: new_titles.append("회색분자")
+
+    # 3. 신규 자산 규모 조건
+    if current_price >= 100000 and "만수르" not in owned_titles: new_titles.append("만수르")
+    if current_price <= 1000 and "휴지조각" not in owned_titles: new_titles.append("휴지조각")
+    if max_price >= 50000 and current_price <= 20000 and "롤러코스터" not in owned_titles: new_titles.append("롤러코스터")
+
+    # 4. 신규 아이템/테마/위기 조건
+    if shield_count >= 7 and "절대 방어" not in owned_titles: new_titles.append("절대 방어")
+    if anon_tickets >= 10 and "그림자 군주" not in owned_titles: new_titles.append("그림자 군주")
+    if len(owned_themes) >= 3 and "트렌드 세터" not in owned_titles: new_titles.append("트렌드 세터")
+    if defense_count >= 5 and "법정 단골" not in owned_titles: new_titles.append("법정 단골")
+    if len(pending_evals) >= 4 and "도마 위의 생선" not in owned_titles: new_titles.append("도마 위의 생선")
+    
     if new_titles:
         owned_titles.extend(new_titles)
         profile["titles"] = owned_titles
