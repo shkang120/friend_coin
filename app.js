@@ -684,8 +684,14 @@ function renderProfile() {
                 ${getAvatarHtml(myProfile, 'large')}
                 <button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✏️</button>
             </div>
-            <h2 style="margin: 10px 0; color: ${myProfile.nameColor || '#333d4b'}; display:flex; justify-content:center; align-items:center; gap:8px;">
-                ${displayTitle}${escapeHtml(myProfile.name)} 코인 
+            <!-- 칭호를 닉네임 상단으로 분리하여 배지처럼 배치 -->
+            <div style="margin-top: 15px; margin-bottom: 4px; display:flex; justify-content:center; align-items:center;">
+                <span style="font-size: 13px;">${displayTitle}</span>
+            </div>
+            
+            <!-- 닉네임을 메인으로 강조 -->
+            <h2 style="margin: 0 0 10px 0; color: ${myProfile.nameColor || '#333d4b'}; display:flex; justify-content:center; align-items:center; gap:8px; font-size: 24px;">
+                ${escapeHtml(myProfile.name)} 코인 
                 <span onclick="changeNickname()" style="font-size:12px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
             </h2>
             <div style="font-size:12px; color:#8b95a1; margin-bottom:10px;">내 주가는 모든 클럽에 적용됩니다.</div>
