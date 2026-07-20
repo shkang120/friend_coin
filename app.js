@@ -7,13 +7,21 @@ let autoSyncInterval = null;
 let isSyncing = false; 
 let globalMegaphone = "";
 
-// --- 칭호 시스템 통합 데이터 ---
+// --- 칭호 시스템 통합 데이터 (모든 백엔드 칭호 반영 완료) ---
 const TITLE_DATA = {
-    '1위': { icon: '👑', color: '#f1c40f', effect: 'bold' },
-    '떡상왕': { icon: '🚀', color: '#e67e22', effect: 'glow' },
-    '악마': { icon: '😈', color: '#e74c3c', effect: 'shadow' },
-    '천사': { icon: '😇', color: '#3498db', effect: 'shine' },
-    '날개 잃은 천사': { icon: '🪽', color: '#95a5a6', effect: 'italic' }
+    // 1. 기본 칭호
+    '초보 투자자': { icon: '🌱', color: '#f39c12', effect: 'normal' },
+    '눈팅족': { icon: '👀', color: '#95a5a6', effect: 'normal' },
+    '주린이': { icon: '🍼', color: '#3498db', effect: 'normal' },
+    
+    // 2. 활동 업적 칭호
+    '날개 잃은 천사': { icon: '🪽', color: '#3498db', effect: 'italic' },
+    '어둠의 암살자': { icon: '🥷', color: '#8e44ad', effect: 'shadow' },
+    '스파이': { icon: '🕵️', color: '#2c3e50', effect: 'bold' },
+    
+    // 3. 자산 업적 칭호
+    '워렌 버핏': { icon: '📈', color: '#2ecc71', effect: 'bold' },
+    '지하암반수': { icon: '💧', color: '#34495e', effect: 'normal' }
 };
 
 // 칭호 이름을 받아서 아이콘과 스타일이 적용된 HTML을 반환하는 함수
@@ -106,30 +114,6 @@ function getAvatarHtml(person, size = 'small') {
     return `<div class="${themeClass}" style="width:${sizePx}; height:${sizePx}; border-radius:${radius}; filter:${filter}; display:inline-block; vertical-align:middle; background:white; ${themeClass ? '' : 'box-shadow: 0 2px 8px rgba(0,0,0,0.1);'}">${inner}</div>`;
 }
 
-function getBadgeHtml(person) { 
-    let allBadges = [...(person.dynamicBadges || []), ...(person.badges || [])]; 
-    if (allBadges.length === 0) return ''; 
-    return `<div style="display:flex; gap:4px; margin-top:4px; flex-wrap:wrap;">` + allBadges.map(b => {
-        return `<span style="font-size:11px; background:#f2f4f6; padding:3px 6px; border-radius:6px; color:#4e5968; display:inline-flex; align-items:center; gap:2px;">${b}</span>`;
-    }).join('') + `</div>`; 
-}
-
-function checkBadges() {
-    if (!myProfile || !myProfile.badges) return;
-    if (myProfile.stats.goodGiven >= 2 && !myProfile.badges.includes('👼천사')) { myProfile.badges.push('👼천사'); showToast('🎉 [칭호 획득] 👼천사'); }
-    if (myProfile.stats.badGiven >= 2 && !myProfile.badges.includes('😈악마')) { myProfile.badges.push('😈악마'); showToast('🎉 [칭호 획득] 😈악마'); }
-    if (myProfile.stats.trialCount >= 2 && !myProfile.badges.includes('⚖️법정단골')) { myProfile.badges.push('⚖️법정단골'); showToast('🎉 [칭호 획득] ⚖️법정단골'); }
-    if (globalRanking.length === 0) return;
-    const top1 = globalRanking[0]; 
-    const topGainer = [...globalRanking].sort((a,b) => ((b.price||0) - (b.basePrice||0)) - ((a.price||0) - (a.basePrice||0)))[0];
-    globalRanking.forEach(p => { 
-        p.dynamicBadges = []; 
-        if (p.isVIP) p.dynamicBadges.push('👑VIP'); 
-        if (top1 && p.name === top1.name) p.dynamicBadges.push('👑1위'); 
-        if (topGainer && p.name === topGainer.name && (p.price - p.basePrice) > 0) p.dynamicBadges.push('🚀떡상왕'); 
-    });
-}
-
 function updateTicker() { 
     const tickerEl = document.getElementById('ticker-text'); 
     if(!tickerEl || !myProfile || globalRanking.length === 0) return; 
@@ -138,8 +122,7 @@ function updateTicker() {
     tickerEl.innerHTML = `[글로벌 시황] ${rankText}${megaText}`; 
 }
 
-function saveData() { 
-    checkBadges(); 
+function saveData() {
     updateTicker(); 
     if (!myEmail) return; 
     fetch(`${BACKEND_URL}/api/save`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` }, body: JSON.stringify({ profile: myProfile, noti: myNotifications }) }).catch(err => console.error(err)); 
@@ -157,8 +140,7 @@ function updateNavIcons() {
 }
 
 function switchTab(tabName) {
-    if(!myProfile) return; 
-    checkBadges();
+    if(!myProfile) return;
     document.querySelectorAll('.view').forEach(v => { v.classList.remove('view-active'); });
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     const targetView = document.getElementById(tabName + '-view'); 
@@ -359,8 +341,9 @@ function renderHome() {
             
             const delistedLabel = `<span style="color:#ff3b30; font-size:12px; font-weight:bold; margin-left:4px; display:inline-flex; align-items:center; gap:2px;">💀 상장폐지</span>`;
             const priceHtml = isDelisted ? '-' : `${Math.floor(f.price || 0).toLocaleString()} p<br><span style="font-size:11px; color:${cColor}; font-weight:normal;">${cSign}${Math.floor(cAmt).toLocaleString()}p (${cSign}${cRate}%)</span>`;
-            // 🔥 추가된 부분: 칭호가 있으면 표시하고 없으면 빈칸
-            const displayTitle = f.equippedTitle ? `<span style="font-size:12px; color:#8b95a1; margin-right:4px;">[${escapeHtml(f.equippedTitle)}]</span>` : '';
+            
+            // 🔥 수정된 부분: 통합 칭호 시스템 적용 및 불필요한 흔적 제거
+            const displayTitle = f.equippedTitle ? getTitleHtml(f.equippedTitle) : '';
 
             return `
                 <div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}>
@@ -372,29 +355,12 @@ function renderHome() {
                                 ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} 
                                 ${isDelisted ? delistedLabel : ''}
                             </div>
-                            ${getBadgeHtml(f)}
                         </div>
                     </div>
                     <div style="text-align: right; font-size: 16px; font-weight: bold; color: #333d4b;">${priceHtml}</div>
                 </div>
             `;
-
-            return `
-                <div class="info-card" style="display: flex; justify-content: space-between; align-items: center; ${cardStyle}" ${clickEvent}>
-                    <div style="display: flex; align-items: center; gap: 15px;">
-                        ${getAvatarHtml(f, 'small')}
-                        <div>
-                            <div style="font-size: 16px; font-weight: bold; text-align:left;">
-                                <span style="color: ${f.nameColor || '#333d4b'};">${escapeHtml(f.name)}</span> 
-                                ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} 
-                                ${isDelisted ? delistedLabel : ''}
-                            </div>
-                            ${getBadgeHtml(f)}
-                        </div>
-                    </div>
-                    <div style="text-align: right; font-size: 16px; font-weight: bold; color: #333d4b;">${priceHtml}</div>
-                </div>
-            `; 
+            
         }).join('');
         
         html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; font-size:14px;">🚪 이 클럽에서 나가기</button>`;
@@ -711,7 +677,6 @@ function renderProfile() {
                 <span onclick="changeNickname()" style="font-size:12px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
             </h2>
             <div style="font-size:12px; color:#8b95a1; margin-bottom:10px;">내 주가는 모든 클럽에 적용됩니다.</div>
-            <div style="display:flex; justify-content:center;">${getBadgeHtml(myProfile)}</div>
         </div>
 
         <div style="display: flex; justify-content: space-around; margin: 20px 0;">
@@ -1249,7 +1214,7 @@ function finishSetup() {
     if (myProfile && !myProfile.stats) myProfile.stats = { goodGiven: 0, badGiven: 0, trialCount: 0 }; 
     if (myProfile && !myProfile.priceHistory) { myProfile.priceHistory = [myProfile.basePrice, myProfile.price]; myProfile.timeHistory = ["시작", getCurrentTime()]; } 
     else if (myProfile && !myProfile.timeHistory) { myProfile.timeHistory = myProfile.priceHistory.map(() => ""); }
-    checkBadges(); updateTicker(); switchTab('home'); 
+    updateTicker(); switchTab('home'); 
     startAutoSync();
     
     const urlParams = new URLSearchParams(window.location.search); const joinCode = urlParams.get('join');
