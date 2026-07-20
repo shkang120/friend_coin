@@ -48,7 +48,7 @@ function getTitleHtml(titleName) {
 
     // 🔥 폰트 크기를 11px로 작게 고정하고, 이모티콘은 살짝 크게(12px) 조절하여 귀엽게 배치합니다.
     return `<span class="badge-title ${effectClass}" style="color: ${data.color}; font-weight: ${data.effect === 'bold' ? 'bold' : 'normal'}; margin-right: 4px; font-size: 11px; align-items: center;">
-        <span style="font-size: 12px; margin-right: 2px;">${data.icon}</span> [${escapeHtml(titleName)}]
+        <span style="font-size: 14px; margin-right: 2px;">${data.icon}</span> [${escapeHtml(titleName)}]
     </span>`;
 }
 
