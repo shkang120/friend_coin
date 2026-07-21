@@ -1147,9 +1147,8 @@ def equip_title(data: TitleData, authorization: str = Header(None)):
     
     return {"status": "success", "message": "칭호가 멋지게 장착되었습니다!"}
 
-    # --- [개발자 전용] 칭호 테스트를 위한 스탯 조작 디버깅 API ---
+# --- [개발자 전용] 칭호 테스트를 위한 스탯 조작 디버깅 API ---
 
-# 1. 디버깅 데이터를 받을 형태 정의 (기존 스키마들이 있는 곳에 추가해도 됩니다)
 class DebugData(BaseModel):
     email: str
     good_given: int | None = None
@@ -1158,8 +1157,8 @@ class DebugData(BaseModel):
     shield_count: int | None = None
     anon_tickets: int | None = None
     defense_count: int | None = None
+    pending_count: int | None = None # 🔥 추가된 부분: 악평 대기열 조작
 
-# 2. 치트키 API 엔드포인트
 @app.post("/api/debug/set-stats")
 def debug_set_stats(data: DebugData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -1173,17 +1172,20 @@ def debug_set_stats(data: DebugData, authorization: str = Header(None)):
     profile = user.get("profile", {})
     stats = profile.get("stats", {})
 
-    # 전달받은 값이 있으면 해당 스탯을 강제로 변경
+    # 전달받은 스탯을 강제로 변경
     if data.good_given is not None: stats["goodGiven"] = data.good_given
     if data.bad_given is not None: stats["badGiven"] = data.bad_given
     if data.price is not None: profile["price"] = data.price
     if data.shield_count is not None: profile["shieldCount"] = data.shield_count
     if data.anon_tickets is not None: profile["anonTickets"] = data.anon_tickets
     if data.defense_count is not None: profile["defense_count"] = data.defense_count
+    
+    # 🔥 악평 대기열 가짜 데이터 삽입
+    if data.pending_count is not None:
+        profile["pending_evals"] = [{"id": f"mock_{i}", "intensity": 1, "evaluator_name": "시스템", "reason": "테스트 악평"} for i in range(data.pending_count)]
 
     profile["stats"] = stats
     
-    # DB 업데이트
     db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
 
-    return {"status": "success", "message": "치트키 적용 완료! 새로고침하여 칭호를 확인하세요."}
+    return {"status": "success", "message": "나머지 칭호 치트키 적용 완료!"}
