@@ -15,8 +15,8 @@ const TITLE_DATA = {
     '주린이': { icon: '🍼', color: '#3498db', effect: 'normal' },
     
     // 2. 기존 업적 칭호 (5종)
-    '날개 잃은 천사': { icon: '🪽', color: '#3498db', effect: 'italic' },
-    '어둠의 암살자': { icon: '🥷', color: '#8e44ad', effect: 'shadow' },
+    '날개 잃은 천사': { icon: '💔', color: '#3498db', effect: 'italic' },
+    '어둠의 암살자': { icon: '🗡️', color: '#8e44ad', effect: 'shadow' },
     '스파이': { icon: '🕵️', color: '#2c3e50', effect: 'bold' },
     '워렌 버핏': { icon: '📈', color: '#2ecc71', effect: 'bold' },
     '지하암반수': { icon: '💧', color: '#34495e', effect: 'normal' },
