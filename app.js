@@ -582,24 +582,38 @@ function renderProfile() {
     let actionBtn = `${dailyBtn}${adDoubleBtn}${weeklyBtn}${adTicketBtn}`;
     if (isDelisted) { actionBtn = `<div style="background:#ffebee; color:#c62828; padding:15px; border-radius:12px; font-weight:bold; text-align:center; font-size:14px; margin-bottom:15px;">💀 코인이 상장폐지 상태입니다. 시스템의 구제 재판을 기다리세요.</div>`; }
 
+    // --- 1. 포인트 상점 (닉네임 컬러 변경권, 클럽 확성기 추가됨) ---
     const shopHtml = `
         <div style="background:white; border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #e5e8eb;">
             <h3 style="margin-top:0; color:#333d4b; font-size:15px; display:flex; align-items:center; justify-content:space-between; text-align:left;">
                 <div>🛒 포인트 상점</div> <span style="font-size:12px; font-weight:normal; color:#8b95a1;">잔고: ${Math.floor(myProfile.price).toLocaleString()}p</span>
             </h3>
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px; margin-bottom:10px;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
-                    <div style="font-size:28px; flex-shrink:0;">🛡️</div>
+                    <div style="font-size:28px; flex-shrink:0;">🎨</div>
                     <div style="text-align:left; flex:1;">
-                        <div style="font-weight:bold; font-size:14px; color:#333d4b;">무지개 반사 <span style="font-size:11px; color:#3182f6;">(보유: ${myProfile.shieldCount || 0}개)</span></div>
-                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">악평 피격 시 1회 자동 방어</div>
+                        <div style="font-weight:bold; font-size:14px; color:#333d4b;">닉네임 컬러 변경권</div>
+                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">닉네임 색상을 1회 변경합니다.</div>
                     </div>
                 </div>
-                <button onclick="buyShopItem('shield', 3000)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">3,000p</button>
+                <button onclick="buyShopItem('nickname_color_ticket', 3000)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">3,000p</button>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9fafb; border-radius:12px;">
+                <div style="display:flex; gap:12px; align-items:center; flex:1;">
+                    <div style="font-size:28px; flex-shrink:0;">📢</div>
+                    <div style="text-align:left; flex:1;">
+                        <div style="font-weight:bold; font-size:14px; color:#333d4b;">클럽 확성기</div>
+                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">채팅에 특수 강조 효과 부여</div>
+                    </div>
+                </div>
+                <button onclick="buyShopItem('club_megaphone', 500)" style="background:#333d4b; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">500p</button>
             </div>
         </div>
     `;
 
+    // --- 2. 테마 보유 여부 확인 (기존 로직 유지) ---
     const neonOwned = (myProfile.ownedThemes || []).includes('neon');
     const fireOwned = (myProfile.ownedThemes || []).includes('fire');
 
@@ -611,12 +625,24 @@ function renderProfile() {
         ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; flex-shrink:0;" disabled>✅ 보유 중</button>`
         : `<button onclick="buyCashItem('theme_fire')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,500</button>`;
 
+    // --- 3. 유료 캐시 상점 (무지개 반사 추가됨, 기존 유지) ---
     const cashShopHtml = `
         <div style="background: linear-gradient(135deg, #1c1c1e, #333d4b); border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.15); color:white;">
             <h3 style="margin-top:0; font-size:15px; display:flex; align-items:center; justify-content:space-between; color:#d4af37; text-align:left;">
                 <div>💎 스페셜 캐시 상점</div> <span style="font-size:11px; font-weight:normal; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:10px;">가상 결제 테스트 중</span>
             </h3>
             
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
+                <div style="display:flex; gap:12px; align-items:center; flex:1;">
+                    <div style="font-size:28px; flex-shrink:0;">🛡️</div>
+                    <div style="text-align:left; flex:1;">
+                        <div style="font-weight:bold; font-size:14px; color:white;">무지개 반사 방어권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.shieldCount || 0}개)</span></div>
+                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">악평 피격 시 1회 자동 방어</div>
+                    </div>
+                </div>
+                <button onclick="buyCashItem('shield_ticket')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩1,000</button>
+            </div>
+
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="font-size:28px; flex-shrink:0;">👻</div>
