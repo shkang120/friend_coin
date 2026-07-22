@@ -973,81 +973,85 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
     return {"status": status_msg, "message": message}
 
 @app.post("/api/shop/buy")
-def buy_shop_item(data: ShopData, authorization: str = Header(None)):
+def buy_shop_item(data: dict, authorization: str = Header(None)):
     email = verify_google_token(authorization)
-    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    if not email or email != data.get("email"): return {"status": "error", "message": "인증 실패"}
+
     user = db["users"].find_one({"_id": email})
     if not user: return {"status": "error", "message": "유저 없음"}
-    
-    profile = user["profile"]
-    kst_now = datetime.utcnow() + timedelta(hours=9)
-    
-    if data.item_type == "shield":
-        if profile.get("price", 20000) < 3000: return {"status": "error", "message": "잔고가 부족합니다 (3,000p 필요)."}
-        profile["price"] -= 3000
-        profile["shieldCount"] = profile.get("shieldCount", 0) + 1
-        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
-        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
-        db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-        return {"status": "success", "message": "🛡️ 무지개 반사 구매 완료! (악평 1회 자동 방어)"}
-        
-    return {"status": "error", "message": "알 수 없는 아이템입니다."}
 
-@app.post("/api/cash-shop/buy")
-def buy_cash_item(data: CashShopData, authorization: str = Header(None)):
-    email = verify_google_token(authorization)
-    if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
-    user = db["users"].find_one({"_id": email})
-    if not user: return {"status": "error", "message": "유저 없음"}
-    
-    profile = user["profile"]
-    kst_now = datetime.utcnow() + timedelta(hours=9)
-    
-    if "ownedThemes" not in profile:
-        profile["ownedThemes"] = ["none"]
-    
-    if data.item_type == "anon_ticket":
-        profile["anonTickets"] = profile.get("anonTickets", 0) + 1
-        msg = "👻 익명 암살권 결제 및 지급 완료!"
-        
-    elif data.item_type == "fund_pack":
-        profile["price"] = profile.get("price", 20000) + 10000
-        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
-        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
-        msg = "💰 10,000p 긴급 자금 수혈 완료!"
-        
-    # 🔥 확성기 결제 시 'megaphone_time' 추가 저장 및 칭호 노출
-    elif data.item_type == "megaphone":
-        if not data.extra_data.strip(): return {"status": "error", "message": "메시지를 입력하세요."}
-        
-        # 🔥 추가된 부분: 장착 중인 칭호가 있다면 확성기에도 표시
-        equipped_title = profile.get("equippedTitle", "")
-        display_name = f"[{equipped_title}] {profile.get('name')}" if equipped_title else profile.get('name')
-        
-        db["system"].update_one(
-            {"_id": "global"}, 
-            {"$set": {
-                "megaphone": f"[{display_name}] {data.extra_data}",
-                "megaphone_time": datetime.utcnow().isoformat()
-            }}, 
-            upsert=True
-        )
-        msg = "📢 확성기 적용 완료! (1시간 동안 유지됩니다)"
+    profile = user.get("profile", {})
+    item_type = data.get("item_type")
+    extra_data = data.get("extra_data", "")
 
-    elif data.item_type.startswith("theme_"):
-        theme_name = data.item_type.split("_")[1]
-        
-        if theme_name in profile["ownedThemes"]:
-            return {"status": "error", "message": "이미 보유하고 있는 테마입니다."}
-            
-        profile["ownedThemes"].append(theme_name)
-        profile["profileTheme"] = theme_name 
-        msg = f"✨ 테마 결제 완료! (자동으로 장착되었습니다)"
+    # 신규 추가된 포인트 아이템들을 서버가 인식하도록 조건문을 설정합니다.
+    cost = 0
+    if item_type == "nickname_color_ticket":
+        cost = 3000
+    elif item_type == "club_megaphone":
+        cost = 500
     else:
         return {"status": "error", "message": "알 수 없는 상품입니다."}
-        
+
+    if profile.get("price", 0) < cost:
+        return {"status": "error", "message": "잔고가 부족합니다."}
+
+    # 가격 차감 및 아이템 지급 로직
+    profile["price"] -= cost
+
+    if item_type == "nickname_color_ticket":
+        # 닉네임 컬러 변경 로직 (기존 칭호/이름 시스템과 연동되도록 임의의 색상 지급을 유도하거나 티켓 수를 올려줄 수 있습니다)
+        # 예시: 인벤토리에 티켓 추가
+        profile["nickname_color_tickets"] = profile.get("nickname_color_tickets", 0) + 1
+        message = "🎨 닉네임 컬러 변경권을 획득했습니다!"
+    elif item_type == "club_megaphone":
+        # 확성기 메시지 전역 설정
+        db["global_data"].update_one({"_id": "system"}, {"$set": {"megaphone_msg": extra_data}}, upsert=True)
+        message = "📢 확성기 메시지가 등록되었습니다!"
+
     db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-    return {"status": "success", "message": msg}
+    return {"status": "success", "message": message, "profile": profile}
+
+@app.post("/api/cash-shop/buy")
+def buy_cash_item(data: dict, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.get("email"): return {"status": "error", "message": "인증 실패"}
+
+    user = db["users"].find_one({"_id": email})
+    if not user: return {"status": "error", "message": "유저 없음"}
+
+    profile = user.get("profile", {})
+    item_type = data.get("item_type")
+    extra_data = data.get("extra_data", "")
+
+    # 신규 유료 아이템으로 이동한 '무지개 반사 방어권'을 인식하도록 추가합니다.
+    if item_type == "shield_ticket":
+        profile["shieldCount"] = profile.get("shieldCount", 0) + 1
+        message = "🌈 무지개 반사 방어권을 구매했습니다!"
+    elif item_type == "anon_ticket":
+        profile["anonTickets"] = profile.get("anonTickets", 0) + 1
+        message = "👻 익명 암살권을 구매했습니다!"
+    elif item_type == "fund_pack":
+        profile["price"] += 10000
+        message = "💰 긴급 자금 10,000p가 수혈되었습니다!"
+    elif item_type == "megaphone":
+        db["global_data"].update_one({"_id": "system"}, {"$set": {"megaphone_msg": extra_data}}, upsert=True)
+        message = "📢 글로벌 확성기 메시지가 등록되었습니다!"
+    elif item_type == "theme_neon":
+        owned = profile.get("ownedThemes", [])
+        if "neon" not in owned: owned.append("neon")
+        profile["ownedThemes"] = owned
+        message = "✨ 홀로그램 네온 테마를 획득했습니다!"
+    elif item_type == "theme_fire":
+        owned = profile.get("ownedThemes", [])
+        if "fire" not in owned: owned.append("fire")
+        profile["ownedThemes"] = owned
+        message = "🔥 지옥의 불꽃 테마를 획득했습니다!"
+    else:
+        return {"status": "error", "message": "알 수 없는 유료 상품입니다."}
+
+    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
+    return {"status": "success", "message": message, "profile": profile}
 
 @app.post("/api/room/gamble")
 def room_gamble(data: GambleData, authorization: str = Header(None)):

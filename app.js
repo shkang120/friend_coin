@@ -1088,12 +1088,16 @@ function applyVIPColor() { const color = document.getElementById('vip-color-pick
 window.buyShopItem = async function(itemType, cost) {
     if (myProfile.price < cost) { alert("잔고가 부족합니다!"); return; }
     let extraData = "";
-    if (itemType === 'megaphone') { 
+    
+    // 누른 아이템의 종류(itemType)에 따라 알맞은 확인창을 띄웁니다.
+    if (itemType === 'club_megaphone') { 
         extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자, 1시간 유지):"); 
         if (!extraData || extraData.trim() === "") return; 
         if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } 
+    } else if (itemType === 'nickname_color_ticket') {
+        if (!confirm(`${cost}p를 지불하고 '닉네임 컬러 변경권'을 구매하시겠습니까?`)) return;
     } else { 
-        if (!confirm(`3,000p를 지불하고 '무지개 반사' 방어권을 구매하시겠습니까?`)) return; 
+        if (!confirm(`${cost}p를 지불하고 구매하시겠습니까?`)) return; 
     }
     
     showLoading();
