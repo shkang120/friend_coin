@@ -1182,3 +1182,32 @@ def equip_title(data: TitleData, authorization: str = Header(None)):
     )
     
     return {"status": "success", "message": "칭호가 멋지게 장착되었습니다!"}
+
+# --- [신규 추가] 닉네임 컬러 변경 API ---
+class ColorChangeData(BaseModel):
+    email: str
+    color: str
+
+@app.post("/api/profile/change-color")
+def change_nickname_color(data: ColorChangeData, authorization: str = Header(None)):
+    email = verify_google_token(authorization)
+    if not email or email != data.email: 
+        return {"status": "error", "message": "인증 실패"}
+
+    user = db["users"].find_one({"_id": email})
+    if not user: 
+        return {"status": "error", "message": "유저 정보 없음"}
+
+    profile = user.get("profile", {})
+    # 티켓 개수 확인
+    tickets = profile.get("nickname_color_tickets", 0)
+
+    if tickets <= 0:
+        return {"status": "error", "message": "보유한 닉네임 컬러 변경권이 없습니다."}
+
+    # 티켓 1장 차감 및 새로운 색상 저장
+    profile["nickname_color_tickets"] = tickets - 1
+    profile["nameColor"] = data.color
+
+    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
+    return {"status": "success", "message": "닉네임 색상이 화려하게 변경되었습니다!", "profile": profile}

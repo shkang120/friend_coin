@@ -319,7 +319,6 @@ function renderHome() {
                     <div style="font-size:14px; font-weight:bold; color:#333d4b; display:flex; align-items:center; gap:4px;">💬 클럽 라운지</div>
                     <button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold; display:flex; align-items:center; gap:4px;">🔄 새로고침</button>
                 </div>
-                // 🔥 채팅 그리기 로직 (renderHome 내부)
                 <div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">
                 ${room.messages && room.messages.length > 0 ? room.messages.map(m => { 
                     if(m.sender_email === 'system') { 
@@ -343,8 +342,6 @@ function renderHome() {
                     `; 
                 }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}
                 </div>
-                
-                // 🔥 전송 버튼 영역 (확성기 버튼 추가)
                 <div style="display:flex; gap:8px;">
                     <button onclick="rollDice()" style="background:#fff3e0; color:#e65100; border:1px solid #ffe0b2; padding:6px 10px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:18px;" title="500p 주사위 배팅">🎲</button>
                     
@@ -1178,6 +1175,33 @@ function openProfileModal() {
             `;
         }).join('');
     }
+
+    // --- [신규 추가] 프로필 모달 내 닉네임 컬러 변경 UI 동적 생성 ---
+    let colorContainer = document.getElementById('color-ticket-container');
+    if (!colorContainer) {
+        colorContainer = document.createElement('div');
+        colorContainer.id = 'color-ticket-container';
+        // 테마 컨테이너 바로 위에 삽입합니다.
+        const themeContainer = document.getElementById('owned-themes-container');
+        if (themeContainer && themeContainer.parentNode) {
+            themeContainer.parentNode.insertBefore(colorContainer, themeContainer);
+        }
+    }
+    
+    // 남은 티켓 수 렌더링 및 색상 선택기 HTML
+    const colorTicketCount = myProfile.nickname_color_tickets || 0;
+    colorContainer.innerHTML = `
+        <div style="background: #f9fafb; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb; text-align: left;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <div style="font-weight: bold; font-size: 14px; color: #333d4b;">🎨 닉네임 컬러 변경권</div>
+                <div style="font-size: 12px; color: #8b95a1; font-weight: bold;">보유: ${colorTicketCount}개</div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="color" id="new-nickname-color" value="${myProfile.nameColor || '#333d4b'}" style="width: 40px; height: 40px; border: none; cursor: pointer; padding: 0; background: transparent; border-radius: 8px;">
+                <button onclick="useColorTicket()" style="flex: 1; padding: 10px; background: #333d4b; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">변경권 1개 사용하기</button>
+            </div>
+        </div>
+    `;
 }
 
 function closeProfileModal() { document.getElementById('profile-modal').style.display = 'none'; }
@@ -1569,3 +1593,42 @@ window.sendMegaphoneChat = async function() {
         await forceSync(); 
     } catch(err) { console.error(err); } 
 }
+
+// --- [신규 추가] 닉네임 컬러 변경권 사용 함수 ---
+window.useColorTicket = async function() {
+    if (!myProfile.nickname_color_tickets || myProfile.nickname_color_tickets <= 0) {
+        alert("보유한 닉네임 컬러 변경권이 없습니다. 상점에서 구매해주세요!");
+        return;
+    }
+    
+    const newColor = document.getElementById('new-nickname-color').value;
+    if (newColor === myProfile.nameColor) {
+        alert("현재 색상과 동일합니다. 다른 색상을 선택해 주세요."); 
+        return;
+    }
+    
+    if (!confirm(`변경권 1개를 사용하여 닉네임 색상을 변경하시겠습니까?`)) return;
+
+    showLoading();
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/profile/change-color`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` },
+            body: JSON.stringify({ email: myEmail, color: newColor })
+        });
+        
+        const data = await res.json();
+        if (data.status === 'success') {
+            showToast("🎨 닉네임 색상이 성공적으로 변경되었습니다!");
+            triggerConfetti();
+            await forceSync(); // 변경된 프로필 색상을 로비 화면 전체에 즉시 동기화
+            openProfileModal(); // 모달 창 내의 티켓 개수 새로고침
+        } else {
+            alert(data.message);
+        }
+    } catch (e) {
+        alert("서버 통신 오류가 발생했습니다.");
+    } finally {
+        hideLoading();
+    }
+};
