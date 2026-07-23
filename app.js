@@ -325,18 +325,21 @@ function renderHome() {
                         return `<div style="text-align:center; margin:8px 0;"><span style="font-size:11px; background:#fff3e0; color:#e65100; padding:6px 10px; border-radius:12px; font-weight:bold; display:inline-block;">${escapeHtml(m.message)}</span></div>`; 
                     }
                     const isMe = m.sender_email === myEmail; 
-                    const isMega = m.is_megaphone; // 🔥 확성기 여부 확인
+                    const isMega = m.is_megaphone; 
                     
-                    // 🔥 일반 파란색이 아닌 더 화려한 그라데이션 파란색과 그림자 효과 적용
-                    const bubbleBg = isMega ? 'linear-gradient(135deg, #3182f6, #8e44ad)' : (isMe ? '#3182f6' : '#f2f4f6');
+                    // 🔥 1. 파란색 대신 눈에 확 띄는 강렬한 오렌지/핑크(선셋) 그라데이션 적용
+                    const bubbleBg = isMega ? 'linear-gradient(135deg, #ff9a44, #fc6076)' : (isMe ? '#3182f6' : '#f2f4f6');
                     const bubbleColor = (isMega || isMe) ? 'white' : '#333d4b';
-                    const megaShadow = isMega ? 'box-shadow: 0 4px 10px rgba(49,130,246,0.4); border: 1px solid #b6e3f4;' : 'border: 1px solid transparent;';
+                    
+                    // 🔥 2. 은은하게 빛나는 붉은 그림자와 굵은 글씨(bold) 효과 추가
+                    const megaShadow = isMega ? 'box-shadow: 0 4px 12px rgba(252, 96, 118, 0.4); border: 1px solid #ffdac1; font-weight: bold;' : 'border: 1px solid transparent; font-weight: normal;';
                     
                     return `
                         <div style="text-align:${isMe ? 'right' : 'left'};">
                             <span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span>
                             <div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${bubbleBg}; color:${bubbleColor}; ${megaShadow} max-width:80%; word-break:break-all;">
-                                ${isMega ? '📢 ' : ''}${escapeHtml(m.message)}
+                                <!-- 🔥 3. 📢 이모지 조건문을 삭제하여 깔끔한 텍스트만 출력하게 수정 -->
+                                ${escapeHtml(m.message)}
                             </div>
                         </div>
                     `; 
