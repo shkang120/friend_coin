@@ -319,22 +319,38 @@ function renderHome() {
                     <div style="font-size:14px; font-weight:bold; color:#333d4b; display:flex; align-items:center; gap:4px;">💬 클럽 라운지</div>
                     <button onclick="refreshChat()" style="background:none; border:none; color:#3182f6; font-size:12px; cursor:pointer; font-weight:bold; display:flex; align-items:center; gap:4px;">🔄 새로고침</button>
                 </div>
+                // 🔥 채팅 그리기 로직 (renderHome 내부)
                 <div id="chat-box" style="height:150px; overflow-y:auto; background:white; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #e5e8eb; font-size:13px; display:flex; flex-direction:column; gap:8px;">
                 ${room.messages && room.messages.length > 0 ? room.messages.map(m => { 
                     if(m.sender_email === 'system') { 
                         return `<div style="text-align:center; margin:8px 0;"><span style="font-size:11px; background:#fff3e0; color:#e65100; padding:6px 10px; border-radius:12px; font-weight:bold; display:inline-block;">${escapeHtml(m.message)}</span></div>`; 
                     }
                     const isMe = m.sender_email === myEmail; 
+                    const isMega = m.is_megaphone; // 🔥 확성기 여부 확인
+                    
+                    // 🔥 일반 파란색이 아닌 더 화려한 그라데이션 파란색과 그림자 효과 적용
+                    const bubbleBg = isMega ? 'linear-gradient(135deg, #3182f6, #8e44ad)' : (isMe ? '#3182f6' : '#f2f4f6');
+                    const bubbleColor = (isMega || isMe) ? 'white' : '#333d4b';
+                    const megaShadow = isMega ? 'box-shadow: 0 4px 10px rgba(49,130,246,0.4); border: 1px solid #b6e3f4;' : 'border: 1px solid transparent;';
+                    
                     return `
                         <div style="text-align:${isMe ? 'right' : 'left'};">
                             <span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span>
-                            <div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${isMe ? '#3182f6' : '#f2f4f6'}; color:${isMe ? 'white' : '#333d4b'}; max-width:80%; word-break:break-all;">${escapeHtml(m.message)}</div>
+                            <div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${bubbleBg}; color:${bubbleColor}; ${megaShadow} max-width:80%; word-break:break-all;">
+                                ${isMega ? '📢 ' : ''}${escapeHtml(m.message)}
+                            </div>
                         </div>
                     `; 
                 }).join('') : '<div style="text-align:center; color:#8b95a1; margin-top:50px;">채팅이 없습니다. 첫 인사를 남겨보세요!</div>'}
                 </div>
+                
+                // 🔥 전송 버튼 영역 (확성기 버튼 추가)
                 <div style="display:flex; gap:8px;">
                     <button onclick="rollDice()" style="background:#fff3e0; color:#e65100; border:1px solid #ffe0b2; padding:6px 10px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:18px;" title="500p 주사위 배팅">🎲</button>
+                    
+                    <!-- 클럽 확성기 버튼 -->
+                    <button onclick="sendMegaphoneChat()" style="background:#f39c12; color:white; border:none; padding:6px 10px; border-radius:8px; font-weight:bold; cursor:pointer;" title="클럽 확성기 사용">📢 ${myProfile.clubMegaphones || 0}</button>
+                    
                     <input id="chat-input" type="text" placeholder="메시지 입력..." style="flex:1; padding:10px; border:1px solid #e5e8eb; border-radius:8px; outline:none;" onkeypress="if(event.key==='Enter') sendChat()">
                     <button onclick="sendChat()" style="background:#333d4b; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">전송</button>
                 </div>
@@ -676,7 +692,7 @@ function renderProfile() {
                 <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩500</button>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; text-align:left;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="font-size:28px; flex-shrink:0;">✨</div>
                     <div style="text-align:left; flex:1;">
@@ -1089,13 +1105,11 @@ window.buyShopItem = async function(itemType, cost) {
     if (myProfile.price < cost) { alert("잔고가 부족합니다!"); return; }
     let extraData = "";
     
-    // 누른 아이템의 종류(itemType)에 따라 알맞은 확인창을 띄웁니다.
-    if (itemType === 'club_megaphone') { 
-        extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자, 1시간 유지):"); 
-        if (!extraData || extraData.trim() === "") return; 
-        if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } 
-    } else if (itemType === 'nickname_color_ticket') {
+    // 🔥 클럽 확성기는 텍스트 입력창 없이 바로 구매되도록 수정
+    if (itemType === 'nickname_color_ticket') {
         if (!confirm(`${cost}p를 지불하고 '닉네임 컬러 변경권'을 구매하시겠습니까?`)) return;
+    } else if (itemType === 'club_megaphone') {
+        if (!confirm(`${cost}p를 지불하고 '클럽 확성기'를 인벤토리에 추가하시겠습니까?`)) return;
     } else { 
         if (!confirm(`${cost}p를 지불하고 구매하시겠습니까?`)) return; 
     }
@@ -1219,7 +1233,13 @@ async function initializeApp() {
         const serverData = await serverResponse.json(); 
         if (serverData.status === 'unauthenticated' || serverData.isNewUser) { showLoginScreen(); return; } 
         myProfile = serverData.profile; myEmail = localStorage.getItem('fc_email'); myUsername = myProfile.name; myNotifications = serverData.noti || []; myRooms = serverData.my_rooms || []; globalRanking = serverData.global_ranking || []; globalMegaphone = serverData.megaphone_msg || "";
-        const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup(); 
+        const overlay = document.getElementById('login-overlay'); if(overlay) overlay.remove(); finishSetup();
+        // 🔥 전광판 스크롤 속도 최적화 CSS 강제 주입
+        const tickerSpeedStyle = document.createElement('style');
+        tickerSpeedStyle.innerHTML = `
+        marquee { scrollamount: 12 !important; } /* 기본 마퀴 태그 속도업 */
+        .ticker-animation { animation-duration: 8s !important; } /* CSS 애니메이션 속도업 */`;
+        document.head.appendChild(tickerSpeedStyle);
     } catch(err) { console.error(err); alert("서버 연결에 실패했습니다."); } finally { hideLoading(); }
 }
 
@@ -1529,3 +1549,23 @@ window.renderTitleSelect = function() {
         titleSelect.appendChild(option);
     });
 };
+
+window.sendMegaphoneChat = async function() { 
+    if (!myProfile.clubMegaphones || myProfile.clubMegaphones <= 0) { 
+        alert("보유한 클럽 확성기가 없습니다. 포인트 상점에서 구매해 주세요!"); 
+        return; 
+    }
+    const input = document.getElementById('chat-input'); 
+    const text = input.value.trim(); 
+    if(!text || !currentRoomCode) { alert("확성기로 쏠 메시지를 먼저 입력해 주세요."); return; } 
+    
+    input.value = ''; 
+    try { 
+        await fetch(`${BACKEND_URL}/api/room/chat`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, 
+            body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text, is_megaphone: true }) 
+        }); 
+        await forceSync(); 
+    } catch(err) { console.error(err); } 
+}

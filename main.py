@@ -797,14 +797,42 @@ def leave_room(data: RoomData, authorization: str = Header(None)):
     return {"status": "success"}
 
 @app.post("/api/room/chat")
-def send_chat(data: ChatData, authorization: str = Header(None)):
+def send_chat(data: dict, authorization: str = Header(None)):
     email = verify_google_token(authorization)
-    if not email or email != data.sender_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
-    if is_spamming(email, "chat", 1): return {"status": "error", "message": "도배 방지! 천천히 입력해 주세요."}
-    room = db["rooms"].find_one({"_id": data.room_code})
-    if not room or email not in room.get("members", []): return {"status": "error", "message": "해당 클럽의 멤버가 아닙니다."}
-    chat_msg = {"sender_email": email, "sender_name": data.sender_name, "message": data.message}
-    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": chat_msg}})
+    if not email or email != data.get("sender_email"):
+        return {"status": "error", "message": "인증 실패"}
+
+    room_code = data.get("room_code")
+    message_text = data.get("message", "").strip()
+    is_megaphone = data.get("is_megaphone", False) # 🔥 확성기 여부 수신
+
+    if not message_text:
+        return {"status": "error", "message": "메시지가 비어있습니다."}
+
+    user = db["users"].find_one({"_id": email})
+    if not user: return {"status": "error"}
+
+    # 🔥 확성기 사용 시 티켓 차감 로직
+    profile = user.get("profile", {})
+    if is_megaphone:
+        if profile.get("clubMegaphones", 0) <= 0:
+            return {"status": "error", "message": "확성기 티켓이 부족합니다."}
+        profile["clubMegaphones"] -= 1
+        db["users"].update_one({"_id": email}, {"$set": {"profile.clubMegaphones": profile["clubMegaphones"]}})
+
+    # 🔥 저장할 메시지 객체에 is_megaphone 속성 포함
+    new_message = {
+        "sender_email": email,
+        "sender_name": data.get("sender_name"),
+        "message": message_text,
+        "is_megaphone": is_megaphone, 
+        "timestamp": datetime.utcnow()
+    }
+
+    db["rooms"].update_one(
+        {"room_code": room_code},
+        {"$push": {"messages": new_message}}
+    )
     return {"status": "success"}
 
 @app.post("/api/room/event/add")
@@ -1008,6 +1036,10 @@ def buy_shop_item(data: dict, authorization: str = Header(None)):
         # 확성기 메시지 전역 설정
         db["global_data"].update_one({"_id": "system"}, {"$set": {"megaphone_msg": extra_data}}, upsert=True)
         message = "📢 확성기 메시지가 등록되었습니다!"
+    elif item_type == "club_megaphone":
+        # 🔥 전역 메시지 대신 내 인벤토리 수량 증가
+        profile["clubMegaphones"] = profile.get("clubMegaphones", 0) + 1
+        message = "📢 클럽 확성기를 성공적으로 구매했습니다!"
 
     db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
     return {"status": "success", "message": message, "profile": profile}
