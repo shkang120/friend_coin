@@ -1028,18 +1028,14 @@ def buy_shop_item(data: dict, authorization: str = Header(None)):
     profile["price"] -= cost
 
     if item_type == "nickname_color_ticket":
-        # 닉네임 컬러 변경 로직 (기존 칭호/이름 시스템과 연동되도록 임의의 색상 지급을 유도하거나 티켓 수를 올려줄 수 있습니다)
-        # 예시: 인벤토리에 티켓 추가
         profile["nickname_color_tickets"] = profile.get("nickname_color_tickets", 0) + 1
         message = "🎨 닉네임 컬러 변경권을 획득했습니다!"
     elif item_type == "club_megaphone":
-        # 확성기 메시지 전역 설정
-        db["global_data"].update_one({"_id": "system"}, {"$set": {"megaphone_msg": extra_data}}, upsert=True)
-        message = "📢 확성기 메시지가 등록되었습니다!"
-    elif item_type == "club_megaphone":
-        # 🔥 전역 메시지 대신 내 인벤토리 수량 증가
+        # 🔥 클럽 확성기 인벤토리 수량 증가 (중복 코드 제거됨)
         profile["clubMegaphones"] = profile.get("clubMegaphones", 0) + 1
         message = "📢 클럽 확성기를 성공적으로 구매했습니다!"
+    else:
+        return {"status": "error", "message": "알 수 없는 상품입니다."}
 
     db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
     return {"status": "success", "message": message, "profile": profile}
