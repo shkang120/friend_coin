@@ -804,7 +804,7 @@ def send_chat(data: dict, authorization: str = Header(None)):
 
     room_code = data.get("room_code")
     message_text = data.get("message", "").strip()
-    is_megaphone = data.get("is_megaphone", False) # 🔥 확성기 여부 수신
+    is_megaphone = data.get("is_megaphone", False) 
 
     if not message_text:
         return {"status": "error", "message": "메시지가 비어있습니다."}
@@ -812,25 +812,27 @@ def send_chat(data: dict, authorization: str = Header(None)):
     user = db["users"].find_one({"_id": email})
     if not user: return {"status": "error"}
 
-    # 🔥 확성기 사용 시 티켓 차감 로직
     profile = user.get("profile", {})
+    
+    # 확성기 사용 시 티켓 차감 로직
     if is_megaphone:
         if profile.get("clubMegaphones", 0) <= 0:
             return {"status": "error", "message": "확성기 티켓이 부족합니다."}
         profile["clubMegaphones"] -= 1
         db["users"].update_one({"_id": email}, {"$set": {"profile.clubMegaphones": profile["clubMegaphones"]}})
 
-    # 🔥 저장할 메시지 객체에 is_megaphone 속성 포함
+    # 저장할 메시지 객체 생성 (안전하게 문자열 시간으로 저장)
     new_message = {
         "sender_email": email,
         "sender_name": data.get("sender_name"),
         "message": message_text,
         "is_megaphone": is_megaphone, 
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.utcnow().isoformat() 
     }
 
+    # 🔥 오류 원인 수정: "room_code"가 아니라 "_id"로 방을 찾아 업데이트해야 합니다!
     db["rooms"].update_one(
-        {"room_code": room_code},
+        {"_id": room_code}, 
         {"$push": {"messages": new_message}}
     )
     return {"status": "success"}
@@ -1063,11 +1065,14 @@ def buy_cash_item(data: dict, authorization: str = Header(None)):
         profile["price"] += 10000
         message = "💰 긴급 자금 10,000p가 수혈되었습니다!"
     elif item_type == "megaphone":
-        # 🔥 DB 저장 위치와 변수명 오류를 수정했습니다! (global_data -> system)
+        # 🔥 유저의 닉네임을 가져와 메시지 앞에 붙여줍니다.
+        user_name = profile.get("name", "익명")
+        display_msg = f"[{user_name}] {extra_data}"
+        
         db["system"].update_one(
             {"_id": "global"}, 
             {"$set": {
-                "megaphone": extra_data, 
+                "megaphone": display_msg, 
                 "megaphone_time": datetime.utcnow().isoformat()
             }}, 
             upsert=True
