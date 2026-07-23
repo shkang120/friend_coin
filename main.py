@@ -1063,8 +1063,16 @@ def buy_cash_item(data: dict, authorization: str = Header(None)):
         profile["price"] += 10000
         message = "💰 긴급 자금 10,000p가 수혈되었습니다!"
     elif item_type == "megaphone":
-        db["global_data"].update_one({"_id": "system"}, {"$set": {"megaphone_msg": extra_data}}, upsert=True)
-        message = "📢 글로벌 확성기 메시지가 등록되었습니다!"
+        # 🔥 DB 저장 위치와 변수명 오류를 수정했습니다! (global_data -> system)
+        db["system"].update_one(
+            {"_id": "global"}, 
+            {"$set": {
+                "megaphone": extra_data, 
+                "megaphone_time": datetime.utcnow().isoformat()
+            }}, 
+            upsert=True
+        )
+        message = "📢 글로벌 확성기 메시지가 전국구 전광판에 등록되었습니다!"
     elif item_type == "theme_neon":
         owned = profile.get("ownedThemes", [])
         if "neon" not in owned: owned.append("neon")

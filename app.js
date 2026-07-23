@@ -1579,19 +1579,28 @@ window.sendMegaphoneChat = async function() {
         alert("보유한 클럽 확성기가 없습니다. 포인트 상점에서 구매해 주세요!"); 
         return; 
     }
-    const input = document.getElementById('chat-input'); 
-    const text = input.value.trim(); 
-    if(!text || !currentRoomCode) { alert("확성기로 쏠 메시지를 먼저 입력해 주세요."); return; } 
     
-    input.value = ''; 
+    // 🔥 하단 채팅창이 아닌, 팝업(prompt)을 띄워 확성기 전용 메시지를 입력받습니다.
+    const text = prompt("📢 클럽 라운지에 띄울 확성기 메시지를 입력하세요:"); 
+    if(!text || text.trim() === "") {
+        return; // 입력을 취소하거나 비워두면 종료
+    }
+    
+    showLoading();
     try { 
-        await fetch(`${BACKEND_URL}/api/room/chat`, { 
+        const res = await fetch(`${BACKEND_URL}/api/room/chat`, { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fc_id_token')}` }, 
-            body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text, is_megaphone: true }) 
+            body: JSON.stringify({ room_code: currentRoomCode, sender_email: myEmail, sender_name: myProfile.name, message: text.trim(), is_megaphone: true }) 
         }); 
+        
+        // 전송 성공 시 화면을 즉시 동기화하여 채팅 말풍선과 확성기 남은 개수를 갱신합니다.
         await forceSync(); 
-    } catch(err) { console.error(err); } 
+    } catch(err) { 
+        console.error(err); 
+    } finally {
+        hideLoading();
+    }
 }
 
 // --- [신규 추가] 닉네임 컬러 변경권 사용 함수 ---
