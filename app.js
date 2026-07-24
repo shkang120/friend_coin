@@ -1,15 +1,42 @@
 const BACKEND_URL = "https://friend-coin.onrender.com";
 
-// 🔥 [신규 추가] 말풍선 반짝임(Glow) 애니메이션 CSS 강제 주입
+// 🔥 [신규 추가] 말풍선 반짝임(Glow) 및 큐티클 광택(Shine) 애니메이션 CSS 강제 주입
 const chatEffectStyle = document.createElement('style');
 chatEffectStyle.innerHTML = `
+    /* 1. 은은한 그림자 숨쉬기 효과 */
     @keyframes softPulseGlow {
         0% { box-shadow: 0 4px 10px rgba(252, 96, 118, 0.4); }
         50% { box-shadow: 0 4px 20px rgba(255, 154, 68, 0.8), 0 0 12px rgba(255, 255, 255, 0.5); }
         100% { box-shadow: 0 4px 10px rgba(252, 96, 118, 0.4); }
     }
+    
+    /* 2. 큐티클 광택(빛 반사) 스윕 효과 */
+    @keyframes cuticleShine {
+        0% { left: -100%; opacity: 0; }
+        15% { left: 100%; opacity: 0.8; } /* 빛이 스르륵 지나감 */
+        100% { left: 100%; opacity: 0; } /* 잠시 대기 */
+    }
+
+    /* 애니메이션 클래스 본체 */
     .mega-sparkle {
         animation: softPulseGlow 2.5s infinite ease-in-out;
+        position: relative; /* 광택 효과의 기준점 */
+        overflow: hidden; /* 빛이 말풍선 밖으로 나가지 않도록 가둠 */
+    }
+
+    /* 광택 효과를 만들어내는 가상 레이어 */
+    .mega-sparkle::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 40%;
+        height: 100%;
+        /* 사선 모양의 투명한 하얀색 그라데이션 (빛 반사 느낌) */
+        background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.7) 50%, rgba(255,255,255,0) 100%);
+        transform: skewX(-25deg); /* 사선으로 기울임 */
+        animation: cuticleShine 3s infinite; /* 3초마다 한 번씩 반짝임 */
+        pointer-events: none; /* 클릭을 방해하지 않음 */
     }
 `;
 document.head.appendChild(chatEffectStyle);
