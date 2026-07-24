@@ -1,5 +1,19 @@
 const BACKEND_URL = "https://friend-coin.onrender.com";
 
+// 🔥 [신규 추가] 말풍선 반짝임(Glow) 애니메이션 CSS 강제 주입
+const chatEffectStyle = document.createElement('style');
+chatEffectStyle.innerHTML = `
+    @keyframes softPulseGlow {
+        0% { box-shadow: 0 4px 10px rgba(252, 96, 118, 0.4); }
+        50% { box-shadow: 0 4px 20px rgba(255, 154, 68, 0.8), 0 0 12px rgba(255, 255, 255, 0.5); }
+        100% { box-shadow: 0 4px 10px rgba(252, 96, 118, 0.4); }
+    }
+    .mega-sparkle {
+        animation: softPulseGlow 2.5s infinite ease-in-out;
+    }
+`;
+document.head.appendChild(chatEffectStyle);
+
 let myEmail = localStorage.getItem('fc_email') || null; 
 let myUsername = localStorage.getItem('fc_username') || null;
 let loginIntent = ''; 
@@ -327,18 +341,19 @@ function renderHome() {
                     const isMe = m.sender_email === myEmail; 
                     const isMega = m.is_megaphone; 
                     
-                    // 🔥 1. 파란색 대신 눈에 확 띄는 강렬한 오렌지/핑크(선셋) 그라데이션 적용
+                    // 선셋 그라데이션 배경
                     const bubbleBg = isMega ? 'linear-gradient(135deg, #ff9a44, #fc6076)' : (isMe ? '#3182f6' : '#f2f4f6');
                     const bubbleColor = (isMega || isMe) ? 'white' : '#333d4b';
                     
-                    // 🔥 2. 은은하게 빛나는 붉은 그림자와 굵은 글씨(bold) 효과 추가
-                    const megaShadow = isMega ? 'box-shadow: 0 4px 12px rgba(252, 96, 118, 0.4); border: 1px solid #ffdac1; font-weight: bold;' : 'border: 1px solid transparent; font-weight: normal;';
+                    // 🔥 변경된 부분: 확성기일 경우 mega-sparkle 클래스를 부여하고, 일반 스타일은 테두리와 굵기만 잡아줍니다.
+                    const megaClass = isMega ? 'mega-sparkle' : '';
+                    const megaStyle = isMega ? 'border: 1px solid #ffdac1; font-weight: bold;' : 'border: 1px solid transparent; font-weight: normal;';
                     
                     return `
                         <div style="text-align:${isMe ? 'right' : 'left'};">
                             <span style="font-size:11px; color:#8b95a1; margin-right:5px;">${isMe?'':escapeHtml(m.sender_name)}</span>
-                            <div style="display:inline-block; padding:8px 12px; border-radius:12px; background:${bubbleBg}; color:${bubbleColor}; ${megaShadow} max-width:80%; word-break:break-all;">
-                                <!-- 🔥 3. 📢 이모지 조건문을 삭제하여 깔끔한 텍스트만 출력하게 수정 -->
+                            <!-- 🔥 class 영역에 megaClass 변수가 삽입되었습니다 -->
+                            <div class="${megaClass}" style="display:inline-block; padding:8px 12px; border-radius:12px; background:${bubbleBg}; color:${bubbleColor}; ${megaStyle} max-width:80%; word-break:break-all;">
                                 ${escapeHtml(m.message)}
                             </div>
                         </div>
