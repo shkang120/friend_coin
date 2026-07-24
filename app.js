@@ -434,8 +434,34 @@ function renderHome() {
         }).join('');
         
         html += `<button onclick="leaveCurrentRoom()" style="width:100%; margin-top:20px; padding:12px; background:white; color:#ff3b30; border:1px solid #ffdbdb; border-radius:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; font-size:14px;">🚪 이 클럽에서 나가기</button>`;
+        
+        // 🔥 [신규 추가] 화면을 새로 그리기 전에 현재 스크롤 위치를 기억합니다.
+        const existingChatBox = document.getElementById('chat-box');
+        let savedScrollTop = -1;
+        let isAtBottom = true;
+        
+        if (existingChatBox) {
+            savedScrollTop = existingChatBox.scrollTop;
+            // 스크롤이 맨 아래쪽 근처에 있는지 확인 (30px 여유를 두어 자연스럽게 계산)
+            isAtBottom = (existingChatBox.scrollHeight - existingChatBox.scrollTop <= existingChatBox.clientHeight + 30);
+        }
+
+        // 기존 HTML 덮어쓰기
         list.innerHTML = html; 
-        setTimeout(() => { const chatBox = document.getElementById('chat-box'); if(chatBox) chatBox.scrollTop = chatBox.scrollHeight; }, 10);
+        
+        // 🔥 [수정] 스크롤 위치를 사용자의 현재 상태에 맞게 지능적으로 복구합니다.
+        setTimeout(() => { 
+            const newChatBox = document.getElementById('chat-box'); 
+            if(newChatBox) {
+                // 사용자가 이전 대화를 보려고 위로 스크롤한 상태라면 그 위치를 유지
+                if (savedScrollTop !== -1 && !isAtBottom) {
+                    newChatBox.scrollTop = savedScrollTop; 
+                } else {
+                    // 원래 맨 아래를 보고 있었다면 새 메시지 확인을 위해 맨 아래로 고정
+                    newChatBox.scrollTop = newChatBox.scrollHeight; 
+                }
+            } 
+        }, 10);
     }
 }
 
