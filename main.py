@@ -168,6 +168,16 @@ MONGO_URL = os.getenv("MONGO_URL")
 client = MongoClient(MONGO_URL)
 db = client["friend_coin_db"]
 
+# 🔥 상점 가격표 중앙 관리 (1원 = 2p 환율 적용)
+SHOP_PRICES = {
+    "fund_pack": {"cash": 5000, "point_reward": 10000},
+    "megaphone": {"point": 2000, "cash": 1000},
+    "anon_ticket": {"point": 5000, "cash": 2500},
+    "shield_ticket": {"point": 5000, "cash": 2500},
+    "club_megaphone": {"point": 1000, "cash": 500},
+    "nickname_color_ticket": {"point": 2000, "cash": 1000}
+}
+
 # 🔥 [신규 추가] VAPID 비공개 키 및 푸시 발송 함수
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
 VAPID_CLAIMS = {"sub": "mailto:shkang04120@gmail.com"}
@@ -1014,28 +1024,40 @@ def buy_shop_item(data: dict, authorization: str = Header(None)):
     item_type = data.get("item_type")
     extra_data = data.get("extra_data", "")
 
-    # 신규 추가된 포인트 아이템들을 서버가 인식하도록 조건문을 설정합니다.
-    cost = 0
-    if item_type == "nickname_color_ticket":
-        cost = 3000
-    elif item_type == "club_megaphone":
-        cost = 500
-    else:
-        return {"status": "error", "message": "알 수 없는 상품입니다."}
+    # 🔥 중앙 관리되는 가격표에서 포인트 가격을 가져옵니다.
+    if item_type not in SHOP_PRICES or "point" not in SHOP_PRICES[item_type]:
+        return {"status": "error", "message": "알 수 없는 상품이거나 포인트로 구매할 수 없습니다."}
+
+    cost = SHOP_PRICES[item_type]["point"]
 
     if profile.get("price", 0) < cost:
         return {"status": "error", "message": "잔고가 부족합니다."}
 
-    # 가격 차감 및 아이템 지급 로직
     profile["price"] -= cost
+    message = ""
 
+    # 🔥 공통 아이템 지급 로직
     if item_type == "nickname_color_ticket":
         profile["nickname_color_tickets"] = profile.get("nickname_color_tickets", 0) + 1
-        message = "🎨 닉네임 컬러 변경권을 획득했습니다!"
+        message = "🎨 닉네임 컬러 변경권을 포인트로 획득했습니다!"
     elif item_type == "club_megaphone":
-        # 🔥 클럽 확성기 인벤토리 수량 증가 (중복 코드 제거됨)
         profile["clubMegaphones"] = profile.get("clubMegaphones", 0) + 1
-        message = "📢 클럽 확성기를 성공적으로 구매했습니다!"
+        message = "📢 클럽 확성기를 포인트로 획득했습니다!"
+    elif item_type == "shield_ticket":
+        profile["shieldCount"] = profile.get("shieldCount", 0) + 1
+        message = "🌈 무지개 반사 방어권을 포인트로 획득했습니다!"
+    elif item_type == "anon_ticket":
+        profile["anonTickets"] = profile.get("anonTickets", 0) + 1
+        message = "👻 익명 암살권을 포인트로 획득했습니다!"
+    elif item_type == "megaphone":
+        user_name = profile.get("name", "익명")
+        display_msg = f"[{user_name}] {extra_data}"
+        db["system"].update_one(
+            {"_id": "global"}, 
+            {"$set": {"megaphone": display_msg, "megaphone_time": datetime.utcnow().isoformat()}}, 
+            upsert=True
+        )
+        message = "📢 글로벌 확성기 메시지가 전국구 전광판에 등록되었습니다!"
     else:
         return {"status": "error", "message": "알 수 없는 상품입니다."}
 
