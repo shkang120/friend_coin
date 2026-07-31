@@ -150,7 +150,82 @@ async def run_background_scheduler():
                     
                 if room_modified:
                     db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"agendas": surviving_agendas}})
+
+            # 🔥 3. 주간 클럽 미션 정산 및 신규 할당 (매주 월요일 08시)
+            if kst_now.weekday() == 0 and kst_now.hour >= 8:
+                current_monday_str = kst_now.strftime("%Y-%m-%d")
+                
+                # 이번 주 월요일에 이미 미션 갱신을 완료했는지 확인 (중복 방지)
+                if sys_data.get("last_mission_reset_date") != current_monday_str:
                     
+                    for room in db["rooms"].find():
+                        members = room.get("members", [])
+                        if len(members) < 2:
+                            continue  # 1인 클럽은 미션에서 완전히 제외합니다.
+                            
+                        # [A] 기존 미션 정산 로직
+                        current_mission = room.get("current_mission")
+                        if current_mission:
+                            t_score = current_mission.get("total_score", 0)
+                            target = current_mission.get("target_score", 1)
+                            
+                            if t_score >= target:
+                                # 성공 시 기여도 비례 보상 분배
+                                reward_p = current_mission.get("reward_points", 0)
+                                reward_t = current_mission.get("reward_tickets", 0)
+                                conts = current_mission.get("contributions", {})
+                                
+                                for mem_email, score in conts.items():
+                                    if score > 0:
+                                        ratio = score / t_score
+                                        earned_p = int(reward_p * ratio)
+                                        earned_t = int(reward_t * ratio)
+                                        
+                                        # 유저 DB에 보상 지급
+                                        m_user = db["users"].find_one({"_id": mem_email})
+                                        if m_user:
+                                            m_prof = m_user.get("profile", {})
+                                            m_prof["price"] = m_prof.get("price", 20000) + earned_p
+                                            m_prof["goodTickets"] = m_prof.get("goodTickets", 0) + earned_t
+                                            m_prof["badTickets"] = m_prof.get("badTickets", 0) + earned_t
+                                            
+                                            m_noti = m_user.get("noti", [])
+                                            m_noti.insert(0, f"🎉 [미션 성공] '{current_mission['name']}' 기여도 {int(ratio*100)}% 달성! (+{earned_p}p, 평가권 각 +{earned_t}장)")
+                                            db["users"].update_one({"_id": mem_email}, {"$set": {"profile": m_prof, "noti": m_noti}})
+                                
+                                # 성공 시스템 채팅
+                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": f"🎉 지난주 클럽 미션을 달성했습니다! 참여자들에게 기여도 비례 보상이 지급되었습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}}})
+                            else:
+                                # 실패 시스템 채팅
+                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": f"💦 아쉽게도 지난주 클럽 미션 목표 달성에 실패했습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}}})
+                        
+                        # [B] 신규 미션 무작위 할당 로직
+                        new_m = random.choice(MISSIONS_POOL)
+                        
+                        # 인원수 비례 동적 난이도 계산 (소수점은 반올림 처리)
+                        target_score = max(1, int(new_m["base_target_per_user"] * len(members)))
+                        total_reward_p = int(new_m["reward_points"] * len(members))
+                        total_reward_t = int(new_m["reward_tickets"] * len(members))
+                        
+                        mission_doc = {
+                            "type": new_m["type"],
+                            "name": new_m["name"],
+                            "description": new_m["description"],
+                            "target_score": target_score,
+                            "total_score": 0,
+                            "reward_points": total_reward_p,
+                            "reward_tickets": total_reward_t,
+                            "contributions": {m: 0 for m in members}
+                        }
+                        
+                        db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"current_mission": mission_doc}})
+                        
+                        # 신규 미션 시작 시스템 채팅
+                        db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": f"🔔 이번 주 주간 미션: [{new_m['name']}]\n목표: 총 {target_score}회 달성\n내용: {new_m['description']}", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}}})
+                    
+                    # 모든 방의 처리가 끝나면 글로벌 플래그 업데이트
+                    db["system"].update_one({"_id": "global"}, {"$set": {"last_mission_reset_date": current_monday_str}}, upsert=True)
+
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -201,6 +276,18 @@ SHOP_PRICES = {
     "club_megaphone": {"point": 1000, "cash": 500},
     "nickname_color_ticket": {"point": 2000, "cash": 1000}
 }
+
+# 🔥 주간 클럽 미션 8종 풀 (인원수 비례 난이도 및 보상 밸런싱)
+MISSIONS_POOL = [
+    {"type": "use_eval_tickets", "name": "냉혹한 평가단", "description": "클럽원 모두가 힘을 합쳐 다른 사람들을 쉼 없이 평가하세요!", "base_target_per_user": 4, "reward_points": 1000, "reward_tickets": 1},
+    {"type": "participate_vote", "name": "법정 단골손님", "description": "클럽 내 재판이 열리면 적극적으로 투표에 참여하여 판결을 내리세요!", "base_target_per_user": 2, "reward_points": 800, "reward_tickets": 0},
+    {"type": "win_gamble", "name": "타짜의 품격", "description": "라운지 도박장에서 승리를 쟁취하여 클럽의 자본을 불리세요!", "base_target_per_user": 2, "reward_points": 1500, "reward_tickets": 0},
+    {"type": "buy_shop_item", "name": "소비의 미학", "description": "포인트 상점과 캐시 상점에서 아이템을 적극적으로 구매하세요!", "base_target_per_user": 1, "reward_points": 0, "reward_tickets": 2},
+    {"type": "daily_attendance", "name": "개미들의 성실함", "description": "클럽원 모두가 매일 꾸준히 접속하여 출석체크 보상을 획득하세요!", "base_target_per_user": 5, "reward_points": 1000, "reward_tickets": 0},
+    {"type": "use_megaphone", "name": "확성기 플렉스", "description": "클럽 확성기를 사용하여 시선이 집중되는 화려한 메시지를 남겨보세요!", "base_target_per_user": 1, "reward_points": 800, "reward_tickets": 1},
+    {"type": "use_anon_ticket", "name": "어둠의 형제들", "description": "정체를 숨기고 '익명 암살권'을 사용하여 은밀하게 악평을 남기세요!", "base_target_per_user": 1, "reward_points": 1500, "reward_tickets": 1},
+    {"type": "open_defense_trial", "name": "진실을 밝히는 자", "description": "억울한 악평에 맞서 1,000p를 소모하여 '이의제기 방어 재판'을 개최하세요!", "base_target_per_user": 0.5, "reward_points": 3000, "reward_tickets": 2}
+]
 
 class EvalData(BaseModel):
     evaluator_email: str
