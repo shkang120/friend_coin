@@ -730,9 +730,19 @@ function renderProfile() {
         </div>
     `;
 
-    // (기존의 neonBtn, fireBtn 생성 로직은 그대로 유지합니다)
+    // --- 2. 테마 보유 여부 확인 ---
+    const neonOwned = (myProfile.ownedThemes || []).includes('neon');
+    const fireOwned = (myProfile.ownedThemes || []).includes('fire');
 
-    // --- 2. 스페셜 캐시 상점 UI (공통 5종 + 전용 3종) ---
+    const neonBtn = neonOwned 
+        ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; flex-shrink:0;" disabled>✅ 보유 중</button>`
+        : `<button onclick="buyCashItem('theme_neon')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,500</button>`;
+        
+    const fireBtn = fireOwned 
+        ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; flex-shrink:0;" disabled>✅ 보유 중</button>`
+        : `<button onclick="buyCashItem('theme_fire')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,500</button>`;
+
+    // --- 3. 유료 캐시 상점 UI (공통 5종 + 전용 3종) ---
     const cashShopHtml = `
         <div style="background: linear-gradient(135deg, #1c1c1e, #333d4b); border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.15); color:white;">
             <h3 style="margin-top:0; font-size:15px; display:flex; align-items:center; justify-content:space-between; color:#d4af37; text-align:left;">
@@ -793,7 +803,7 @@ function renderProfile() {
                 </div>
                 <button onclick="buyCashItem('club_megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩500</button>
             </div>
-
+            
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
                 <div style="display:flex; gap:12px; align-items:center; flex:1;">
                     <div style="font-size:28px; flex-shrink:0;">💰</div>
@@ -803,93 +813,6 @@ function renderProfile() {
                     </div>
                 </div>
                 <button onclick="buyCashItem('fund_pack')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩5,000</button>
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
-                <div style="display:flex; gap:12px; align-items:center; flex:1;">
-                    <div style="font-size:28px; flex-shrink:0;">✨</div>
-                    <div style="text-align:left; flex:1;">
-                        <div style="font-weight:bold; font-size:14px; color:white;">테마: 홀로그램 네온</div>
-                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">프로필 무지개빛 발광 효과</div>
-                    </div>
-                </div>
-                ${neonBtn}
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; text-align:left;">
-                <div style="display:flex; gap:12px; align-items:center; flex:1;">
-                    <div style="font-size:28px; flex-shrink:0;">🔥</div>
-                    <div style="text-align:left; flex:1;">
-                        <div style="font-weight:bold; font-size:14px; color:white;">테마: 지옥의 불꽃</div>
-                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">프로필 타오르는 오라 효과</div>
-                    </div>
-                </div>
-                ${fireBtn}
-            </div>
-        </div>
-    `;
-
-    // --- 2. 테마 보유 여부 확인 (기존 로직 유지) ---
-    const neonOwned = (myProfile.ownedThemes || []).includes('neon');
-    const fireOwned = (myProfile.ownedThemes || []).includes('fire');
-
-    const neonBtn = neonOwned 
-        ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; flex-shrink:0;" disabled>✅ 보유 중</button>`
-        : `<button onclick="buyCashItem('theme_neon')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,500</button>`;
-        
-    const fireBtn = fireOwned 
-        ? `<button style="background:#e5e8eb; color:#8b95a1; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; flex-shrink:0;" disabled>✅ 보유 중</button>`
-        : `<button onclick="buyCashItem('theme_fire')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,500</button>`;
-
-    // --- 3. 유료 캐시 상점 (무지개 반사 추가됨, 기존 유지) ---
-    const cashShopHtml = `
-        <div style="background: linear-gradient(135deg, #1c1c1e, #333d4b); border-radius:16px; padding:15px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.15); color:white;">
-            <h3 style="margin-top:0; font-size:15px; display:flex; align-items:center; justify-content:space-between; color:#d4af37; text-align:left;">
-                <div>💎 스페셜 캐시 상점</div> <span style="font-size:11px; font-weight:normal; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:10px;">가상 결제 테스트 중</span>
-            </h3>
-            
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
-                <div style="display:flex; gap:12px; align-items:center; flex:1;">
-                    <div style="font-size:28px; flex-shrink:0;">🛡️</div>
-                    <div style="text-align:left; flex:1;">
-                        <div style="font-weight:bold; font-size:14px; color:white;">무지개 반사 방어권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.shieldCount || 0}개)</span></div>
-                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">악평 피격 시 1회 자동 방어</div>
-                    </div>
-                </div>
-                <button onclick="buyCashItem('shield_ticket')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩1,000</button>
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
-                <div style="display:flex; gap:12px; align-items:center; flex:1;">
-                    <div style="font-size:28px; flex-shrink:0;">👻</div>
-                    <div style="text-align:left; flex:1;">
-                        <div style="font-weight:bold; font-size:14px; color:white;">익명 암살권 <span style="font-size:11px; color:#b6e3f4;">(보유: ${myProfile.anonTickets || 0}개)</span></div>
-                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">악평 시 내 정체 100% 은폐</div>
-                    </div>
-                </div>
-                <button onclick="buyCashItem('anon_ticket')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩2,500</button>
-            </div>
-            
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
-                <div style="display:flex; gap:12px; align-items:center; flex:1;">
-                    <div style="font-size:28px; flex-shrink:0;">💰</div>
-                    <div style="text-align:left; flex:1;">
-                        <div style="font-weight:bold; font-size:14px; color:white;">긴급 자금 수혈</div>
-                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">계좌로 즉시 10,000p 입금</div>
-                    </div>
-                </div>
-                <button onclick="buyCashItem('fund_pack')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩3,000</button>
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
-                <div style="display:flex; gap:12px; align-items:center; flex:1;">
-                    <div style="font-size:28px; flex-shrink:0;">📢</div>
-                    <div style="text-align:left; flex:1;">
-                        <div style="font-weight:bold; font-size:14px; color:white;">글로벌 확성기</div>
-                        <div style="font-size:11px; color:#8b95a1; margin-top:2px;">전국구 뉴스 티커에 메시지 띄우기</div>
-                    </div>
-                </div>
-                <button onclick="buyCashItem('megaphone')" style="background:#d4af37; color:#1c1c1e; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; flex-shrink:0;">₩500</button>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.1); border-radius:12px; margin-bottom:10px; text-align:left;">
@@ -1305,8 +1228,12 @@ window.buyShopItem = async function(itemType, cost) {
     if (myProfile.price < cost) { alert("잔고가 부족합니다!"); return; }
     let extraData = "";
     
-    // 🔥 클럽 확성기는 텍스트 입력창 없이 바로 구매되도록 수정
-    if (itemType === 'nickname_color_ticket') {
+    // 🔥 포인트 상점에서도 글로벌 확성기 구매 시 메시지를 입력받습니다.
+    if (itemType === 'megaphone') {
+        extraData = prompt("전국구 뉴스 티커에 띄울 메시지를 입력하세요 (최대 30자, 1시간 유지):"); 
+        if (!extraData || extraData.trim() === "") return; 
+        if (extraData.length > 30) { alert("30자 이내로 입력해주세요."); return; } 
+    } else if (itemType === 'nickname_color_ticket') {
         if (!confirm(`${cost}p를 지불하고 '닉네임 컬러 변경권'을 구매하시겠습니까?`)) return;
     } else if (itemType === 'club_megaphone') {
         if (!confirm(`${cost}p를 지불하고 '클럽 확성기'를 인벤토리에 추가하시겠습니까?`)) return;
