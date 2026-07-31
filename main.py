@@ -416,6 +416,27 @@ def parse_time_safe(time_str):
     except Exception:
         return None
 
+# 🔥 [미션 헬퍼 함수] 유저가 미션 행동을 하면 소속된 모든 클럽의 점수를 올려줍니다.
+def update_mission_progress(user_email: str, mission_type: str, amount: int = 1):
+    # 유저가 속한 모든 방을 찾습니다.
+    user_rooms = db["rooms"].find({"members": user_email})
+    for room in user_rooms:
+        current_mission = room.get("current_mission")
+        # 방에 미션이 있고, 그 미션 타입이 방금 한 행동과 일치한다면
+        if current_mission and current_mission.get("type") == mission_type:
+            # 아직 목표를 100% 달성하지 않은 상태일 때만 기여도를 올림
+            if current_mission["total_score"] < current_mission["target_score"]:
+                current_mission["total_score"] += amount
+                
+                # 내 기여도 점수 올려주기 (딕셔너리에 없으면 0으로 초기화 후 더함)
+                current_mission["contributions"][user_email] = current_mission["contributions"].get(user_email, 0) + amount
+                
+                # DB에 업데이트
+                db["rooms"].update_one(
+                    {"_id": room["_id"]},
+                    {"$set": {"current_mission": current_mission}}
+                )
+
 @app.get("/api/data")
 def get_user_data(authorization: str = Header(None)):
     email = verify_google_token(authorization)
@@ -705,6 +726,7 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
             target["profile"]["narackLastHitEmail"] = None
 
         db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"], "noti": target["noti"]}})
+        update_mission_progress(data.evaluator_email, "use_eval_tickets", 1)
         return {"status": "success", "message": "호평이 즉시 반영되었습니다."}
 
     else:
@@ -761,6 +783,7 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
         send_push_notification(data.target_email, "🚨 악평 도착!", f"{evaluator_name}님이 악평을 날렸습니다. 재판을 열거나 수락하세요!")
         
         db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"]}})
+        update_mission_progress(data.evaluator_email, "use_eval_tickets", 1)
         return {"status": "success", "message": "악평 전송 완료! 피평가자의 승인/이의제기를 대기합니다."}
 
 @app.post("/api/evaluate/respond")
