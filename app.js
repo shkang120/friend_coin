@@ -354,7 +354,34 @@ function renderHome() {
                     </div>
                 </div>
             </div>
+        `; // 🔥 1. 여기서 상단 헤더 텍스트 덩어리를 안전하게 닫아줍니다.
+
+        // 🔥 2. 미션 데이터가 존재하면 미션 카드를 HTML에 추가합니다.
+        if (room.current_mission) {
+            const m = room.current_mission;
+            const progressPct = Math.min((m.total_score / m.target_score) * 100, 100).toFixed(1);
             
+            html += `
+                <div style="background: linear-gradient(135deg, #3182f6, #1565c0); border-radius:16px; padding:15px; margin-bottom:20px; color:white; box-shadow:0 4px 10px rgba(49,130,246,0.2);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <div style="font-size:12px; font-weight:bold; background:rgba(255,255,255,0.2); padding:4px 8px; border-radius:8px; display:flex; align-items:center; gap:4px;">🔥 주간 클럽 미션</div>
+                        <div style="font-size:12px; font-weight:bold;">보상: 💰 ${Math.floor(m.reward_points).toLocaleString()}p / 🎫 각 ${m.reward_tickets}장</div>
+                    </div>
+                    <div style="font-weight:bold; font-size:16px; margin-bottom:4px;">${escapeHtml(m.name)}</div>
+                    <div style="font-size:12px; color:#e3f2fd; margin-bottom:12px; line-height:1.4;">${escapeHtml(m.description)}</div>
+                    <div style="background:rgba(255,255,255,0.2); height:10px; border-radius:5px; overflow:hidden; margin-bottom:8px;">
+                        <div style="background:white; height:100%; width:${progressPct}%; border-radius:5px; transition:width 0.5s ease-in-out;"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:bold;">
+                        <span>진행도: ${progressPct}%</span>
+                        <span>${m.total_score} / ${m.target_score} 회</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 🔥 3. 여기서부터 다시 클럽 라운지 텍스트를 이어붙입니다. (수환님이 찾으신 세 줄이 안전하게 복구되었습니다!)
+        html += `
             <div style="background:#f9fafb; border-radius:16px; padding:15px; margin-bottom:20px; border:1px solid #eee;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <div style="font-size:14px; font-weight:bold; color:#333d4b; display:flex; align-items:center; gap:4px;">💬 클럽 라운지</div>
