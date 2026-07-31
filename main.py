@@ -626,6 +626,7 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
         )
         if result.modified_count == 0: return {"status": "error", "message": "이미 완료하셨습니다!"}
         msg = f"📅 일일 출석 완료! (+{reward_amount}p)"
+        update_mission_progress(data.voter_email, "participate_vote", 1)
         
     elif data.reward_type == 'double_attendance':
         reward_amount = 150 if event_id == "bull" else 50
@@ -635,6 +636,7 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
         )
         if result.modified_count == 0: return {"status": "error", "message": "이미 보상을 받았거나 출석을 먼저 해야 합니다."}
         msg = f"🎬 {reward_amount}p가 추가 상승했습니다."
+        update_mission_progress(data.voter_email, "participate_vote", 1)
 
     elif data.reward_type == 'extra_ticket':
         days_since_monday = kst_now.weekday()
@@ -693,6 +695,7 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
         if anon_update.modified_count == 0: 
             return {"status": "error", "message": "보유한 익명 암살권이 없습니다."}
         evaluator_name = "익명(???)"
+        update_mission_progress(data.voter_email, "participate_vote", 1)
 
     sys_data = db["system"].find_one({"_id": "global"}) or {}
     event_id = sys_data.get("daily_event_id", "none")
@@ -849,6 +852,7 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
         target_room_id = common_room["_id"] if common_room else db["rooms"].find_one({"members": email})["_id"]
         db["rooms"].update_one({"_id": target_room_id}, {"$push": {"agendas": agenda}})
         db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
+        update_mission_progress(data.voter_email, "participate_vote", 1)
         return {"status": "success", "message": f"⚖️ 법정에 탄핵 상정! (소송 비용 1,000p 차감 / 남은 기회: {3 - profile['defense_count']}회)"}
 
 @app.get("/api/check-nickname")
@@ -940,6 +944,7 @@ def send_chat(data: dict, authorization: str = Header(None)):
             return {"status": "error", "message": "확성기 티켓이 부족합니다."}
         profile["clubMegaphones"] -= 1
         db["users"].update_one({"_id": email}, {"$set": {"profile.clubMegaphones": profile["clubMegaphones"]}})
+        update_mission_progress(data.voter_email, "participate_vote", 1)
 
     # 저장할 메시지 객체 생성 (안전하게 문자열 시간으로 저장)
     new_message = {
@@ -1120,6 +1125,7 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
             message = f"반대표가 많아 안건이 최종 기각되었습니다."
 
     db["rooms"].update_one({"_id": data.room_code}, {"$set": {"agendas": agendas}})
+    update_mission_progress(data.voter_email, "participate_vote", 1)
     return {"status": status_msg, "message": message}
 
 @app.post("/api/shop/buy")
@@ -1172,6 +1178,7 @@ def buy_shop_item(data: dict, authorization: str = Header(None)):
         return {"status": "error", "message": "알 수 없는 상품입니다."}
 
     db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
+    update_mission_progress(data.voter_email, "participate_vote", 1)
     return {"status": "success", "message": message, "profile": profile}
 
 @app.post("/api/cash-shop/buy")
@@ -1220,6 +1227,7 @@ def buy_cash_item(data: dict, authorization: str = Header(None)):
         return {"status": "error", "message": "알 수 없는 유료 상품입니다."}
 
     db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
+    update_mission_progress(data.voter_email, "participate_vote", 1)
     return {"status": "success", "message": message, "profile": profile}
 
 @app.post("/api/room/gamble")
@@ -1249,6 +1257,7 @@ def room_gamble(data: GambleData, authorization: str = Header(None)):
         profile["price"] += 500
         chat_msg = f"🎲 [도박장] {profile.get('name')}님이 '{data.guess}'에 배팅! ➔ 주사위 {dice} ({result_str}) ➔ 💰 1,000p 획득!"
         msg = f"🎲 주사위 {dice} ({result_str})! 승리! 💰 1,000p를 획득하셨습니다!"
+        update_mission_progress(data.voter_email, "participate_vote", 1)
     else:
         profile["price"] -= 500
         chat_msg = f"🎲 [도박장] {profile.get('name')}님이 '{data.guess}'에 배팅! ➔ 주사위 {dice} ({result_str}) ➔ 💸 500p 증발..."
