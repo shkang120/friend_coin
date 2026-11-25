@@ -1,4 +1,6 @@
-const BACKEND_URL = "https://friend-coin.onrender.com";
+// 로컬(localhost)에서 열면 로컬 서버로, 그 외(배포 사이트)에서는 Render 서버로 요청합니다.
+const IS_LOCAL_DEV = ["localhost", "127.0.0.1"].includes(location.hostname);
+const BACKEND_URL = IS_LOCAL_DEV ? "http://localhost:8000" : "https://friend-coin.onrender.com";
 
 // 🔥 [신규 추가] 말풍선 반짝임(Glow) 및 큐티클 광택(Shine) 애니메이션 CSS 강제 주입
 const chatEffectStyle = document.createElement('style');

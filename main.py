@@ -497,7 +497,8 @@ def update_mission_progress(user_email: str, mission_type: str, amount: int = 1)
     # 유저가 속한 모든 방을 찾습니다.
     for room in db["rooms"].find({"members": user_email}, {"_id": 1}):
         # 동시에 여러 명이 행동해도 점수가 사라지지 않도록, 읽은 값 그대로일 때만 저장(실패하면 재시도)
-        for _ in range(5):
+        # (충돌해도 매번 누군가 한 명은 성공하므로, 동시 요청 수보다 넉넉하게 재시도)
+        for _ in range(50):
             fresh = db["rooms"].find_one({"_id": room["_id"]}, {"current_mission": 1})
             current_mission = (fresh or {}).get("current_mission")
             # 방에 미션이 있고, 그 미션 타입이 방금 한 행동과 일치하며, 아직 목표 미달일 때만
