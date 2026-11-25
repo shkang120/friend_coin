@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from pywebpush import webpush, WebPushException
 import json
 import re
+from urllib.parse import urlparse
 import asyncio
 from pymongo import ReturnDocument
 from contextlib import asynccontextmanager
@@ -200,10 +201,10 @@ async def run_background_scheduler():
                                             db["users"].update_one({"_id": mem_email}, {"$set": {"profile": m_prof, "noti": m_noti}})
                                 
                                 # 성공 시스템 채팅
-                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": f"🎉 지난주 클럽 미션을 달성했습니다! 참여자들에게 기여도 비례 보상이 지급되었습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}}})
+                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"🎉 지난주 클럽 미션을 달성했습니다! 참여자들에게 기여도 비례 보상이 지급되었습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
                             else:
                                 # 실패 시스템 채팅
-                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": f"💦 아쉽게도 지난주 클럽 미션 목표 달성에 실패했습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}}})
+                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"💦 아쉽게도 지난주 클럽 미션 목표 달성에 실패했습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
                         
                         # [B] 신규 미션 무작위 할당 로직
                         new_m = random.choice(MISSIONS_POOL)
@@ -227,7 +228,7 @@ async def run_background_scheduler():
                         db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"current_mission": mission_doc}})
                         
                         # 신규 미션 시작 시스템 채팅
-                        db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": f"🔔 이번 주 주간 미션: [{new_m['name']}]\n목표: 총 {target_score}회 달성\n내용: {new_m['description']}", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}}})
+                        db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"🔔 이번 주 주간 미션: [{new_m['name']}]\n목표: 총 {target_score}회 달성\n내용: {new_m['description']}", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
                     
                     # 모든 방의 처리가 끝나면 글로벌 플래그 업데이트
                     db["system"].update_one({"_id": "global"}, {"$set": {"last_mission_reset_date": current_monday_str}}, upsert=True)
@@ -405,6 +406,9 @@ def verify_google_token(auth_header: str):
             CLIENT_ID
         )
         
+        # 🔒 구글이 소유를 확인한 이메일만 인정 (남의 이메일로 만든 미인증 구글 계정 차단)
+        if not idinfo.get("email") or not idinfo.get("email_verified"):
+            return None
         return idinfo.get("email").strip().lower()
         
     except ValueError:
@@ -421,6 +425,8 @@ def parse_time_safe(time_str):
         return datetime.fromisoformat(clean_str)
     except Exception:
         return None
+
+MAX_ROOM_MESSAGES = 300  # 방마다 최근 채팅 300개만 보관
 
 # 🔒 [보안 헬퍼] 사용자가 보낸 값이 화면에 그대로 찍혀도 안전한지 검사합니다.
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -712,6 +718,8 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
     if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     user = db["users"].find_one({"_id": email})
     if not user: return {"status": "error", "message": "유저 없음"}
+    if user.get("profile", {}).get("status") == "delisted":
+        return {"status": "error", "message": "💀 상장폐지 상태에서는 보상을 받을 수 없습니다."}
 
     kst_now = datetime.utcnow() + timedelta(hours=9)
     server_today_str = kst_now.strftime("%Y-%m-%d")
@@ -1046,6 +1054,7 @@ def send_chat(data: dict, authorization: str = Header(None)):
         return {"status": "error", "message": "인증 실패"}
 
     room_code = data.get("room_code")
+    if not isinstance(room_code, str): return {"status": "error", "message": "잘못된 요청입니다."}
     message_text = str(data.get("message", "")).strip()
     is_megaphone = data.get("is_megaphone", False) is True
 
@@ -1084,7 +1093,7 @@ def send_chat(data: dict, authorization: str = Header(None)):
     # 🔥 오류 원인 수정: "room_code"가 아니라 "_id"로 방을 찾아 업데이트해야 합니다!
     db["rooms"].update_one(
         {"_id": room_code}, 
-        {"$push": {"messages": new_message}}
+        {"$push": {"messages": {"$each": [new_message], "$slice": -MAX_ROOM_MESSAGES}}}
     )
     return {"status": "success"}
 
@@ -1263,6 +1272,7 @@ def buy_shop_item(data: dict, authorization: str = Header(None)):
 
     item_type = data.get("item_type")
     extra_data = data.get("extra_data", "")
+    if not isinstance(item_type, str): return {"status": "error", "message": "잘못된 요청입니다."}
 
     # 🔥 중앙 관리되는 가격표에서 포인트 가격을 가져옵니다.
     if item_type not in SHOP_PRICES or "point" not in SHOP_PRICES[item_type]:
@@ -1307,6 +1317,7 @@ def buy_cash_item(data: dict, authorization: str = Header(None)):
 
     item_type = data.get("item_type")
     extra_data = data.get("extra_data", "")
+    if not isinstance(item_type, str): return {"status": "error", "message": "잘못된 요청입니다."}
 
     if item_type in ITEM_FIELDS:
         update = {"$inc": {f"profile.{ITEM_FIELDS[item_type][0]}": 1}}
@@ -1374,7 +1385,7 @@ def room_gamble(data: GambleData, authorization: str = Header(None)):
     if "priceHistory" not in profile:
         db["users"].update_one({"_id": email}, {"$set": {"profile.priceHistory": [profile.get("basePrice", 20000)], "profile.timeHistory": ["시작"]}})
     db["users"].update_one({"_id": email}, {"$push": {"profile.priceHistory": profile["price"], "profile.timeHistory": time_str}})
-    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": chat_msg, "timestamp": datetime.utcnow().isoformat()}}})
+    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": chat_msg, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
 
     return {"status": "success", "message": msg}
 
@@ -1394,10 +1405,17 @@ async def upload_image(image: UploadFile = File(...), authorization: str = Heade
     if data.get("success"): return {"url": data["data"]["url"]}
     return {"error": "업로드 실패"}
 
+ALLOWED_PUSH_HOSTS = ("fcm.googleapis.com", "push.services.mozilla.com", "push.apple.com", "notify.windows.com", "push.microsoft.com")
+
 @app.post("/api/push/subscribe")
 def subscribe_push(data: PushSubscriptionData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email: return {"status": "error", "message": "인증 실패"}
+
+    # 🔒 브라우저 공식 푸시 서버 주소만 허용 (서버가 공격자가 정한 주소로 요청을 보내는 SSRF 방지)
+    host = urlparse(data.endpoint).hostname or ""
+    if not data.endpoint.startswith("https://") or not any(host == d or host.endswith("." + d) for d in ALLOWED_PUSH_HOSTS):
+        return {"status": "error", "message": "지원하지 않는 푸시 주소입니다."}
 
     # 유저 DB에 스마트폰 푸시 알림 주소(subscription) 저장
     db["users"].update_one(
