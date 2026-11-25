@@ -1,1 +1,11 @@
 .env
+
+# 설치된 라이브러리 (package.json으로 다시 설치 가능)
+node_modules/
+
+# 파이썬 자동 생성 파일
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
