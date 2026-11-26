@@ -12,7 +12,10 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from pywebpush import webpush, WebPushException
 import json
+import re
+from urllib.parse import urlparse
 import asyncio
+from pymongo import ReturnDocument
 from contextlib import asynccontextmanager
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -142,7 +145,11 @@ async def run_background_scheduler():
                                 db["rooms"].update_one({"_id": room["_id"]}, {"$pull": {"members": a["target_email"]}})
                                 t_noti.insert(0, f"🚪 [클럽 퇴장] 24시간 무응답으로 클럽에서 내보내졌습니다.")
                                 
-                            # (방어 재판 로직 등 필요시 여기에 추가 가능 - 원본 유지)
+                            elif a["type"] == "defense":
+                                # 방어 재판도 24시간 무응답이면 '악평 정당' 판결로 처리 (소송비만 날아가던 버그 수정)
+                                apply_defense_loss(a, target_user, kst_now)
+                                t_noti = target_user["noti"]
+                                send_push_notification(a["target_email"], "⚖️ 방어 재판 종료", "24시간 동안 결론이 나지 않아 악평이 반영되었습니다.")
                             
                             db["users"].update_one({"_id": a["target_email"]}, {"$set": {"profile": t_prof, "noti": t_noti}})
                             
@@ -194,10 +201,10 @@ async def run_background_scheduler():
                                             db["users"].update_one({"_id": mem_email}, {"$set": {"profile": m_prof, "noti": m_noti}})
                                 
                                 # 성공 시스템 채팅
-                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": f"🎉 지난주 클럽 미션을 달성했습니다! 참여자들에게 기여도 비례 보상이 지급되었습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}}})
+                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"🎉 지난주 클럽 미션을 달성했습니다! 참여자들에게 기여도 비례 보상이 지급되었습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
                             else:
                                 # 실패 시스템 채팅
-                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": f"💦 아쉽게도 지난주 클럽 미션 목표 달성에 실패했습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}}})
+                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"💦 아쉽게도 지난주 클럽 미션 목표 달성에 실패했습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
                         
                         # [B] 신규 미션 무작위 할당 로직
                         new_m = random.choice(MISSIONS_POOL)
@@ -221,7 +228,7 @@ async def run_background_scheduler():
                         db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"current_mission": mission_doc}})
                         
                         # 신규 미션 시작 시스템 채팅
-                        db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": f"🔔 이번 주 주간 미션: [{new_m['name']}]\n목표: 총 {target_score}회 달성\n내용: {new_m['description']}", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}}})
+                        db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"🔔 이번 주 주간 미션: [{new_m['name']}]\n목표: 총 {target_score}회 달성\n내용: {new_m['description']}", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
                     
                     # 모든 방의 처리가 끝나면 글로벌 플래그 업데이트
                     db["system"].update_one({"_id": "global"}, {"$set": {"last_mission_reset_date": current_monday_str}}, upsert=True)
@@ -399,6 +406,9 @@ def verify_google_token(auth_header: str):
             CLIENT_ID
         )
         
+        # 🔒 구글이 소유를 확인한 이메일만 인정 (남의 이메일로 만든 미인증 구글 계정 차단)
+        if not idinfo.get("email") or not idinfo.get("email_verified"):
+            return None
         return idinfo.get("email").strip().lower()
         
     except ValueError:
@@ -416,26 +426,98 @@ def parse_time_safe(time_str):
     except Exception:
         return None
 
+MAX_ROOM_MESSAGES = 300  # 방마다 최근 채팅 300개만 보관
+
+# 🔒 [보안 헬퍼] 사용자가 보낸 값이 화면에 그대로 찍혀도 안전한지 검사합니다.
+HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+NICKNAME_RE = re.compile(r"^[a-zA-Z0-9가-힣]{2,8}$")
+SAFE_URL_RE = re.compile(r"^https://[^\s\"'<>`]+$")
+
+def is_valid_hex_color(color) -> bool:
+    return isinstance(color, str) and bool(HEX_COLOR_RE.match(color))
+
+def is_valid_nickname(name) -> bool:
+    return isinstance(name, str) and bool(NICKNAME_RE.match(name))
+
+def is_safe_image_url(url) -> bool:
+    return isinstance(url, str) and len(url) <= 500 and bool(SAFE_URL_RE.match(url))
+
+# 🔒 다른 사람에게 보여주면 안 되는 프로필 필드 (익명 공격자 이메일, 보유 아이템, 개인 설정 등)
+PRIVATE_PROFILE_FIELDS = {
+    "pending_evals", "narackLastHitEmail", "anonTickets", "shieldCount", "clubMegaphones",
+    "nickname_color_tickets", "roomAliases", "goodTickets", "badTickets",
+    "lastDailyAttendance", "lastDailyAdBonus", "lastAdTicketMonday", "weeklyTicketsClaimed",
+    "lastRefillMonday", "defense_count", "defense_month",
+}
+
+def public_profile(prof: dict) -> dict:
+    return {k: v for k, v in prof.items() if k not in PRIVATE_PROFILE_FIELDS}
+
+def hide_anonymous_evaluators(prof: dict) -> dict:
+    """내 악평 대기열에서 익명 공격자의 이메일을 지운 사본을 돌려줍니다."""
+    safe = dict(prof)
+    safe["pending_evals"] = [
+        {k: v for k, v in e.items() if k != "evaluator_email"} if e.get("evaluator_name") == "익명(???)" else e
+        for e in prof.get("pending_evals", [])
+    ]
+    return safe
+
+def apply_defense_loss(target_agenda: dict, target_user: dict, kst_now: datetime):
+    """방어 재판 패소: 피고에게 악평을 반영하고(저장은 호출한 쪽에서), 공격자에게 위자료 1,000p 지급"""
+    assoc = target_agenda["associated_eval"]
+    prof = target_user["profile"]
+    base_p = prof.get("basePrice", 20000)
+    prof["price"] = prof.get("price", 20000) - base_p * (assoc["intensity"] * 0.01)
+
+    if "priceHistory" not in prof: prof["priceHistory"] = [base_p]; prof["timeHistory"] = ["시작"]
+    prof["priceHistory"].append(prof["price"])
+    prof["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
+
+    target_user.setdefault("noti", []).insert(0, f"⚖️ [재판 패소] 악평 정당화 판결 확정 (-{assoc['intensity']}% 적용): {assoc['reason']}")
+
+    if prof["price"] <= (prof.get("maxPrice", 20000) * 0.3) and not prof.get("narackStartTime"):
+        prof["narackStartTime"] = datetime.utcnow().isoformat()
+        prof["narackLastHitEmail"] = assoc["evaluator_email"]
+
+    evaluator_email = assoc.get("evaluator_email")
+    if evaluator_email and evaluator_email != "anonymous@system.com":
+        # 위자료는 원자적으로 지급 (공격자의 다른 데이터를 덮어쓰지 않음)
+        e_user = db["users"].find_one_and_update(
+            {"_id": evaluator_email},
+            {"$inc": {"profile.price": 1000},
+             "$push": {"noti": {"$each": [f"💸 [위자료 입금] {target_agenda['target_name']}님이 제기한 방어 재판에서 승소하여 위자료 1,000p를 받았습니다!"], "$position": 0}}},
+            return_document=ReturnDocument.AFTER
+        )
+        if e_user:
+            db["users"].update_one({"_id": evaluator_email},
+                                   {"$push": {"profile.priceHistory": e_user["profile"]["price"], "profile.timeHistory": kst_now.strftime("%m.%d %H:%M")}})
+
 # 🔥 [미션 헬퍼 함수] 유저가 미션 행동을 하면 소속된 모든 클럽의 점수를 올려줍니다.
 def update_mission_progress(user_email: str, mission_type: str, amount: int = 1):
     # 유저가 속한 모든 방을 찾습니다.
-    user_rooms = db["rooms"].find({"members": user_email})
-    for room in user_rooms:
-        current_mission = room.get("current_mission")
-        # 방에 미션이 있고, 그 미션 타입이 방금 한 행동과 일치한다면
-        if current_mission and current_mission.get("type") == mission_type:
-            # 아직 목표를 100% 달성하지 않은 상태일 때만 기여도를 올림
-            if current_mission["total_score"] < current_mission["target_score"]:
-                current_mission["total_score"] += amount
-                
-                # 내 기여도 점수 올려주기 (딕셔너리에 없으면 0으로 초기화 후 더함)
-                current_mission["contributions"][user_email] = current_mission["contributions"].get(user_email, 0) + amount
-                
-                # DB에 업데이트
-                db["rooms"].update_one(
-                    {"_id": room["_id"]},
-                    {"$set": {"current_mission": current_mission}}
-                )
+    for room in db["rooms"].find({"members": user_email}, {"_id": 1}):
+        # 동시에 여러 명이 행동해도 점수가 사라지지 않도록, 읽은 값 그대로일 때만 저장(실패하면 재시도)
+        # (충돌해도 매번 누군가 한 명은 성공하므로, 동시 요청 수보다 넉넉하게 재시도)
+        for _ in range(50):
+            fresh = db["rooms"].find_one({"_id": room["_id"]}, {"current_mission": 1})
+            current_mission = (fresh or {}).get("current_mission")
+            # 방에 미션이 있고, 그 미션 타입이 방금 한 행동과 일치하며, 아직 목표 미달일 때만
+            if not current_mission or current_mission.get("type") != mission_type:
+                break
+            old_total = current_mission["total_score"]
+            if old_total >= current_mission["target_score"]:
+                break
+
+            current_mission["total_score"] = old_total + amount
+            # 내 기여도 점수 올려주기 (딕셔너리에 없으면 0으로 초기화 후 더함)
+            current_mission["contributions"][user_email] = current_mission["contributions"].get(user_email, 0) + amount
+
+            result = db["rooms"].update_one(
+                {"_id": room["_id"], "current_mission.type": mission_type, "current_mission.total_score": old_total},
+                {"$set": {"current_mission": current_mission}}
+            )
+            if result.modified_count == 1:
+                break
 
 @app.get("/api/data")
 def get_user_data(authorization: str = Header(None)):
@@ -543,7 +625,7 @@ def get_user_data(authorization: str = Header(None)):
         for member_email in room["members"]:
             m_data = db["users"].find_one({"_id": member_email})
             if m_data and "profile" in m_data:
-                prof = m_data["profile"]
+                prof = public_profile(m_data["profile"])
                 prof["email"] = member_email
                 members_profiles.append(prof)
         my_rooms.append({ 
@@ -558,7 +640,7 @@ def get_user_data(authorization: str = Header(None)):
     # 전국구 통합 랭킹 Top 10 가공
     all_users = list(db["users"].find({}, {"profile": 1}))
     sorted_users = sorted(all_users, key=lambda x: x.get("profile", {}).get("price", 0), reverse=True)[:10]
-    global_ranking = [u.get("profile") for u in sorted_users if "profile" in u]
+    global_ranking = [public_profile(u.get("profile")) for u in sorted_users if "profile" in u]
     
     # 글로벌 확성기 1시간 만료 체크
     sys_data = db["system"].find_one({"_id": "global"})
@@ -574,7 +656,7 @@ def get_user_data(authorization: str = Header(None)):
 
     daily_event_msg = sys_data.get("daily_event_msg", "") if sys_data else ""
     return {
-        "isNewUser": False, "profile": profile, "noti": user_data.get("noti", []), 
+        "isNewUser": False, "profile": hide_anonymous_evaluators(profile), "noti": user_data.get("noti", []),
         "my_rooms": my_rooms, "global_ranking": global_ranking, "megaphone_msg": megaphone_msg,
         "daily_event_msg": daily_event_msg # 🔥 이벤트 속보 데이터 추가
     }
@@ -588,18 +670,47 @@ def save_user_data(data: UserData, authorization: str = Header(None)):
     # 기존 유저가 있으면 프로필 가져오기, 없으면 빈 딕셔너리 생성
     db_profile = user.get("profile", {}) if user else {}
     
-    # 🔥 보안 포인트: 허용된 필드만 골라서 업데이트
-    # 유저가 강제로 price나 tickets를 조작해서 보내도 이 리스트에 없으면 서버는 무시합니다.
-    allowed_fields = ["name", "profileImage", "nameColor", "roomAliases", "profileTheme", "ownedThemes"]
-    for field in allowed_fields:
-        if field in data.profile:
-            db_profile[field] = data.profile[field]
-            
-    db["users"].update_one(
-        {"_id": email}, 
-        {"$set": {"profile": db_profile, "noti": data.noti}}, 
-        upsert=True
-    )
+    # 🔥 보안 포인트: 허용된 필드만, 검사를 통과한 값만 골라서 업데이트
+    # 유저가 강제로 price나 tickets를 조작해서 보내도 여기서 걸러지면 서버는 무시합니다.
+    # (nameColor는 '닉네임 컬러 변경권', ownedThemes는 상점 구매로만 바뀝니다)
+    incoming = data.profile
+    updates = {}
+
+    if "name" in incoming and incoming["name"] != db_profile.get("name"):
+        name = incoming["name"].strip() if isinstance(incoming["name"], str) else ""
+        if not is_valid_nickname(name):
+            return {"status": "error", "message": "닉네임은 2~8자의 한글/영문/숫자만 가능합니다."}
+        if db["users"].find_one({"profile.name": name, "_id": {"$ne": email}}):
+            return {"status": "error", "message": "이미 사용 중인 닉네임입니다."}
+        updates["profile.name"] = name
+
+    if "profileImage" in incoming and incoming["profileImage"] != db_profile.get("profileImage"):
+        if incoming["profileImage"] and not is_safe_image_url(incoming["profileImage"]):
+            return {"status": "error", "message": "올바르지 않은 프로필 이미지 주소입니다."}
+        updates["profile.profileImage"] = incoming["profileImage"] or ""
+
+    if "profileTheme" in incoming and incoming["profileTheme"] != db_profile.get("profileTheme"):
+        theme = incoming["profileTheme"]
+        if theme != "none" and theme not in db_profile.get("ownedThemes", []):
+            return {"status": "error", "message": "보유하지 않은 테마입니다."}
+        updates["profile.profileTheme"] = theme
+
+    if "roomAliases" in incoming:
+        aliases = incoming["roomAliases"]
+        if not isinstance(aliases, dict) or len(aliases) > 100 or not all(
+            isinstance(k, str) and isinstance(v, str) and len(k) <= 20 and len(v) <= 30 for k, v in aliases.items()
+        ):
+            return {"status": "error", "message": "올바르지 않은 방 별명입니다."}
+        updates["profile.roomAliases"] = aliases
+
+    if not user:
+        # 신규 가입자는 닉네임이 반드시 있어야 합니다.
+        if "profile.name" not in updates:
+            return {"status": "error", "message": "닉네임을 설정해 주세요."}
+        db["users"].update_one({"_id": email}, {"$set": updates, "$setOnInsert": {"noti": []}}, upsert=True)
+    elif updates:
+        # 바뀐 필드만 저장해서, 같은 순간 서버가 올린 포인트·알림을 덮어쓰지 않게 합니다.
+        db["users"].update_one({"_id": email}, {"$set": updates})
     return {"status": "success"}
 
 @app.post("/api/reward")
@@ -608,6 +719,8 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
     if not email or email != data.email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     user = db["users"].find_one({"_id": email})
     if not user: return {"status": "error", "message": "유저 없음"}
+    if user.get("profile", {}).get("status") == "delisted":
+        return {"status": "error", "message": "💀 상장폐지 상태에서는 보상을 받을 수 없습니다."}
 
     kst_now = datetime.utcnow() + timedelta(hours=9)
     server_today_str = kst_now.strftime("%Y-%m-%d")
@@ -626,7 +739,7 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
         )
         if result.modified_count == 0: return {"status": "error", "message": "이미 완료하셨습니다!"}
         msg = f"📅 일일 출석 완료! (+{reward_amount}p)"
-        update_mission_progress(data.voter_email, "participate_vote", 1)
+        update_mission_progress(email, "daily_attendance", 1)
         
     elif data.reward_type == 'double_attendance':
         reward_amount = 150 if event_id == "bull" else 50
@@ -636,7 +749,6 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
         )
         if result.modified_count == 0: return {"status": "error", "message": "이미 보상을 받았거나 출석을 먼저 해야 합니다."}
         msg = f"🎬 {reward_amount}p가 추가 상승했습니다."
-        update_mission_progress(data.voter_email, "participate_vote", 1)
 
     elif data.reward_type == 'extra_ticket':
         days_since_monday = kst_now.weekday()
@@ -668,12 +780,14 @@ def claim_reward(data: RewardData, authorization: str = Header(None)):
         if profile["price"] > profile.get("maxPrice", 20000): profile["maxPrice"] = profile["price"]
         db["users"].update_one({"_id": email}, {"$set": {"profile.priceHistory": profile["priceHistory"], "profile.timeHistory": profile["timeHistory"], "profile.maxPrice": profile.get("maxPrice", 20000)}})
 
-    return {"status": "success", "message": msg, "profile": profile}
+    return {"status": "success", "message": msg, "profile": hide_anonymous_evaluators(profile)}
 
 @app.post("/api/evaluate")
 def evaluate_user(data: EvalData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.evaluator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    data.evaluator_email = email
+    data.target_email = data.target_email.strip().lower()
     if data.evaluator_email == data.target_email: return {"status": "error", "message": "자신을 평가할 수 없습니다."}
     
     # 1차 방어막: 3초 쿨타임
@@ -686,7 +800,13 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
 
     evaluator_name = evaluator.get("profile", {}).get("name", "익명")
 
+    # 🔒 같은 투자 클럽(방)에 속한 친구만 평가할 수 있습니다.
+    if not db["rooms"].find_one({"members": {"$all": [email, data.target_email]}}, {"_id": 1}):
+        return {"status": "error", "message": "같은 투자 클럽에 있는 친구만 평가할 수 있습니다."}
+    if data.eval_type not in ("good", "bad"): return {"status": "error", "message": "올바르지 않은 평가 종류입니다."}
+
     # 🔥 1. 익명권 원자적 차감 (따닥 방지)
+    anon_used = False
     if data.is_anonymous and data.eval_type == 'bad':
         anon_update = db["users"].update_one(
             {"_id": data.evaluator_email, "profile.anonTickets": {"$gt": 0}},
@@ -695,86 +815,80 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
         if anon_update.modified_count == 0: 
             return {"status": "error", "message": "보유한 익명 암살권이 없습니다."}
         evaluator_name = "익명(???)"
-        update_mission_progress(data.voter_email, "participate_vote", 1)
+        anon_used = True
 
     sys_data = db["system"].find_one({"_id": "global"}) or {}
     event_id = sys_data.get("daily_event_id", "none")
 
     if data.eval_type == 'good':
-        if evaluator["profile"].get("goodTickets", 0) <= 0: return {"status": "error", "message": "호평권 부족"}
-        evaluator["profile"]["goodTickets"] -= 1; evaluator["profile"]["stats"]["goodGiven"] = evaluator["profile"]["stats"].get("goodGiven", 0) + 1
-        db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"profile": evaluator["profile"]}})
+        # 🔥 호평권 원자적 차감 (따닥으로 한 장에 두 번 평가하는 것 방지)
+        good_update = db["users"].update_one(
+            {"_id": data.evaluator_email, "profile.goodTickets": {"$gt": 0}},
+            {"$inc": {"profile.goodTickets": -1, "profile.stats.goodGiven": 1}}
+        )
+        if good_update.modified_count == 0: return {"status": "error", "message": "호평권 부족"}
 
         # 👼 천사의 날이면 1.5배 곱하기!
         multiplier = 1.5 if event_id == "angel" else 1.0
         base_price = target["profile"].get("basePrice", 20000)
         change_amount = base_price * (data.intensity * 0.01) * multiplier
-        
-        target["profile"]["price"] += change_amount
-        if target["profile"]["price"] > target["profile"].get("maxPrice", 20000): target["profile"]["maxPrice"] = target["profile"]["price"]
-
-        if "priceHistory" not in target["profile"]: target["profile"]["priceHistory"] = [target["profile"].get("basePrice", 20000)]; target["profile"]["timeHistory"] = ["시작"]
-        target["profile"]["priceHistory"].append(target["profile"]["price"])
         kst_now = datetime.utcnow() + timedelta(hours=9)
-        target["profile"]["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
 
-        if "noti" not in target: target["noti"] = []
+        if "priceHistory" not in target["profile"]:
+            db["users"].update_one({"_id": data.target_email, "profile.priceHistory": {"$exists": False}},
+                                   {"$set": {"profile.priceHistory": [base_price], "profile.timeHistory": ["시작"]}})
+
         # 알림 메시지에도 소수점(1.5%)이 제대로 찍히도록 수정
         actual_pct = data.intensity * multiplier
-        target["noti"].insert(0, f"👍 [호평] {evaluator_name}님의 평가 (+{actual_pct}%): {data.reason}")
+        # 🔥 피평가자 주가도 원자적으로 올립니다 (여러 명이 동시에 평가해도 누락 없음)
+        updated_target = db["users"].find_one_and_update(
+            {"_id": data.target_email},
+            {"$inc": {"profile.price": change_amount},
+             "$push": {"noti": {"$each": [f"👍 [호평] {evaluator_name}님의 평가 (+{actual_pct}%): {data.reason}"], "$position": 0}}},
+            return_document=ReturnDocument.AFTER
+        )
+        new_price = updated_target["profile"]["price"]
+        db["users"].update_one(
+            {"_id": data.target_email},
+            {"$push": {"profile.priceHistory": new_price, "profile.timeHistory": kst_now.strftime("%m.%d %H:%M")},
+             "$max": {"profile.maxPrice": new_price}}
+        )
         send_push_notification(data.target_email, "👍 호평 도착!", f"{evaluator_name}님이 주가를 올려주셨습니다!")
 
-        if target["profile"].get("narackStartTime") and target["profile"]["price"] > (target["profile"].get("maxPrice", 20000) * 0.3):
-            target["profile"]["narackStartTime"] = None
-            target["profile"]["narackLastHitEmail"] = None
+        t_prof = updated_target["profile"]
+        if t_prof.get("narackStartTime") and new_price > (max(t_prof.get("maxPrice", 20000), new_price) * 0.3):
+            db["users"].update_one({"_id": data.target_email}, {"$set": {"profile.narackStartTime": None, "profile.narackLastHitEmail": None}})
 
-        db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"], "noti": target["noti"]}})
         update_mission_progress(data.evaluator_email, "use_eval_tickets", 1)
         return {"status": "success", "message": "호평이 즉시 반영되었습니다."}
 
     else:
-        # 무지개 반사 방어 확인
-        if target["profile"].get("shieldCount", 0) > 0:
-            # 🔥 3. 악평권 원자적 차감 (실드 확인 시점)
-            bad_update = db["users"].update_one(
-                {"_id": data.evaluator_email, "profile.badTickets": {"$gt": 0}},
-                {"$inc": {"profile.badTickets": -1, "profile.stats.badGiven": 1}}
-            )
-            if bad_update.modified_count == 0: 
-                return {"status": "error", "message": "악평권이 부족합니다!"}
-            
-            # 🔥 실드 원자적 차감
-            shield_update = db["users"].update_one(
-                {"_id": data.target_email, "profile.shieldCount": {"$gt": 0}},
-                {"$inc": {"profile.shieldCount": -1}}
-            )
-            
-            if shield_update.modified_count > 0:
-                target_user = db["users"].find_one({"_id": data.target_email})
-                target_noti = target_user.get("noti", [])
-                target_noti.insert(0, f"🛡️ [무지개 반사 방어 성공!] {evaluator_name}님이 나에게 악평(-{data.intensity}%)을 날렸지만, 방어권이 자동 사용되어 완벽하게 튕겨냈습니다! (남은 방어권: {target_user['profile']['shieldCount']}개)")
-                db["users"].update_one({"_id": data.target_email}, {"$set": {"noti": target_noti}})
-                send_push_notification(data.target_email, "🛡️ 무지개 반사 발동!", f"{evaluator_name}님의 악평을 방어했습니다!")
-                
-                eval_noti = evaluator.get("noti", [])
-                eval_noti.insert(0, f"💥 [공격 실패] {target['profile']['name']}님이 '무지개 반사'를 사용하여 악평이 무효화되었습니다!")
-                db["users"].update_one({"_id": data.evaluator_email}, {"$set": {"noti": eval_noti}})
-                
-                return {"status": "success", "message": f"앗! 상대방이 '무지개 반사'를 사용하여 악평이 튕겨나갔습니다!"}
-
-        # 🔥 4. 실드가 없을 때 악평권 원자적 차감
+        # 🔥 3. 악평권 원자적 차감 (한 번만 차감합니다)
         bad_update = db["users"].update_one(
             {"_id": data.evaluator_email, "profile.badTickets": {"$gt": 0}},
             {"$inc": {"profile.badTickets": -1, "profile.stats.badGiven": 1}}
         )
-        if bad_update.modified_count == 0: 
+        if bad_update.modified_count == 0:
+            if anon_used:  # 악평권이 없으면 먼저 쓴 익명권은 돌려줍니다.
+                db["users"].update_one({"_id": data.evaluator_email}, {"$inc": {"profile.anonTickets": 1}})
             return {"status": "error", "message": "악평권이 부족합니다!"}
+        if anon_used: update_mission_progress(email, "use_anon_ticket", 1)
+
+        # 🔥 무지개 반사(실드) 원자적 차감 → 성공하면 악평 무효
+        shield_update = db["users"].update_one(
+            {"_id": data.target_email, "profile.shieldCount": {"$gt": 0}},
+            {"$inc": {"profile.shieldCount": -1}}
+        )
+        if shield_update.modified_count > 0:
+            remaining = db["users"].find_one({"_id": data.target_email}, {"profile.shieldCount": 1})["profile"].get("shieldCount", 0)
+            db["users"].update_one({"_id": data.target_email}, {"$push": {"noti": {"$each": [f"🛡️ [무지개 반사 방어 성공!] {evaluator_name}님이 나에게 악평(-{data.intensity}%)을 날렸지만, 방어권이 자동 사용되어 완벽하게 튕겨냈습니다! (남은 방어권: {remaining}개)"], "$position": 0}}})
+            send_push_notification(data.target_email, "🛡️ 무지개 반사 발동!", f"{evaluator_name}님의 악평을 방어했습니다!")
+            db["users"].update_one({"_id": data.evaluator_email}, {"$push": {"noti": {"$each": [f"💥 [공격 실패] {target['profile']['name']}님이 '무지개 반사'를 사용하여 악평이 무효화되었습니다!"], "$position": 0}}})
+            update_mission_progress(data.evaluator_email, "use_eval_tickets", 1)
+            return {"status": "success", "message": f"앗! 상대방이 '무지개 반사'를 사용하여 악평이 튕겨나갔습니다!"}
 
         # 악평 대기열 추가
-        if "pending_evals" not in target["profile"]: 
-            target["profile"]["pending_evals"] = []
-        
-        pending_item = { 
+        pending_item = {
             "id": str(uuid.uuid4()), 
             "evaluator_email": data.evaluator_email, 
             "evaluator_name": evaluator_name, 
@@ -782,10 +896,9 @@ def evaluate_user(data: EvalData, authorization: str = Header(None)):
             "reason": data.reason, 
             "timestamp": datetime.utcnow().isoformat() 
         }
-        target["profile"]["pending_evals"].append(pending_item)
+        # $push로 추가만 해서, 같은 순간 바뀐 피평가자의 다른 데이터를 덮어쓰지 않습니다.
+        db["users"].update_one({"_id": data.target_email}, {"$push": {"profile.pending_evals": pending_item}})
         send_push_notification(data.target_email, "🚨 악평 도착!", f"{evaluator_name}님이 악평을 날렸습니다. 재판을 열거나 수락하세요!")
-        
-        db["users"].update_one({"_id": data.target_email}, {"$set": {"profile": target["profile"]}})
         update_mission_progress(data.evaluator_email, "use_eval_tickets", 1)
         return {"status": "success", "message": "악평 전송 완료! 피평가자의 승인/이의제기를 대기합니다."}
 
@@ -804,40 +917,57 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
     kst_now = datetime.utcnow() + timedelta(hours=9)
 
     if data.action == "approve":
+        # 🔥 대기열에서 먼저 원자적으로 꺼냅니다 (따닥으로 두 번 승인되어 두 번 깎이는 것 방지)
+        claim = db["users"].update_one({"_id": email, "profile.pending_evals.id": data.eval_id},
+                                       {"$pull": {"profile.pending_evals": {"id": data.eval_id}}})
+        if claim.modified_count == 0: return {"status": "error", "message": "이미 처리된 악평입니다."}
+
         base_price = profile.get("basePrice", 20000)
         change_amount = base_price * (target_eval["intensity"] * 0.01)
-        profile["price"] = profile.get("price", 20000) - change_amount
+        if "priceHistory" not in profile:
+            db["users"].update_one({"_id": email, "profile.priceHistory": {"$exists": False}},
+                                   {"$set": {"profile.priceHistory": [base_price], "profile.timeHistory": ["시작"]}})
+        updated = db["users"].find_one_and_update(
+            {"_id": email},
+            {"$inc": {"profile.price": -change_amount},
+             "$push": {"noti": {"$each": [f"👎 [악평 수락] {target_eval['evaluator_name']}님의 악평(-{target_eval['intensity']}% 적용): {target_eval['reason']}"], "$position": 0}}},
+            return_document=ReturnDocument.AFTER
+        )
+        new_price = updated["profile"]["price"]
+        db["users"].update_one({"_id": email}, {"$push": {"profile.priceHistory": new_price, "profile.timeHistory": kst_now.strftime("%m.%d %H:%M")}})
 
-        if "priceHistory" not in profile: profile["priceHistory"] = [base_price]; profile["timeHistory"] = ["시작"]
-        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
-
-        if "noti" not in user: user["noti"] = []
-        user["noti"].insert(0, f"👎 [악평 수락] {target_eval['evaluator_name']}님의 악평(-{target_eval['intensity']}% 적용): {target_eval['reason']}")
-
-        max_p = profile.get("maxPrice", 20000)
-        if profile["price"] <= (max_p * 0.3) and not profile.get("narackStartTime"):
-            profile["narackStartTime"] = datetime.utcnow().isoformat(); profile["narackLastHitEmail"] = target_eval["evaluator_email"]
-
-        profile["pending_evals"] = [e for e in pending_list if e["id"] != data.eval_id]
-        db["users"].update_one({"_id": email}, {"$set": {"profile": profile, "noti": user["noti"]}})
+        max_p = updated["profile"].get("maxPrice", 20000)
+        if new_price <= (max_p * 0.3) and not updated["profile"].get("narackStartTime"):
+            db["users"].update_one({"_id": email}, {"$set": {"profile.narackStartTime": datetime.utcnow().isoformat(), "profile.narackLastHitEmail": target_eval["evaluator_email"]}})
         return {"status": "success", "message": "악평을 승인하여 주가 변동이 최종 반영되었습니다."}
 
     elif data.action == "defend":
         cur_month = datetime.utcnow().strftime("%Y-%m")
-        if profile.get("defense_month") != cur_month: profile["defense_month"] = cur_month; profile["defense_count"] = 0
-        if profile.get("defense_count", 0) >= 3: return {"status": "error", "message": "이번 달 방어 재판권(3회)을 전부 소급 사용하셨습니다. 기각 불가."}
-        
+        used = profile.get("defense_count", 0) if profile.get("defense_month") == cur_month else 0
+        if used >= 3: return {"status": "error", "message": "이번 달 방어 재판권(3회)을 전부 소급 사용하셨습니다. 기각 불가."}
+
+        is_anon = target_eval["evaluator_name"] == "익명(???)"
         common_room = db["rooms"].find_one({"members": {"$all": [email, target_eval["evaluator_email"]]}})
-        if not common_room and target_eval["evaluator_name"] != "익명(???)": return {"status": "error", "message": "공격한 유저와 같은 투자 클럽(방)에 소속되어 있지 않아 방어 재판을 개최할 수 없습니다."}
-        
-        if profile.get("price", 20000) < 1000:
-            return {"status": "error", "message": "계좌에 1,000p 이상이 있어야 재판을 발의할 수 있습니다."}
-        
-        profile["price"] -= 1000
-        if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
-        profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
-        
-        profile["defense_count"] += 1
+        if not common_room and not is_anon: return {"status": "error", "message": "공격한 유저와 같은 투자 클럽(방)에 소속되어 있지 않아 방어 재판을 개최할 수 없습니다."}
+        target_room = common_room or db["rooms"].find_one({"members": email})
+        if not target_room: return {"status": "error", "message": "재판을 열 투자 클럽(방)이 없습니다. 먼저 클럽에 참여해 주세요."}
+
+        # 🔥 대기열 꺼내기 + 소송비 1,000p 차감 + 재판권 사용을 한 번에 처리 (따닥 시 두 번 결제/두 번 상정 방지)
+        month_filter = {"profile.defense_month": cur_month} if profile.get("defense_month") == cur_month else {"profile.defense_month": {"$ne": cur_month}}
+        count_update = {"$inc": {"profile.price": -1000, "profile.defense_count": 1}} if used > 0 else {"$inc": {"profile.price": -1000}, "$set": {"profile.defense_count": 1, "profile.defense_month": cur_month}}
+        claim = db["users"].find_one_and_update(
+            {"_id": email, "profile.pending_evals.id": data.eval_id, "profile.price": {"$gte": 1000}, **month_filter},
+            {**count_update, "$pull": {"profile.pending_evals": {"id": data.eval_id}}},
+            return_document=ReturnDocument.AFTER
+        )
+        if not claim:
+            if profile.get("price", 20000) < 1000: return {"status": "error", "message": "계좌에 1,000p 이상이 있어야 재판을 발의할 수 있습니다."}
+            return {"status": "error", "message": "이미 처리된 악평입니다."}
+
+        new_price = claim["profile"]["price"]
+        if "priceHistory" not in claim["profile"]:
+            db["users"].update_one({"_id": email}, {"$set": {"profile.priceHistory": [profile.get("basePrice", 20000)], "profile.timeHistory": ["시작"]}})
+        db["users"].update_one({"_id": email}, {"$push": {"profile.priceHistory": new_price, "profile.timeHistory": kst_now.strftime("%m.%d %H:%M")}})
 
         agenda = {
             "id": str(uuid.uuid4()), "creator_email": email, "target_email": email, "target_name": profile.get("name"),
@@ -847,13 +977,11 @@ def respond_pending_evaluation(data: RespondEvalData, authorization: str = Heade
             "associated_eval": target_eval, "deposit": 1000,
             "created_at": datetime.utcnow().isoformat() 
         }
+        db["rooms"].update_one({"_id": target_room["_id"]}, {"$push": {"agendas": agenda}})
+        update_mission_progress(email, "open_defense_trial", 1)
+        return {"status": "success", "message": f"⚖️ 법정에 탄핵 상정! (소송 비용 1,000p 차감 / 남은 기회: {3 - claim['profile']['defense_count']}회)"}
 
-        profile["pending_evals"] = [e for e in pending_list if e["id"] != data.eval_id]
-        target_room_id = common_room["_id"] if common_room else db["rooms"].find_one({"members": email})["_id"]
-        db["rooms"].update_one({"_id": target_room_id}, {"$push": {"agendas": agenda}})
-        db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-        update_mission_progress(data.voter_email, "participate_vote", 1)
-        return {"status": "success", "message": f"⚖️ 법정에 탄핵 상정! (소송 비용 1,000p 차감 / 남은 기회: {3 - profile['defense_count']}회)"}
+    return {"status": "error", "message": "알 수 없는 요청입니다."}
 
 @app.get("/api/check-nickname")
 def check_nickname(nickname: str):
@@ -927,29 +1055,37 @@ def send_chat(data: dict, authorization: str = Header(None)):
         return {"status": "error", "message": "인증 실패"}
 
     room_code = data.get("room_code")
-    message_text = data.get("message", "").strip()
-    is_megaphone = data.get("is_megaphone", False) 
+    if not isinstance(room_code, str): return {"status": "error", "message": "잘못된 요청입니다."}
+    message_text = str(data.get("message", "")).strip()
+    is_megaphone = data.get("is_megaphone", False) is True
 
     if not message_text:
         return {"status": "error", "message": "메시지가 비어있습니다."}
+    if len(message_text) > 500:
+        return {"status": "error", "message": "메시지는 500자까지 보낼 수 있습니다."}
+    if is_spamming(email, "chat", 1): return {"status": "error", "message": "메시지를 너무 빨리 보내고 있어요."}
+
+    # 🔒 해당 클럽 멤버만 채팅할 수 있습니다.
+    room = db["rooms"].find_one({"_id": room_code}, {"members": 1})
+    if not room or email not in room.get("members", []):
+        return {"status": "error", "message": "클럽 멤버가 아닙니다."}
 
     user = db["users"].find_one({"_id": email})
     if not user: return {"status": "error"}
 
     profile = user.get("profile", {})
     
-    # 확성기 사용 시 티켓 차감 로직
+    # 확성기 사용 시 티켓 원자적 차감 (따닥 방지)
     if is_megaphone:
-        if profile.get("clubMegaphones", 0) <= 0:
+        mega_update = db["users"].update_one({"_id": email, "profile.clubMegaphones": {"$gt": 0}}, {"$inc": {"profile.clubMegaphones": -1}})
+        if mega_update.modified_count == 0:
             return {"status": "error", "message": "확성기 티켓이 부족합니다."}
-        profile["clubMegaphones"] -= 1
-        db["users"].update_one({"_id": email}, {"$set": {"profile.clubMegaphones": profile["clubMegaphones"]}})
-        update_mission_progress(data.voter_email, "participate_vote", 1)
+        update_mission_progress(email, "use_megaphone", 1)
 
     # 저장할 메시지 객체 생성 (안전하게 문자열 시간으로 저장)
     new_message = {
         "sender_email": email,
-        "sender_name": data.get("sender_name"),
+        "sender_name": profile.get("name", "익명"),  # 🔒 이름은 화면이 보낸 값이 아니라 DB 값을 씁니다 (사칭 방지)
         "message": message_text,
         "is_megaphone": is_megaphone, 
         "timestamp": datetime.utcnow().isoformat() 
@@ -958,7 +1094,7 @@ def send_chat(data: dict, authorization: str = Header(None)):
     # 🔥 오류 원인 수정: "room_code"가 아니라 "_id"로 방을 찾아 업데이트해야 합니다!
     db["rooms"].update_one(
         {"_id": room_code}, 
-        {"$push": {"messages": new_message}}
+        {"$push": {"messages": {"$each": [new_message], "$slice": -MAX_ROOM_MESSAGES}}}
     )
     return {"status": "success"}
 
@@ -968,7 +1104,7 @@ def add_room_event(data: EventAddData, authorization: str = Header(None)):
     if not email or email != data.creator_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room or email not in room.get("members", []): return {"status": "error", "message": "권한 없음"}
-    event = { "id": str(uuid.uuid4()), "start_date": data.start_date, "end_date": data.end_date, "title": data.title, "creator_email": email, "creator_name": data.creator_name }
+    event = { "id": str(uuid.uuid4()), "start_date": data.start_date, "end_date": data.end_date, "title": data.title, "creator_email": email, "creator_name": (db["users"].find_one({"_id": email}, {"profile.name": 1}) or {}).get("profile", {}).get("name", "익명") }
     db["rooms"].update_one({"_id": data.room_code}, {"$push": {"events": event}})
     return {"status": "success"}
 
@@ -1015,28 +1151,44 @@ def create_agenda(data: AgendaData, authorization: str = Header(None)):
 def vote_agenda(data: VoteData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.voter_email.strip().lower(): return {"status": "error", "message": "인증 실패"}
+    if data.vote_type not in ("agree", "disagree"): return {"status": "error", "message": "올바르지 않은 투표입니다."}
 
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room or email not in room.get("members", []): return {"status": "error", "message": "방이 없거나 해당 클럽의 멤버가 아닙니다."}
 
-    agendas = room.get("agendas", [])
-    target_agenda = None
-    for a in agendas:
-        if a["id"] == data.agenda_id: target_agenda = a; break
-    if not target_agenda: return {"status": "error", "message": "안건을 찾을 수 없습니다."}
-    if email in target_agenda.get("votedUsers", []): return {"status": "error", "message": "이미 투표하셨습니다."}
+    # 🔥 진행 중(active)이고 아직 투표 안 한 안건에만, 원자적으로 한 표를 더합니다.
+    #    (이미 끝난 재판에 투표해 판결이 반복되거나, 동시 투표로 표가 사라지는 문제 방지)
+    vote_field = "agendas.$.agreeVotes" if data.vote_type == "agree" else "agendas.$.disagreeVotes"
+    vote_res = db["rooms"].update_one(
+        {"_id": data.room_code, "agendas": {"$elemMatch": {"id": data.agenda_id, "status": "active", "votedUsers": {"$ne": email}}}},
+        {"$push": {"agendas.$.votedUsers": email}, "$inc": {vote_field: 1}}
+    )
+    if vote_res.modified_count == 0:
+        a = next((x for x in room.get("agendas", []) if x.get("id") == data.agenda_id), None)
+        if not a: return {"status": "error", "message": "안건을 찾을 수 없습니다."}
+        if email in a.get("votedUsers", []): return {"status": "error", "message": "이미 투표하셨습니다."}
+        return {"status": "error", "message": "이미 종료된 안건입니다."}
+    update_mission_progress(email, "participate_vote", 1)
 
-    target_agenda["votedUsers"].append(email)
-    if data.vote_type == "agree": target_agenda["agreeVotes"] += 1
-    else: target_agenda["disagreeVotes"] += 1
+    room = db["rooms"].find_one({"_id": data.room_code})
+    target_agenda = next((x for x in room.get("agendas", []) if x.get("id") == data.agenda_id), None)
+    if not target_agenda: return {"status": "success", "message": "투표 완료"}
 
     total_members = len(room.get("members", []))
     required_votes = (total_members // 2) + 1
     status_msg = "success"; message = "투표 완료"
     kst_now = datetime.utcnow() + timedelta(hours=9)
 
+    def close_agenda(new_status: str) -> bool:
+        """active → 종료 상태로 딱 한 번만 바꿉니다. 바꾼 요청만 판결을 집행합니다."""
+        res = db["rooms"].update_one(
+            {"_id": data.room_code, "agendas": {"$elemMatch": {"id": data.agenda_id, "status": "active"}}},
+            {"$set": {"agendas.$.status": new_status}}
+        )
+        return res.modified_count == 1
+
     if target_agenda["agreeVotes"] >= required_votes:
-        target_agenda["status"] = "resolved"
+        if not close_agenda("resolved"): return {"status": "success", "message": "투표 완료"}
         target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
         
         if target_agenda["type"] == "kick":
@@ -1064,43 +1216,15 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
                 target_user["profile"]["status"] = "active"; target_user["profile"]["price"] = 10000
                 message = f"{target_agenda['target_name']}님이 기적적으로 회생(재상장) 되었습니다!"
             elif target_agenda["type"] == "defense":
-                assoc = target_agenda["associated_eval"]
-                base_p = target_user["profile"].get("basePrice", 20000)
-                change_amount = base_p * (assoc["intensity"] * 0.01)
-                target_user["profile"]["price"] = target_user["profile"].get("price", 20000) - change_amount
-
-                if "priceHistory" not in target_user["profile"]: target_user["profile"]["priceHistory"] = [base_p]; target_user["profile"]["timeHistory"] = ["시작"]
-                target_user["profile"]["priceHistory"].append(target_user["profile"]["price"])
-                target_user["profile"]["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
-
-                if "noti" not in target_user: target_user["noti"] = []
-                target_user["noti"].insert(0, f"⚖️ [재판 패소] 악평 정당화 판결 확정 (-{assoc['intensity']}% 적용): {assoc['reason']}")
-
-                max_p = target_user["profile"].get("maxPrice", 20000)
-                if target_user["profile"]["price"] <= (max_p * 0.3) and not target_user["profile"].get("narackStartTime"):
-                    target_user["profile"]["narackStartTime"] = datetime.utcnow().isoformat()
-                    target_user["profile"]["narackLastHitEmail"] = assoc["evaluator_email"]
-
+                apply_defense_loss(target_agenda, target_user, kst_now)
                 message = f"[재판 패소] 배심원단이 악평을 정당하다고 판결했습니다! {target_agenda['target_name']}님의 주가가 하락합니다."
-                
-                evaluator_email = assoc["evaluator_email"]
-                if evaluator_email and evaluator_email != "anonymous@system.com":
-                    eval_user = db["users"].find_one({"_id": evaluator_email})
-                    if eval_user:
-                        e_prof = eval_user.get("profile", {})
-                        e_prof["price"] = e_prof.get("price", 20000) + 1000
-                        if "priceHistory" not in e_prof: e_prof["priceHistory"] = [e_prof.get("basePrice", 20000)]; e_prof["timeHistory"] = ["시작"]
-                        e_prof["priceHistory"].append(e_prof["price"])
-                        e_prof["timeHistory"].append(kst_now.strftime("%m.%d %H:%M"))
-                        e_noti = eval_user.get("noti", [])
-                        e_noti.insert(0, f"💸 [위자료 입금] {target_agenda['target_name']}님이 제기한 방어 재판에서 승소하여 위자료 1,000p를 받았습니다!")
-                        db["users"].update_one({"_id": evaluator_email}, {"$set": {"profile": e_prof, "noti": e_noti}})
 
             db["users"].update_one({"_id": target_agenda["target_email"]}, {"$set": {"profile": target_user["profile"], "noti": target_user.get("noti", [])}})
         status_msg = "resolved"
 
     elif target_agenda["disagreeVotes"] >= required_votes:
-        target_agenda["status"] = "rejected"; status_msg = "resolved"
+        if not close_agenda("rejected"): return {"status": "success", "message": "투표 완료"}
+        status_msg = "resolved"
         if target_agenda["type"] == "kick":
             target_user = db["users"].find_one({"_id": target_agenda["target_email"]})
             if target_user:
@@ -1124,111 +1248,102 @@ def vote_agenda(data: VoteData, authorization: str = Header(None)):
         else:
             message = f"반대표가 많아 안건이 최종 기각되었습니다."
 
-    db["rooms"].update_one({"_id": data.room_code}, {"$set": {"agendas": agendas}})
-    update_mission_progress(data.voter_email, "participate_vote", 1)
     return {"status": status_msg, "message": message}
+
+# 상품별로 프로필에서 늘려줄 필드
+ITEM_FIELDS = {
+    "nickname_color_ticket": ("nickname_color_tickets", "🎨 닉네임 컬러 변경권"),
+    "club_megaphone": ("clubMegaphones", "📢 클럽 확성기"),
+    "shield_ticket": ("shieldCount", "🌈 무지개 반사 방어권"),
+    "anon_ticket": ("anonTickets", "👻 익명 암살권"),
+}
+
+def set_global_megaphone(profile: dict, text) -> None:
+    text = str(text or "").strip()[:100]
+    db["system"].update_one(
+        {"_id": "global"},
+        {"$set": {"megaphone": f"[{profile.get('name', '익명')}] {text}", "megaphone_time": datetime.utcnow().isoformat()}},
+        upsert=True
+    )
 
 @app.post("/api/shop/buy")
 def buy_shop_item(data: dict, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.get("email"): return {"status": "error", "message": "인증 실패"}
 
-    user = db["users"].find_one({"_id": email})
-    if not user: return {"status": "error", "message": "유저 없음"}
-
-    profile = user.get("profile", {})
     item_type = data.get("item_type")
     extra_data = data.get("extra_data", "")
+    if not isinstance(item_type, str): return {"status": "error", "message": "잘못된 요청입니다."}
 
     # 🔥 중앙 관리되는 가격표에서 포인트 가격을 가져옵니다.
     if item_type not in SHOP_PRICES or "point" not in SHOP_PRICES[item_type]:
         return {"status": "error", "message": "알 수 없는 상품이거나 포인트로 구매할 수 없습니다."}
+    if item_type == "megaphone" and not str(extra_data or "").strip():
+        return {"status": "error", "message": "확성기 메시지를 입력해 주세요."}
 
     cost = SHOP_PRICES[item_type]["point"]
+    inc = {"profile.price": -cost}
+    if item_type in ITEM_FIELDS: inc[f"profile.{ITEM_FIELDS[item_type][0]}"] = 1
 
-    if profile.get("price", 0) < cost:
+    # 🔥 잔고 확인 + 차감 + 지급을 한 번에 (따닥으로 한 번 값에 두 개 받는 것 방지)
+    updated = db["users"].find_one_and_update(
+        {"_id": email, "profile.price": {"$gte": cost}},
+        {"$inc": inc},
+        return_document=ReturnDocument.AFTER
+    )
+    if not updated:
         return {"status": "error", "message": "잔고가 부족합니다."}
 
-    profile["price"] -= cost
-    message = ""
-
-    # 공통 아이템 지급 로직
-    if item_type == "nickname_color_ticket":
-        profile["nickname_color_tickets"] = profile.get("nickname_color_tickets", 0) + 1
-        message = "🎨 닉네임 컬러 변경권을 획득했습니다!"
-    elif item_type == "club_megaphone":
-        profile["clubMegaphones"] = profile.get("clubMegaphones", 0) + 1
-        message = "📢 클럽 확성기를 성공적으로 구매했습니다!"
-    elif item_type == "shield_ticket":
-        profile["shieldCount"] = profile.get("shieldCount", 0) + 1
-        message = "🌈 무지개 반사 방어권을 획득했습니다!"
-    elif item_type == "anon_ticket":
-        profile["anonTickets"] = profile.get("anonTickets", 0) + 1
-        message = "👻 익명 암살권을 획득했습니다!"
-    elif item_type == "megaphone":
-        user_name = profile.get("name", "익명")
-        display_msg = f"[{user_name}] {extra_data}"
-        db["system"].update_one(
-            {"_id": "global"}, 
-            {"$set": {"megaphone": display_msg, "megaphone_time": datetime.utcnow().isoformat()}}, 
-            upsert=True
-        )
+    profile = updated["profile"]
+    if item_type == "megaphone":
+        set_global_megaphone(profile, extra_data)
         message = "📢 글로벌 확성기 메시지가 전국구 전광판에 등록되었습니다!"
     else:
-        return {"status": "error", "message": "알 수 없는 상품입니다."}
+        message = f"{ITEM_FIELDS[item_type][1]}을(를) 획득했습니다!"
 
-    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-    update_mission_progress(data.voter_email, "participate_vote", 1)
-    return {"status": "success", "message": message, "profile": profile}
+    update_mission_progress(email, "buy_shop_item", 1)
+    return {"status": "success", "message": message, "profile": hide_anonymous_evaluators(profile)}
+
+# 🔒 실제 결제 검증이 아직 없어서, 켜두면 누구나 API로 유료 아이템을 무한히 받을 수 있습니다.
+#    친구들끼리 테스트할 때만 Render 환경 변수에 CASH_SHOP_FREE_TEST=true 를 넣어 켜세요.
+CASH_SHOP_FREE_TEST = os.getenv("CASH_SHOP_FREE_TEST", "").lower() == "true"
+THEME_ITEMS = {"theme_neon": ("neon", "✨ 홀로그램 네온 테마"), "theme_fire": ("fire", "🔥 지옥의 불꽃 테마")}
 
 @app.post("/api/cash-shop/buy")
 def buy_cash_item(data: dict, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email or email != data.get("email"): return {"status": "error", "message": "인증 실패"}
+    if not CASH_SHOP_FREE_TEST:
+        return {"status": "error", "message": "💳 캐시 상점은 결제 시스템 준비 중입니다. 조금만 기다려 주세요!"}
 
-    user = db["users"].find_one({"_id": email})
-    if not user: return {"status": "error", "message": "유저 없음"}
-
-    profile = user.get("profile", {})
     item_type = data.get("item_type")
     extra_data = data.get("extra_data", "")
+    if not isinstance(item_type, str): return {"status": "error", "message": "잘못된 요청입니다."}
 
-    if item_type == "shield_ticket":
-        profile["shieldCount"] = profile.get("shieldCount", 0) + 1
-        message = "🌈 무지개 반사 방어권을 구매했습니다!"
-    elif item_type == "anon_ticket":
-        profile["anonTickets"] = profile.get("anonTickets", 0) + 1
-        message = "👻 익명 암살권을 구매했습니다!"
+    if item_type in ITEM_FIELDS:
+        update = {"$inc": {f"profile.{ITEM_FIELDS[item_type][0]}": 1}}
+        message = f"{ITEM_FIELDS[item_type][1]}을(를) 구매했습니다!"
     elif item_type == "fund_pack":
-        profile["price"] += 10000
+        update = {"$inc": {"profile.price": 10000}}
         message = "💰 긴급 자금 10,000p가 수혈되었습니다!"
+    elif item_type in THEME_ITEMS:
+        update = {"$addToSet": {"profile.ownedThemes": THEME_ITEMS[item_type][0]}}
+        message = f"{THEME_ITEMS[item_type][1]}를 획득했습니다!"
     elif item_type == "megaphone":
-        user_name = profile.get("name", "익명")
-        display_msg = f"[{user_name}] {extra_data}"
-        db["system"].update_one({"_id": "global"}, {"$set": {"megaphone": display_msg, "megaphone_time": datetime.utcnow().isoformat()}}, upsert=True)
+        if not str(extra_data or "").strip(): return {"status": "error", "message": "확성기 메시지를 입력해 주세요."}
+        update = None
         message = "📢 글로벌 확성기 메시지가 전국구 전광판에 등록되었습니다!"
-    elif item_type == "theme_neon":
-        owned = profile.get("ownedThemes", [])
-        if "neon" not in owned: owned.append("neon")
-        profile["ownedThemes"] = owned
-        message = "✨ 홀로그램 네온 테마를 획득했습니다!"
-    elif item_type == "theme_fire":
-        owned = profile.get("ownedThemes", [])
-        if "fire" not in owned: owned.append("fire")
-        profile["ownedThemes"] = owned
-        message = "🔥 지옥의 불꽃 테마를 획득했습니다!"
-    elif item_type == "nickname_color_ticket":
-        profile["nickname_color_tickets"] = profile.get("nickname_color_tickets", 0) + 1
-        message = "🎨 닉네임 컬러 변경권을 구매했습니다!"
-    elif item_type == "club_megaphone":
-        profile["clubMegaphones"] = profile.get("clubMegaphones", 0) + 1
-        message = "📢 클럽 확성기를 구매했습니다!"
     else:
         return {"status": "error", "message": "알 수 없는 유료 상품입니다."}
 
-    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-    update_mission_progress(data.voter_email, "participate_vote", 1)
-    return {"status": "success", "message": message, "profile": profile}
+    if update: db["users"].update_one({"_id": email}, update)
+    user = db["users"].find_one({"_id": email})
+    if not user: return {"status": "error", "message": "유저 없음"}
+    profile = user.get("profile", {})
+    if item_type == "megaphone": set_global_megaphone(profile, extra_data)
+
+    update_mission_progress(email, "buy_shop_item", 1)
+    return {"status": "success", "message": message, "profile": hide_anonymous_evaluators(profile)}
 
 @app.post("/api/room/gamble")
 def room_gamble(data: GambleData, authorization: str = Header(None)):
@@ -1242,38 +1357,44 @@ def room_gamble(data: GambleData, authorization: str = Header(None)):
     room = db["rooms"].find_one({"_id": data.room_code})
     if not room or email not in room.get("members", []): return {"status": "error", "message": "클럽 멤버가 아닙니다."}
 
-    profile = user["profile"]
+    if data.guess not in ("홀", "짝"): return {"status": "error", "message": "'홀' 또는 '짝'에 배팅해 주세요."}
     dice = random.randint(1, 6)
     is_odd = dice % 2 != 0
-    user_guess_odd = data.guess == "홀"
-
-    win = (is_odd and user_guess_odd) or (not is_odd and not user_guess_odd)
+    win = is_odd == (data.guess == "홀")
     result_str = "홀" if is_odd else "짝"
 
     kst_now = datetime.utcnow() + timedelta(hours=9)
     time_str = kst_now.strftime("%m.%d %H:%M")
 
+    # 🔥 잔고 확인과 증감을 한 번에 (동시 배팅으로 잔고가 꼬이는 것 방지)
+    updated = db["users"].find_one_and_update(
+        {"_id": email, "profile.price": {"$gte": 500}},
+        {"$inc": {"profile.price": 500 if win else -500}},
+        return_document=ReturnDocument.AFTER
+    )
+    if not updated: return {"status": "error", "message": "도박장 입장 최소 금액(500p)이 부족합니다."}
+    profile = updated["profile"]
+
     if win:
-        profile["price"] += 500
-        chat_msg = f"🎲 [도박장] {profile.get('name')}님이 '{data.guess}'에 배팅! ➔ 주사위 {dice} ({result_str}) ➔ 💰 1,000p 획득!"
-        msg = f"🎲 주사위 {dice} ({result_str})! 승리! 💰 1,000p를 획득하셨습니다!"
-        update_mission_progress(data.voter_email, "participate_vote", 1)
+        chat_msg = f"🎲 [도박장] {profile.get('name')}님이 '{data.guess}'에 배팅! ➔ 주사위 {dice} ({result_str}) ➔ 💰 500p 획득!"
+        msg = f"🎲 주사위 {dice} ({result_str})! 승리! 💰 500p를 획득하셨습니다!"
+        update_mission_progress(email, "win_gamble", 1)
     else:
-        profile["price"] -= 500
         chat_msg = f"🎲 [도박장] {profile.get('name')}님이 '{data.guess}'에 배팅! ➔ 주사위 {dice} ({result_str}) ➔ 💸 500p 증발..."
         msg = f"🎲 주사위 {dice} ({result_str})... 도박 실패. 💸 500p를 잃으셨습니다."
 
-    if "priceHistory" not in profile: profile["priceHistory"] = [profile.get("basePrice", 20000)]; profile["timeHistory"] = ["시작"]
-    profile["priceHistory"].append(profile["price"]); profile["timeHistory"].append(time_str)
-
-    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": {"sender_email": "system", "sender_name": "시스템", "message": chat_msg}}})
+    if "priceHistory" not in profile:
+        db["users"].update_one({"_id": email}, {"$set": {"profile.priceHistory": [profile.get("basePrice", 20000)], "profile.timeHistory": ["시작"]}})
+    db["users"].update_one({"_id": email}, {"$push": {"profile.priceHistory": profile["price"], "profile.timeHistory": time_str}})
+    db["rooms"].update_one({"_id": data.room_code}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": chat_msg, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
 
     return {"status": "success", "message": msg}
 
 @app.post("/api/upload")
-async def upload_image(image: UploadFile = File(...)):
-    if not image.content_type.startswith("image/"): raise HTTPException(status_code=400, detail="이미지 파일만 업로드할 수 있습니다.")
+async def upload_image(image: UploadFile = File(...), authorization: str = Header(None)):
+    # 🔒 로그인한 유저만 업로드 가능 (아무나 ImgBB 키를 쓰는 것 방지)
+    if not verify_google_token(authorization): raise HTTPException(status_code=401, detail="인증 실패")
+    if not image.content_type or not image.content_type.startswith("image/"): raise HTTPException(status_code=400, detail="이미지 파일만 업로드할 수 있습니다.")
     MAX_SIZE = 5 * 1024 * 1024 
     contents = await image.read()
     if len(contents) > MAX_SIZE: raise HTTPException(status_code=400, detail="파일 크기는 5MB를 초과할 수 없습니다.")
@@ -1285,10 +1406,17 @@ async def upload_image(image: UploadFile = File(...)):
     if data.get("success"): return {"url": data["data"]["url"]}
     return {"error": "업로드 실패"}
 
+ALLOWED_PUSH_HOSTS = ("fcm.googleapis.com", "push.services.mozilla.com", "push.apple.com", "notify.windows.com", "push.microsoft.com")
+
 @app.post("/api/push/subscribe")
 def subscribe_push(data: PushSubscriptionData, authorization: str = Header(None)):
     email = verify_google_token(authorization)
     if not email: return {"status": "error", "message": "인증 실패"}
+
+    # 🔒 브라우저 공식 푸시 서버 주소만 허용 (서버가 공격자가 정한 주소로 요청을 보내는 SSRF 방지)
+    host = urlparse(data.endpoint).hostname or ""
+    if not data.endpoint.startswith("https://") or not any(host == d or host.endswith("." + d) for d in ALLOWED_PUSH_HOSTS):
+        return {"status": "error", "message": "지원하지 않는 푸시 주소입니다."}
 
     # 유저 DB에 스마트폰 푸시 알림 주소(subscription) 저장
     db["users"].update_one(
@@ -1344,16 +1472,16 @@ def change_nickname_color(data: ColorChangeData, authorization: str = Header(Non
     if not user: 
         return {"status": "error", "message": "유저 정보 없음"}
 
-    profile = user.get("profile", {})
-    # 티켓 개수 확인
-    tickets = profile.get("nickname_color_tickets", 0)
+    # 🔒 #RRGGBB 형식만 허용 (색 대신 스크립트를 넣는 공격 방지)
+    if not is_valid_hex_color(data.color):
+        return {"status": "error", "message": "올바르지 않은 색상 값입니다."}
 
-    if tickets <= 0:
+    # 티켓 1장 원자적 차감 및 새로운 색상 저장
+    updated = db["users"].find_one_and_update(
+        {"_id": email, "profile.nickname_color_tickets": {"$gt": 0}},
+        {"$inc": {"profile.nickname_color_tickets": -1}, "$set": {"profile.nameColor": data.color}},
+        return_document=ReturnDocument.AFTER
+    )
+    if not updated:
         return {"status": "error", "message": "보유한 닉네임 컬러 변경권이 없습니다."}
-
-    # 티켓 1장 차감 및 새로운 색상 저장
-    profile["nickname_color_tickets"] = tickets - 1
-    profile["nameColor"] = data.color
-
-    db["users"].update_one({"_id": email}, {"$set": {"profile": profile}})
-    return {"status": "success", "message": "닉네임 색상이 화려하게 변경되었습니다!", "profile": profile}
+    return {"status": "success", "message": "닉네임 색상이 화려하게 변경되었습니다!", "profile": hide_anonymous_evaluators(updated["profile"])}

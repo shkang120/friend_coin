@@ -1,4 +1,6 @@
-const BACKEND_URL = "https://friend-coin.onrender.com";
+// 로컬(localhost)에서 열면 로컬 서버로, 그 외(배포 사이트)에서는 Render 서버로 요청합니다.
+const IS_LOCAL_DEV = ["localhost", "127.0.0.1"].includes(location.hostname);
+const BACKEND_URL = IS_LOCAL_DEV ? "http://localhost:8000" : "https://friend-coin.onrender.com";
 
 // 🔥 [신규 추가] 말풍선 반짝임(Glow) 및 큐티클 광택(Shine) 애니메이션 CSS 강제 주입
 const chatEffectStyle = document.createElement('style');
@@ -115,6 +117,8 @@ if (!document.getElementById('global-loader')) {
 window.showLoading = () => document.getElementById('global-loader').style.display = 'flex';
 window.hideLoading = () => document.getElementById('global-loader').style.display = 'none';
 
+// 🔒 닉네임 색은 #RRGGBB 형식일 때만 사용 (스크립트 주입 방지)
+function safeColor(c) { return /^#[0-9a-fA-F]{6}$/.test(c || '') ? c : '#333d4b'; }
 function escapeHtml(text) { if (!text) return ""; return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
 function getCurrentTime() { const now = new Date(); return `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`; }
 function getFormattedDate(d) { const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); const date = String(d.getDate()).padStart(2, '0'); return `${year}-${month}-${date}`; }
@@ -155,11 +159,11 @@ function getAvatarHtml(person, size = 'small') {
     const radius = size === 'large' ? '24px' : '14px'; 
     const isDelisted = person.status === 'delisted'; 
     const filter = isDelisted ? 'grayscale(100%) opacity(50%)' : 'none'; 
-    const themeClass = (person.profileTheme && person.profileTheme !== 'none') ? `theme-${person.profileTheme}` : '';
+    const themeClass = (person.profileTheme && person.profileTheme !== 'none') ? `theme-${escapeHtml(person.profileTheme)}` : '';
     
     let inner = '';
     if (person.profileImage) {
-        inner = `<img src="${person.profileImage}" style="width:100%; height:100%; border-radius:${radius}; object-fit:cover; display:inline-block; vertical-align:middle; background:#f2f4f6;">`;
+        inner = `<img src="${escapeHtml(person.profileImage)}" style="width:100%; height:100%; border-radius:${radius}; object-fit:cover; display:inline-block; vertical-align:middle; background:#f2f4f6;">`;
     } else {
         inner = `<span style="display:inline-block; width:100%; height:100%; line-height:${sizePx}; text-align:center; font-size:${size === 'large' ? '50px' : '20px'}; background:#f9fafb; border-radius:${radius}; vertical-align:middle;">${isDelisted ? '💀' : person.emoji || '👤'}</span>`;
     }
@@ -170,7 +174,7 @@ function getAvatarHtml(person, size = 'small') {
 function updateTicker() { 
     const tickerEl = document.getElementById('ticker-text'); 
     if(!tickerEl || !myProfile || globalRanking.length === 0) return; 
-    const rankText = `👑 전국 1위: ${globalRanking[0].name} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p)`; 
+    const rankText = `👑 전국 1위: ${escapeHtml(globalRanking[0].name)} (${Math.floor(globalRanking[0].price||0).toLocaleString()}p)`; 
     const megaText = globalMegaphone ? `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; 📢 ${escapeHtml(globalMegaphone)}` : `&nbsp;&nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;&nbsp; 🔔 [공지] 아이템 상점 오픈! 무지개 반사로 악평을 방어하세요!`; 
     tickerEl.innerHTML = `[글로벌 시황] ${rankText}${megaText}`; 
 }
@@ -267,7 +271,7 @@ window.openAddEventModal = function(dateStr) {
 
 // 🔥 [신규 추가] 주사위 도박 로직 연동
 window.rollDice = async function() {
-    const guess = prompt("주사위 결과가 홀일까요, 짝일까요? (홀/짝 중 1개 입력)\n* 참가비: 500p\n* 승리시: 1,000p 획득");
+    const guess = prompt("주사위 결과가 홀일까요, 짝일까요? (홀/짝 중 1개 입력)\n* 참가비: 500p\n* 승리시: 1,000p 획득 (순이익 +500p)");
     if(!guess) return;
     if(guess !== "홀" && guess !== "짝") { alert("홀 또는 짝만 입력해주세요."); return; }
     
@@ -314,8 +318,8 @@ function renderHome() {
                 const displayRoomName = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? myProfile.roomAliases[r.room_code] : r.room_name;
                 const aliasTag = (myProfile.roomAliases && myProfile.roomAliases[r.room_code]) ? '<span style="font-size:10px; font-weight:normal; color:#8b95a1; background:#f2f4f6; padding:2px 4px; border-radius:4px; margin-left:4px;">내 별명</span>' : '';
                 const avatars = r.members.slice(0, 4).map((m, i) => { 
-                    const inner = m.profileImage ? `<img src="${m.profileImage}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#f9fafb; font-size:12px;">${m.status==='delisted'?'💀':'👤'}</div>`; 
-                    const themeClass = (m.profileTheme && m.profileTheme !== 'none') ? `theme-${m.profileTheme}` : '';
+                    const inner = m.profileImage ? `<img src="${escapeHtml(m.profileImage)}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#f9fafb; font-size:12px;">${m.status==='delisted'?'💀':'👤'}</div>`; 
+                    const themeClass = (m.profileTheme && m.profileTheme !== 'none') ? `theme-${escapeHtml(m.profileTheme)}` : '';
                     return `<div class="${themeClass}" style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:${i===0?'0':'-8px'}; position:relative; z-index:${10-i}; overflow:hidden; display:inline-block; vertical-align:middle; box-shadow:0 1px 3px rgba(0,0,0,0.1); background:white;">${inner}</div>`; 
                 }).join('');
                 const extraMembers = r.members.length > 4 ? `<div style="width:24px; height:24px; border-radius:50%; border:2px solid white; margin-left:-8px; position:relative; z-index:5; background:#f2f4f6; color:#8b95a1; font-size:10px; font-weight:bold; display:inline-flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,0.1); vertical-align:middle;">+${r.members.length-4}</div>` : '';
@@ -448,7 +452,7 @@ function renderHome() {
                         ${getAvatarHtml(f, 'small')}
                         <div>
                             <div style="font-size: 16px; font-weight: bold; text-align:left;">
-                                ${displayTitle}<span style="color: ${f.nameColor || '#333d4b'};">${escapeHtml(f.name)}</span> 
+                                ${displayTitle}<span style="color: ${safeColor(f.nameColor)};">${escapeHtml(f.name)}</span> 
                                 ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''} 
                                 ${isDelisted ? delistedLabel : ''}
                             </div>
@@ -877,7 +881,7 @@ function renderProfile() {
                 <button onclick="openProfileModal()" style="position: absolute; bottom: 0; right: -10px; background: #3182f6; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✏️</button>
             </div>
             <!-- 🔥 칭호와 닉네임을 다시 한 줄로 합치고, 닉네임 크기(20px)를 지정하여 칭호와 대비되게 만듭니다 -->
-            <h2 style="margin: 10px 0; color: ${myProfile.nameColor || '#333d4b'}; display:flex; justify-content:center; align-items:center; gap:8px; font-size: 20px;">
+            <h2 style="margin: 10px 0; color: ${safeColor(myProfile.nameColor)}; display:flex; justify-content:center; align-items:center; gap:8px; font-size: 20px;">
                 ${displayTitle}${escapeHtml(myProfile.name)} 코인 
                 <span onclick="changeNickname()" style="font-size:12px; color:#8b95a1; background:#f2f4f6; padding:4px 8px; border-radius:6px; cursor:pointer;">변경</span>
             </h2>
@@ -942,7 +946,7 @@ function renderRanking() {
                     <span style="font-size: 20px; margin-right: 10px; width:24px; text-align:center; display:inline-flex; align-items:center; justify-content:center;">${rankIcon}</span>
                     ${getAvatarHtml(p, 'small')}
                     <span style="margin-left:10px;">${displayTitle}</span>
-                    <span style="color: ${p.nameColor || '#333d4b'};">${escapeHtml(p.name)}</span> 
+                    <span style="color: ${safeColor(p.nameColor)};">${escapeHtml(p.name)}</span> 
                     ${isMe ? '<span style="font-size:11px; background:#3182f6; color:white; padding:2px 6px; border-radius:4px; margin-left:4px;">나</span>' : ''}
                     ${isHot ? '<span style="margin-left:5px;">🚀</span>' : ''}
                 </div>
@@ -1059,7 +1063,7 @@ function openFriendDetail(friendEmail) {
     modal.innerHTML = `
         <div style="background:white; padding:30px 25px; border-radius:20px; width:85%; max-width:340px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;">
             <div style="margin-bottom:15px;">${getAvatarHtml(friend, 'large')}</div>
-            <h2 style="margin:0 0 5px 0; color:${friend.nameColor || '#333d4b'};">${escapeHtml(friend.name)}</h2>
+            <h2 style="margin:0 0 5px 0; color:${safeColor(friend.nameColor)};">${escapeHtml(friend.name)}</h2>
             <div style="font-size:26px; font-weight:bold; color:#333d4b; margin-bottom:5px;">${Math.floor(friend.price).toLocaleString()} p</div>
             <div style="font-size:14px; font-weight:bold; color:${cColor}; margin-bottom:15px;">${cSign}${Math.floor(cAmt).toLocaleString()} p (${cSign}${cRate}%)</div>
             <div style="background: #ffffff; padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e8eb;"><canvas id="friendFriendChartCanvas" style="width:100%; height:110px;"></canvas></div>
@@ -1354,7 +1358,7 @@ function openProfileModal() {
                 <div style="font-size: 12px; color: #8b95a1; font-weight: bold;">보유: ${colorTicketCount}개</div>
             </div>
             <div style="display: flex; gap: 10px; align-items: center;">
-                <input type="color" id="new-nickname-color" value="${myProfile.nameColor || '#333d4b'}" style="width: 40px; height: 40px; border: none; cursor: pointer; padding: 0; background: transparent; border-radius: 8px;">
+                <input type="color" id="new-nickname-color" value="${safeColor(myProfile.nameColor)}" style="width: 40px; height: 40px; border: none; cursor: pointer; padding: 0; background: transparent; border-radius: 8px;">
                 <button onclick="useColorTicket()" style="flex: 1; padding: 10px; background: #333d4b; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">변경권 1개 사용하기</button>
             </div>
         </div>
@@ -1376,7 +1380,7 @@ window.selectTheme = function(themeId) {
 async function changeNickname() { const newName = prompt("변경할 닉네임 (최대 8자):"); if(!newName || newName.trim() === "" || newName.trim() === myProfile.name) return; if (/[^a-zA-Z0-9가-힣]/.test(newName.trim())) { alert("특수문자 불가"); return; } try { const res = await fetch(`${BACKEND_URL}/api/check-nickname?nickname=${encodeURIComponent(newName.trim())}`); const data = await res.json(); if(!data.available) { alert(data.message); return; } myProfile.name = newName.trim(); myUsername = myProfile.name; localStorage.setItem('fc_username', myUsername); saveData(); showToast("변경 완료!"); renderProfile(); } catch(err) { alert("오류 발생"); } }
 
 let fileInput = document.getElementById('custom-image-upload');
-if(fileInput) { fileInput.addEventListener('change', async function(e) { const file = e.target.files[0]; if(!file) return; const formData = new FormData(); formData.append("image", file); try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 업로드 완료!"); closeProfileModal(); renderProfile(); triggerConfetti(); } else { showToast("🚨 업로드 실패"); } } catch(err) { showToast("🚨 네트워크 오류"); } }); }
+if(fileInput) { fileInput.addEventListener('change', async function(e) { const file = e.target.files[0]; if(!file) return; const formData = new FormData(); formData.append("image", file); try { const response = await fetch(`${BACKEND_URL}/api/upload`, { method: "POST", headers: { "Authorization": `Bearer ${localStorage.getItem('fc_id_token')}` }, body: formData }); const data = await response.json(); if (data.url) { myProfile.profileImage = data.url; saveData(); showToast("📸 업로드 완료!"); closeProfileModal(); renderProfile(); triggerConfetti(); } else { showToast("🚨 업로드 실패"); } } catch(err) { showToast("🚨 네트워크 오류"); } }); }
 
 function decodeJwtResponse(token) { let base64Url = token.split('.')[1]; let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) { return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''))); }
 
