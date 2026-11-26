@@ -41,6 +41,21 @@ def mission_week_monday(kst_now: datetime) -> str:
     return (kst_now - timedelta(days=days_since_monday)).strftime("%Y-%m-%d")
 
 
+def mission_for_client(mission, my_email: str):
+    """화면의 미션 카드에 필요한 정보만 골라, 마감 시각과 내 기여도를 붙여 돌려줍니다."""
+    if not mission: return None
+    week_start = datetime.strptime(mission_week_monday(datetime.utcnow() + timedelta(hours=9)), "%Y-%m-%d")
+    ends_at_utc = week_start + timedelta(days=7, hours=8) - timedelta(hours=9)  # 다음 월요일 08:00 KST
+    contributions = mission.get("contributions", {})
+    return {
+        "type": mission.get("type"), "name": mission.get("name"), "description": mission.get("description"),
+        "target_score": mission.get("target_score", 1), "total_score": mission.get("total_score", 0),
+        "reward_points": mission.get("reward_points", 0), "reward_tickets": mission.get("reward_tickets", 0),
+        "contributions": contributions, "my_contribution": contributions.get(my_email, 0),
+        "ends_at": ends_at_utc.isoformat() + "Z",
+    }
+
+
 async def run_background_scheduler():
     """10분마다 만료된 악평과 재판을 검사하고 강제 집행하는 봇"""
     while True:
@@ -641,7 +656,8 @@ def get_user_data(authorization: str = Header(None)):
             "members": members_profiles, 
             "agendas": room.get("agendas", []), 
             "messages": room.get("messages", []), 
-            "events": room.get("events", []) 
+            "events": room.get("events", []),
+            "current_mission": mission_for_client(room.get("current_mission"), email)
         })
 
     # 전국구 통합 랭킹 Top 10 가공

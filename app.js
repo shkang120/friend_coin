@@ -295,6 +295,82 @@ window.rollDice = async function() {
     } catch(e) { alert("통신 오류"); } finally { hideLoading(); }
 };
 
+// ===== 주간 클럽 미션 카드 =====
+const MISSION_HINTS = {
+    use_eval_tickets: "친구에게 호평·악평을 하면 1회씩 올라가요.",
+    participate_vote: "주주총회의 재판·투표에 참여하면 1회씩 올라가요.",
+    win_gamble: "라운지 🎲 주사위 도박장에서 이기면 1회씩 올라가요.",
+    buy_shop_item: "포인트·캐시 상점에서 아이템을 사면 1회씩 올라가요.",
+    daily_attendance: "매일 출석체크를 하면 1회씩 올라가요. (하루 1번)",
+    use_megaphone: "라운지에서 📢 클럽 확성기로 메시지를 보내면 1회씩 올라가요. (확성기는 상점에서 구매)",
+    use_anon_ticket: "👻 익명 암살권을 써서 악평을 하면 1회씩 올라가요.",
+    open_defense_trial: "받은 악평에 ⚖️ 이의제기 방어 재판을 열면 1회씩 올라가요."
+};
+
+function missionPercent(m) {
+    if (!m || !m.target_score) return 0;
+    return Math.min(Math.floor((m.total_score / m.target_score) * 100), 100);
+}
+
+function formatRemaining(isoEnd) {
+    const ms = new Date(isoEnd).getTime() - Date.now();
+    if (!isoEnd || isNaN(ms)) return "";
+    if (ms <= 0) return "곧 정산";
+    const totalMin = Math.floor(ms / 60000);
+    const d = Math.floor(totalMin / 1440), h = Math.floor((totalMin % 1440) / 60), min = totalMin % 60;
+    if (d > 0) return `${d}일 ${h}시간 남음`;
+    if (h > 0) return `${h}시간 ${min}분 남음`;
+    return `${min}분 남음`;
+}
+
+function renderMissionCard(room) {
+    const m = room.current_mission;
+    if (!m) {
+        const reason = room.members.length < 2 ? "클럽원이 2명 이상이면 매주 월요일 08시에 미션이 시작돼요." : "다음 미션을 준비 중이에요. 잠시 후 다시 확인해 주세요.";
+        return `<div style="background:#f9fafb; border:1px dashed #d1d6db; border-radius:16px; padding:14px; margin-bottom:20px; font-size:13px; color:#8b95a1; text-align:center;">🔥 주간 클럽 미션<br><span style="font-size:12px;">${reason}</span></div>`;
+    }
+    const pct = missionPercent(m);
+    const done = m.total_score >= m.target_score;
+    const mine = m.my_contribution || 0;
+    const myShare = m.total_score > 0 ? mine / m.total_score : 0;
+    const expectedP = Math.floor((m.reward_points || 0) * myShare);
+    const expectedT = Math.floor((m.reward_tickets || 0) * myShare);
+    const hint = MISSION_HINTS[m.type] || "";
+
+    // 참여자 기여도 (많이 한 순서)
+    const nameOf = (email) => { const p = room.members.find(x => x.email === email); return p ? p.name : "나간 멤버"; };
+    const chips = Object.entries(m.contributions || {}).filter(([, c]) => c > 0).sort((x, y) => y[1] - x[1]).map(([email, c]) =>
+        `<span style="background:rgba(255,255,255,${email === myEmail ? '0.35' : '0.18'}); padding:3px 8px; border-radius:10px; font-size:11px; font-weight:bold;">${escapeHtml(nameOf(email))} ${c}회</span>`
+    ).join('');
+
+    const rewardText = [m.reward_points ? `💰 ${Math.floor(m.reward_points).toLocaleString()}p` : "", m.reward_tickets ? `🎫 평가권 각 ${m.reward_tickets}장` : ""].filter(Boolean).join(" + ");
+    const statusBox = done
+        ? `<div style="background:rgba(255,255,255,0.95); color:#1565c0; border-radius:10px; padding:10px; font-size:12px; font-weight:bold; margin-top:12px; text-align:center;">🎉 목표 달성! 월요일 08시에 기여도만큼 보상이 지급돼요.<br><span style="font-weight:normal;">내 예상 보상: ${expectedP.toLocaleString()}p${expectedT ? ` / 평가권 각 ${expectedT}장` : ''}</span></div>`
+        : `<div style="font-size:12px; margin-top:12px; line-height:1.5;">🙋 내 기여: <b>${mine}회</b>${m.total_score > 0 ? ` (${Math.round(myShare * 100)}%) · 지금 달성하면 예상 보상 ${expectedP.toLocaleString()}p${expectedT ? ` / 평가권 각 ${expectedT}장` : ''}` : ' · 첫 기여를 해보세요!'}</div>`;
+
+    return `
+        <div id="mission-card" style="background: linear-gradient(135deg, #3182f6, #1565c0); border-radius:16px; padding:16px; margin-bottom:20px; color:white; box-shadow:0 4px 10px rgba(49,130,246,0.2);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;">
+                <div style="font-size:12px; font-weight:bold; background:rgba(255,255,255,0.2); padding:4px 8px; border-radius:8px;">🔥 주간 클럽 미션</div>
+                <div style="font-size:12px; font-weight:bold;">⏰ ${formatRemaining(m.ends_at)}</div>
+            </div>
+            <div style="font-weight:bold; font-size:17px; margin-bottom:4px;">${escapeHtml(m.name)}</div>
+            <div style="font-size:12px; color:#e3f2fd; margin-bottom:6px; line-height:1.4;">${escapeHtml(m.description)}</div>
+            ${hint ? `<div style="font-size:12px; background:rgba(0,0,0,0.15); padding:8px 10px; border-radius:8px; margin-bottom:12px; line-height:1.4;">💡 ${hint}</div>` : ''}
+            <div style="background:rgba(255,255,255,0.25); height:12px; border-radius:6px; overflow:hidden; margin-bottom:6px;">
+                <div style="background:white; height:100%; width:${pct}%; border-radius:6px; transition:width 0.5s ease-in-out;"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:bold;">
+                <span>${done ? '✅ 달성 완료' : `진행도 ${pct}%`}</span>
+                <span>${m.total_score} / ${m.target_score}회</span>
+            </div>
+            <div style="font-size:11px; color:#e3f2fd; margin-top:8px;">🎁 달성 보상(기여도만큼 나눔): ${rewardText || '없음'}</div>
+            ${chips ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">${chips}</div>` : ''}
+            ${statusBox}
+        </div>
+    `;
+}
+
 function renderHome() {
     const list = document.getElementById('friend-list'); if(!list) return;
     
@@ -332,6 +408,7 @@ function renderHome() {
                                 <div style="display:flex; align-items:center;">${avatars}${extraMembers}</div>
                                 <span>👥 ${r.members.length}명 &nbsp;|&nbsp; 🔑 <span style="color:#3182f6; font-weight:bold;">${r.room_code}</span></span>
                             </div>
+                            ${r.current_mission ? `<div style="margin-top:6px; font-size:11px; font-weight:bold; color:#1565c0; background:#e8f1fd; display:inline-block; padding:3px 8px; border-radius:6px;">🔥 ${escapeHtml(r.current_mission.name)} · ${missionPercent(r.current_mission)}%${r.current_mission.total_score >= r.current_mission.target_score ? ' ✅' : ''}</div>` : ''}
                         </div>
                         <div style="color:#3182f6; font-size:20px;">👉</div>
                     </div>
@@ -360,29 +437,8 @@ function renderHome() {
             </div>
         `; // 🔥 1. 여기서 상단 헤더 텍스트 덩어리를 안전하게 닫아줍니다.
 
-        // 🔥 2. 미션 데이터가 존재하면 미션 카드를 HTML에 추가합니다.
-        if (room.current_mission) {
-            const m = room.current_mission;
-            const progressPct = Math.min((m.total_score / m.target_score) * 100, 100).toFixed(1);
-            
-            html += `
-                <div style="background: linear-gradient(135deg, #3182f6, #1565c0); border-radius:16px; padding:15px; margin-bottom:20px; color:white; box-shadow:0 4px 10px rgba(49,130,246,0.2);">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <div style="font-size:12px; font-weight:bold; background:rgba(255,255,255,0.2); padding:4px 8px; border-radius:8px; display:flex; align-items:center; gap:4px;">🔥 주간 클럽 미션</div>
-                        <div style="font-size:12px; font-weight:bold;">보상: 💰 ${Math.floor(m.reward_points).toLocaleString()}p / 🎫 각 ${m.reward_tickets}장</div>
-                    </div>
-                    <div style="font-weight:bold; font-size:16px; margin-bottom:4px;">${escapeHtml(m.name)}</div>
-                    <div style="font-size:12px; color:#e3f2fd; margin-bottom:12px; line-height:1.4;">${escapeHtml(m.description)}</div>
-                    <div style="background:rgba(255,255,255,0.2); height:10px; border-radius:5px; overflow:hidden; margin-bottom:8px;">
-                        <div style="background:white; height:100%; width:${progressPct}%; border-radius:5px; transition:width 0.5s ease-in-out;"></div>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:bold;">
-                        <span>진행도: ${progressPct}%</span>
-                        <span>${m.total_score} / ${m.target_score} 회</span>
-                    </div>
-                </div>
-            `;
-        }
+        // 🔥 2. 주간 미션 카드 (진척도·남은 시간·내 기여도·참여자)
+        html += renderMissionCard(room);
 
         // 🔥 3. 여기서부터 다시 클럽 라운지 텍스트를 이어붙입니다. (수환님이 찾으신 세 줄이 안전하게 복구되었습니다!)
         html += `
