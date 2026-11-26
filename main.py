@@ -34,13 +34,17 @@ async def lifespan(app: FastAPI):
 # 기존 app = FastAPI() 를 아래와 같이 수정
 app = FastAPI(lifespan=lifespan)
 
+def mission_week_monday(kst_now: datetime) -> str:
+    """미션 주간의 시작(가장 최근 월요일 08시, KST)의 날짜를 돌려줍니다. 월요일 08시 전이면 지난주 월요일."""
+    days_since_monday = kst_now.weekday()
+    if days_since_monday == 0 and kst_now.hour < 8: days_since_monday = 7
+    return (kst_now - timedelta(days=days_since_monday)).strftime("%Y-%m-%d")
+
+
 async def run_background_scheduler():
     """10분마다 만료된 악평과 재판을 검사하고 강제 집행하는 봇"""
     while True:
         try:
-            # 10분(600초) 대기 후 실행. 테스트 시에는 60으로 줄여서 확인해보세요!
-            await asyncio.sleep(600) 
-            
             kst_now = datetime.utcnow() + timedelta(hours=9)
 
             kst_today_str = kst_now.strftime("%Y-%m-%d")
@@ -158,85 +162,88 @@ async def run_background_scheduler():
                 if room_modified:
                     db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"agendas": surviving_agendas}})
 
-            # 🔥 3. 주간 클럽 미션 정산 및 신규 할당 (매주 월요일 08시)
-            if kst_now.weekday() == 0 and kst_now.hour >= 8:
-                current_monday_str = kst_now.strftime("%Y-%m-%d")
+            # 🔥 3. 주간 클럽 미션 정산 및 신규 할당
+            #    '오늘이 월요일인가'가 아니라 '이번 주 월요일 08시가 지났는데 아직 갱신 안 했나'로 검사합니다.
+            #    (무료 서버가 월요일 내내 잠들어 있어도, 그 주에 처음 깨어났을 때 갱신·정산됩니다)
+            current_monday_str = mission_week_monday(kst_now)
+            
+            # 이번 주 월요일에 이미 미션 갱신을 완료했는지 확인 (중복 방지)
+            if sys_data.get("last_mission_reset_date") != current_monday_str:
                 
-                # 이번 주 월요일에 이미 미션 갱신을 완료했는지 확인 (중복 방지)
-                if sys_data.get("last_mission_reset_date") != current_monday_str:
-                    
-                    for room in db["rooms"].find():
-                        members = room.get("members", [])
-                        if len(members) < 2:
-                            continue  # 1인 클럽은 미션에서 완전히 제외합니다.
+                for room in db["rooms"].find():
+                    members = room.get("members", [])
+                    if len(members) < 2:
+                        continue  # 1인 클럽은 미션에서 완전히 제외합니다.
+                        
+                    # [A] 기존 미션 정산 로직
+                    current_mission = room.get("current_mission")
+                    if current_mission:
+                        t_score = current_mission.get("total_score", 0)
+                        target = current_mission.get("target_score", 1)
+                        
+                        if t_score >= target:
+                            # 성공 시 기여도 비례 보상 분배
+                            reward_p = current_mission.get("reward_points", 0)
+                            reward_t = current_mission.get("reward_tickets", 0)
+                            conts = current_mission.get("contributions", {})
                             
-                        # [A] 기존 미션 정산 로직
-                        current_mission = room.get("current_mission")
-                        if current_mission:
-                            t_score = current_mission.get("total_score", 0)
-                            target = current_mission.get("target_score", 1)
-                            
-                            if t_score >= target:
-                                # 성공 시 기여도 비례 보상 분배
-                                reward_p = current_mission.get("reward_points", 0)
-                                reward_t = current_mission.get("reward_tickets", 0)
-                                conts = current_mission.get("contributions", {})
-                                
-                                for mem_email, score in conts.items():
-                                    if score > 0:
-                                        ratio = score / t_score
-                                        earned_p = int(reward_p * ratio)
-                                        earned_t = int(reward_t * ratio)
+                            for mem_email, score in conts.items():
+                                if score > 0:
+                                    ratio = score / t_score
+                                    earned_p = int(reward_p * ratio)
+                                    earned_t = int(reward_t * ratio)
+                                    
+                                    # 유저 DB에 보상 지급
+                                    m_user = db["users"].find_one({"_id": mem_email})
+                                    if m_user:
+                                        m_prof = m_user.get("profile", {})
+                                        m_prof["price"] = m_prof.get("price", 20000) + earned_p
+                                        m_prof["goodTickets"] = m_prof.get("goodTickets", 0) + earned_t
+                                        m_prof["badTickets"] = m_prof.get("badTickets", 0) + earned_t
                                         
-                                        # 유저 DB에 보상 지급
-                                        m_user = db["users"].find_one({"_id": mem_email})
-                                        if m_user:
-                                            m_prof = m_user.get("profile", {})
-                                            m_prof["price"] = m_prof.get("price", 20000) + earned_p
-                                            m_prof["goodTickets"] = m_prof.get("goodTickets", 0) + earned_t
-                                            m_prof["badTickets"] = m_prof.get("badTickets", 0) + earned_t
-                                            
-                                            m_noti = m_user.get("noti", [])
-                                            m_noti.insert(0, f"🎉 [미션 성공] '{current_mission['name']}' 기여도 {int(ratio*100)}% 달성! (+{earned_p}p, 평가권 각 +{earned_t}장)")
-                                            db["users"].update_one({"_id": mem_email}, {"$set": {"profile": m_prof, "noti": m_noti}})
-                                
-                                # 성공 시스템 채팅
-                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"🎉 지난주 클럽 미션을 달성했습니다! 참여자들에게 기여도 비례 보상이 지급되었습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
-                            else:
-                                # 실패 시스템 채팅
-                                db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"💦 아쉽게도 지난주 클럽 미션 목표 달성에 실패했습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
-                        
-                        # [B] 신규 미션 무작위 할당 로직
-                        new_m = random.choice(MISSIONS_POOL)
-                        
-                        # 인원수 비례 동적 난이도 계산 (소수점은 반올림 처리)
-                        target_score = max(1, int(new_m["base_target_per_user"] * len(members)))
-                        total_reward_p = int(new_m["reward_points"] * len(members))
-                        total_reward_t = int(new_m["reward_tickets"] * len(members))
-                        
-                        mission_doc = {
-                            "type": new_m["type"],
-                            "name": new_m["name"],
-                            "description": new_m["description"],
-                            "target_score": target_score,
-                            "total_score": 0,
-                            "reward_points": total_reward_p,
-                            "reward_tickets": total_reward_t,
-                            "contributions": {m: 0 for m in members}
-                        }
-                        
-                        db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"current_mission": mission_doc}})
-                        
-                        # 신규 미션 시작 시스템 채팅
-                        db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"🔔 이번 주 주간 미션: [{new_m['name']}]\n목표: 총 {target_score}회 달성\n내용: {new_m['description']}", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
+                                        m_noti = m_user.get("noti", [])
+                                        m_noti.insert(0, f"🎉 [미션 성공] '{current_mission['name']}' 기여도 {int(ratio*100)}% 달성! (+{earned_p}p, 평가권 각 +{earned_t}장)")
+                                        db["users"].update_one({"_id": mem_email}, {"$set": {"profile": m_prof, "noti": m_noti}})
+                            
+                            # 성공 시스템 채팅
+                            db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"🎉 지난주 클럽 미션을 달성했습니다! 참여자들에게 기여도 비례 보상이 지급되었습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
+                        else:
+                            # 실패 시스템 채팅
+                            db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"💦 아쉽게도 지난주 클럽 미션 목표 달성에 실패했습니다.", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
                     
-                    # 모든 방의 처리가 끝나면 글로벌 플래그 업데이트
-                    db["system"].update_one({"_id": "global"}, {"$set": {"last_mission_reset_date": current_monday_str}}, upsert=True)
+                    # [B] 신규 미션 무작위 할당 로직
+                    new_m = random.choice(MISSIONS_POOL)
+                    
+                    # 인원수 비례 동적 난이도 계산 (소수점은 반올림 처리)
+                    target_score = max(1, int(new_m["base_target_per_user"] * len(members)))
+                    total_reward_p = int(new_m["reward_points"] * len(members))
+                    total_reward_t = int(new_m["reward_tickets"] * len(members))
+                    
+                    mission_doc = {
+                        "type": new_m["type"],
+                        "name": new_m["name"],
+                        "description": new_m["description"],
+                        "target_score": target_score,
+                        "total_score": 0,
+                        "reward_points": total_reward_p,
+                        "reward_tickets": total_reward_t,
+                        "contributions": {m: 0 for m in members}
+                    }
+                    
+                    db["rooms"].update_one({"_id": room["_id"]}, {"$set": {"current_mission": mission_doc}})
+                    
+                    # 신규 미션 시작 시스템 채팅
+                    db["rooms"].update_one({"_id": room["_id"]}, {"$push": {"messages": {"$each": [{"sender_email": "system", "sender_name": "시스템", "message": f"🔔 이번 주 주간 미션: [{new_m['name']}]\n목표: 총 {target_score}회 달성\n내용: {new_m['description']}", "is_megaphone": False, "timestamp": datetime.utcnow().isoformat()}], "$slice": -MAX_ROOM_MESSAGES}}})
+                
+                # 모든 방의 처리가 끝나면 글로벌 플래그 업데이트
+                db["system"].update_one({"_id": "global"}, {"$set": {"last_mission_reset_date": current_monday_str}}, upsert=True)
 
         except asyncio.CancelledError:
             break
         except Exception as e:
             print(f"Scheduler Error: {e}")
+        # 다음 검사까지 10분 대기 (서버가 켜지면 기다리지 않고 바로 첫 검사를 합니다)
+        await asyncio.sleep(600)
 
 app.add_middleware(
     CORSMiddleware,
